@@ -258,6 +258,13 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/wayland-allow") => {
+            #[cfg(target_os = "linux")]
+            if let Some(remote) = crate::wayland::global() {
+                remote.allow_now();
+            }
+            send_state(request, state)
+        }
         (Method::Post, "/api/stop-screen") => {
             #[derive(Deserialize)]
             struct Body {
@@ -278,6 +285,17 @@ fn handle(
         }
         _ => status(request, 404, "not found"),
     }
+}
+
+/// Linux Wayland: the remote desktop permission. `null` elsewhere.
+fn wayland_state() -> serde_json::Value {
+    #[cfg(target_os = "linux")]
+    if let Some(remote) = crate::wayland::global() {
+        let mut v = serde_json::to_value(remote.status()).unwrap_or_default();
+        v["saved"] = json!(remote.is_remembered());
+        return v;
+    }
+    serde_json::Value::Null
 }
 
 fn send_state(request: Request, state: &AppState) {
@@ -371,6 +389,7 @@ fn send_state(request: Request, state: &AppState) {
         "shortcuts": shortcuts,
         "remote": remote,
         "keep_awake": state.awake.is_on(),
+        "wayland": wayland_state(),
     });
     respond(
         request,

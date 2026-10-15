@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
@@ -43,6 +43,9 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphic
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"
+# Wayland: the remote desktop portal (D-Bus) and PipeWire (loaded at run time).
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+libloading = "0.8"
 x11rb = { version = "0.13", features = ["randr"] }
 
 [dev-dependencies]

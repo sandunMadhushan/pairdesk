@@ -40,7 +40,10 @@ class ScreenViewport {
       return shown <= viewLen ? (viewLen - shown) / 2 : viewLen / 2 - centre * scale;
     }
 
-    return ViewTransform(scale, Offset(axis(view.width, picture.width, c.dx), axis(view.height, picture.height, c.dy)));
+    return ViewTransform(
+      scale,
+      Offset(axis(view.width, picture.width, c.dx), axis(view.height, picture.height, c.dy)),
+    );
   }
 
   /// Keeps [pointer] (picture pixels) out of the view's edges when zoomed in.

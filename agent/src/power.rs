@@ -146,7 +146,24 @@ mod platform {
                 ("dm-tool", &["lock"]),
                 ("gnome-screensaver-command", &["--lock"]),
             ]),
-            PowerAction::ScreenOff => command("xset", &["dpms", "force", "off"]),
+            // GNOME (X11 or Wayland), KDE Plasma (Wayland), then any X11.
+            PowerAction::ScreenOff => first_working(&[
+                (
+                    "busctl",
+                    &[
+                        "--user",
+                        "set-property",
+                        "org.gnome.Mutter.DisplayConfig",
+                        "/org/gnome/Mutter/DisplayConfig",
+                        "org.gnome.Mutter.DisplayConfig",
+                        "PowerSaveMode",
+                        "i",
+                        "1",
+                    ],
+                ),
+                ("kscreen-doctor", &["--dpms", "off"]),
+                ("xset", &["dpms", "force", "off"]),
+            ]),
             PowerAction::Sleep => command("systemctl", &["suspend"]),
             PowerAction::SignOut => {
                 let mut options: Vec<(&str, &[&str])> = Vec::new();

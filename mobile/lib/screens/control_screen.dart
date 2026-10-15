@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../agent_connection.dart';
@@ -30,15 +32,25 @@ class _ControlScreenState extends State<ControlScreen> {
   int _tab = 0;
 
   AgentConnection get _conn => widget.connection;
+  StreamSubscription<String>? _notices;
 
   @override
   void initState() {
     super.initState();
     _conn.addListener(_onConnectionChanged);
+    _notices = _conn.notices.listen((msg) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 8), showCloseIcon: true),
+        );
+    });
   }
 
   @override
   void dispose() {
+    _notices?.cancel();
     _conn.removeListener(_onConnectionChanged);
     _text.dispose();
     _textFocus.dispose();
@@ -241,7 +253,11 @@ class _ControlScreenState extends State<ControlScreen> {
                     selectedIcon: Icon(Icons.grid_view_rounded),
                     label: 'Buttons',
                   ),
-                  NavigationDestination(icon: Icon(Icons.apps_outlined), selectedIcon: Icon(Icons.apps), label: 'Apps'),
+                  NavigationDestination(
+                    icon: Icon(Icons.apps_outlined),
+                    selectedIcon: Icon(Icons.apps),
+                    label: 'Apps',
+                  ),
                   NavigationDestination(
                     icon: Icon(Icons.power_settings_new_outlined),
                     selectedIcon: Icon(Icons.power_settings_new),

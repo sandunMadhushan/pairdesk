@@ -208,7 +208,9 @@ class _ButtonsTabState extends State<ButtonsTab> {
                           b.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSecondaryContainer),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(

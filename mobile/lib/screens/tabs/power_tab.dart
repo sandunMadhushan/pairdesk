@@ -24,7 +24,9 @@ Future<bool> confirmPower(BuildContext context, PowerAction a, String computer) 
     builder: (ctx) => AlertDialog(
       icon: Icon(powerIcon(a)),
       title: Text('${powerLabel(a)} $computer?'),
-      content: Text('Unsaved work in open apps may be lost. You can\'t undo this from the phone once it starts.'),
+      content: Text(
+        'Unsaved work in open apps may be lost. You can\'t undo this from the phone once it starts.',
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
         FilledButton(
