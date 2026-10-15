@@ -128,7 +128,11 @@ void main() {
       final red = await solidPng(64, 40, const Color(0xFFFF0000));
       final blue = await solidPng(32, 20, const Color(0xFF0000FF));
       expect(await comp.apply(ScreenFrame.parse(buildFrame(1, 64, 40, null, [(0, 0, 64, 40, red)]))), isTrue);
-      expect(await comp.apply(ScreenFrame.parse(buildFrame(2, 64, 40, (1, 1), []))), isFalse, reason: 'cursor only');
+      expect(
+        await comp.apply(ScreenFrame.parse(buildFrame(2, 64, 40, (1, 1), []))),
+        isFalse,
+        reason: 'cursor only',
+      );
       await comp.apply(ScreenFrame.parse(buildFrame(3, 64, 40, null, [(32, 20, 32, 20, blue)])));
       final img = comp.image!;
       expect((img.width, img.height), (64, 40));

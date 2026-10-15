@@ -268,6 +268,11 @@ pub enum ServerMsg {
     ScreenStopped {
         msg: String,
     },
+    /// Something the person should know (e.g. "approve on the computer").
+    /// Phones before 0.6 ignore it.
+    Notice {
+        msg: String,
+    },
     /// Answer to `apps`.
     Apps {
         #[serde(skip_serializing_if = "Option::is_none")]

@@ -131,6 +131,16 @@
     </div>
   </section>
 
+  <section aria-labelledby="wl-title" id="wayland" hidden>
+    <h2 id="wl-title">Control on this desktop</h2>
+    <div class="status-line" role="status"><span class="dot" id="wl-dot"></span><div id="wl-text"></div></div>
+    <p class="hint" id="wl-how">This desktop (Wayland) asks before an app may move the pointer, type or see the
+      screen. Choose <b>Allow control</b>, then in the window that opens tick <b>Allow Remote Interaction</b>,
+      pick your screen, keep <b>Remember This Selection</b> on and press <b>Share</b>. While a phone is
+      connected, your desktop shows that it's being shared.</p>
+    <div class="row" style="margin-top:12px"><button id="btn-wl-allow" class="primary">Allow control</button></div>
+  </section>
+
   <section aria-labelledby="phones-title">
     <h2 id="phones-title">Paired phones</h2>
     <p class="muted" id="no-phones">No phones yet.</p>
@@ -317,6 +327,34 @@ function render(s) {
 
   if (s.os !== agentOs) { agentOs = s.os; updateKind(); }
 
+  // Wayland: the desktop's remote desktop permission
+  const wl = s.wayland;
+  $("wayland").hidden = !wl;
+  if (wl) {
+    const ready = wl.status === "ready";
+    const fine = (ready && wl.control) || (wl.status === "idle" && wl.saved);
+    $("wl-dot").className = "dot" + (fine ? " ok" : wl.status === "idle" ? "" : " warn");
+    const texts = {
+      idle: wl.saved
+        ? "Allowed. It starts by itself when a phone connects, without asking."
+        : "Not allowed yet. Phones can't use the pointer, keyboard or screen view until you allow it.",
+      asking: "Waiting for your answer in the desktop's window…",
+      denied: "Not allowed. Phones can't use the pointer, keyboard or screen view until you allow it.",
+      stopped: "Stopped from the desktop. It starts again when a phone connects, or choose Allow control.",
+      no_portal: "This desktop doesn't let apps control it. Sign in with an X11 (\"Xorg\") session to use PairDesk.",
+      failed: "Couldn't start: " + (wl.msg || "unknown error"),
+    };
+    $("wl-text").textContent = ready
+      ? (wl.control
+          ? "Allowed" + (wl.remembered ? " and remembered: phones connect without asking again." : " until you sign out.")
+          : "Only the screen was shared; phones can't use the pointer or keyboard. Choose Allow control and tick Allow Remote Interaction.")
+      : texts[wl.status] || "";
+    $("btn-wl-allow").hidden = wl.status === "no_portal" || wl.status === "asking";
+    $("btn-wl-allow").textContent = fine ? "Ask again" : "Allow control";
+    $("btn-wl-allow").className = fine ? "" : "primary";
+    $("wl-how").hidden = fine;
+  }
+
   // Connect from anywhere
   const r = s.remote || { status: "checking" };
   const dot = $("remote-dot"), text = $("remote-text");
@@ -450,6 +488,9 @@ $("btn-stop-view").onclick = async () => {
 $("keep-awake").onchange = async (e) => {
   try { render(await post("keep-awake", { enabled: e.target.checked })); }
   catch (err) { showBanner(err.message, true); refresh(); }
+};
+$("btn-wl-allow").onclick = async () => {
+  try { render(await post("wayland-allow")); } catch (err) { showBanner(err.message, true); }
 };
 $("btn-recheck").onclick = async () => {
   $("remote-text").textContent = "Checking for Tailscale…";

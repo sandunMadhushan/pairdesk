@@ -3,8 +3,8 @@
 //!
 //! - Windows: GDI `BitBlt` from the desktop. The agent is per-monitor DPI
 //!   aware, so all coordinates are real pixels across every monitor.
-//! - Linux: X11 `GetImage` on the root window, monitors from RandR.
-//!   Wayland sessions aren't supported yet.
+//! - Linux: X11 `GetImage` on the root window, monitors from RandR. In a
+//!   Wayland session: the desktop's screen-cast portal and PipeWire.
 //!
 //! Frames are BGRA (blue, green, red, unused), top row first.
 
@@ -31,15 +31,9 @@ pub struct Frame {
 pub fn unsupported_reason() -> Option<String> {
     #[cfg(not(windows))]
     {
-        let wayland = std::env::var("XDG_SESSION_TYPE")
-            .is_ok_and(|s| s.eq_ignore_ascii_case("wayland"))
-            || (std::env::var_os("WAYLAND_DISPLAY").is_some()
-                && std::env::var_os("DISPLAY").is_none());
-        if wayland {
-            return Some(
-                "Screen view doesn't work in a Wayland session yet. Sign in with an \"Xorg\" or \"X11\" session to use it."
-                    .into(),
-            );
+        #[cfg(target_os = "linux")]
+        if crate::wayland::global().is_some() {
+            return None;
         }
         if std::env::var_os("DISPLAY").is_none() {
             return Some("No display found on this computer.".into());
@@ -281,17 +275,104 @@ mod platform {
     }
 
     pub fn monitors() -> Result<Vec<Monitor>, String> {
+        #[cfg(target_os = "linux")]
+        if let Some(remote) = crate::wayland::global() {
+            return remote.monitors();
+        }
         let (conn, root) = connect()?;
         monitors_on(&conn, root)
     }
 
-    pub struct Capturer {
+    /// X11, or (Linux) a Wayland screen from the portal.
+    pub enum Capturer {
+        X11(Box<X11Capturer>),
+        #[cfg(target_os = "linux")]
+        Wayland(WaylandCapturer),
+    }
+
+    impl Capturer {
+        pub fn new(monitor: Monitor) -> Result<Self, String> {
+            #[cfg(target_os = "linux")]
+            if let Some(remote) = crate::wayland::global() {
+                let (stream, _) = remote.open_screen(monitor.index)?;
+                return Ok(Capturer::Wayland(WaylandCapturer {
+                    monitor,
+                    stream,
+                    size: (0, 0),
+                }));
+            }
+            X11Capturer::new(monitor).map(|c| Capturer::X11(Box::new(c)))
+        }
+
+        pub fn monitor(&self) -> &Monitor {
+            match self {
+                Capturer::X11(c) => &c.monitor,
+                #[cfg(target_os = "linux")]
+                Capturer::Wayland(c) => &c.monitor,
+            }
+        }
+
+        /// Pointer position in desktop coordinates.
+        pub fn cursor(&self) -> Option<(i32, i32)> {
+            match self {
+                Capturer::X11(c) => c.cursor(),
+                #[cfg(target_os = "linux")]
+                Capturer::Wayland(c) => c.cursor(),
+            }
+        }
+
+        pub fn capture(&mut self) -> Result<Frame, String> {
+            match self {
+                Capturer::X11(c) => c.capture(),
+                #[cfg(target_os = "linux")]
+                Capturer::Wayland(c) => c.capture(),
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub struct WaylandCapturer {
+        monitor: Monitor,
+        stream: crate::wayland::pipewire::Stream,
+        /// Size of the last picture, in pixels (can differ from the
+        /// monitor's desktop size with display scaling).
+        size: (u32, u32),
+    }
+
+    #[cfg(target_os = "linux")]
+    impl WaylandCapturer {
+        fn cursor(&self) -> Option<(i32, i32)> {
+            let (cx, cy) = self.stream.cursor()?;
+            let m = &self.monitor;
+            let (pw, ph) = if self.size.0 > 0 {
+                self.size
+            } else {
+                (m.width, m.height)
+            };
+            Some((
+                m.x + (cx as i64 * m.width as i64 / pw.max(1) as i64) as i32,
+                m.y + (cy as i64 * m.height as i64 / ph.max(1) as i64) as i32,
+            ))
+        }
+
+        fn capture(&mut self) -> Result<Frame, String> {
+            let (width, height, data) = self.stream.frame(std::time::Duration::from_secs(5))?;
+            self.size = (width, height);
+            Ok(Frame {
+                width,
+                height,
+                data,
+            })
+        }
+    }
+
+    pub struct X11Capturer {
         monitor: Monitor,
         conn: RustConnection,
         root: Window,
     }
 
-    impl Capturer {
+    impl X11Capturer {
         pub fn new(monitor: Monitor) -> Result<Self, String> {
             let (conn, root) = connect()?;
             let bpp = conn
@@ -308,10 +389,6 @@ mod platform {
                 conn,
                 root,
             })
-        }
-
-        pub fn monitor(&self) -> &Monitor {
-            &self.monitor
         }
 
         pub fn cursor(&self) -> Option<(i32, i32)> {

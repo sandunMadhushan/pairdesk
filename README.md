@@ -5,7 +5,7 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.5 preview (Phase 4).** Pair once with a QR code; after that the phone
+> **Status: 0.6 preview (Phase 5).** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls and a live view of the screen, on your Wi-Fi or from
@@ -15,7 +15,7 @@ no codes or "accept" prompts every time.
 
 | | |
 | --- | --- |
-| Computer | Windows 10/11, Linux (X11 session; Wayland comes in Phase 5) |
+| Computer | Windows 10/11, Linux: X11, and Wayland on GNOME and KDE Plasma (Ubuntu 20.04 / Debian 11 or newer) |
 | Phone | Android 6.0 or newer |
 | Pairing | Scan a QR code once. The phone is remembered; remove it any time on the computer |
 | Security | TLS with a pinned certificate, Ed25519 sign-in, one-time pairing codes |
@@ -41,7 +41,10 @@ Download the agent and the app from the
      example `Documents\PairDesk`) and double-click it. If SmartScreen warns about
      an unknown publisher, choose **More info → Run anyway**. When Windows Firewall
      asks, allow **Private networks**.
-   - Linux: `chmod +x pairdesk-agent-…-linux-x64 && ./pairdesk-agent-…-linux-x64`
+   - Linux: `chmod +x pairdesk-agent-…-linux-x64 && ./pairdesk-agent-…-linux-x64`.
+     In a Wayland session (the default on Ubuntu and Fedora), your desktop asks
+     once whether PairDesk may control it: tick **Allow Remote Interaction**, pick
+     your screen, keep **Remember This Selection** on and press **Share**.
 2. A PairDesk page opens in your browser with a QR code.
 3. **Phone:** install the APK, open PairDesk, tap **Scan pairing code** and scan it.
 
@@ -72,17 +75,22 @@ if it tends to sleep.
 
 - Windows doesn't let a normal app control windows running as administrator, or the
   lock/login screen.
-- Linux Wayland sessions aren't supported yet. On GNOME, the tray icon needs the
-  AppIndicator extension; without it, run the agent again to open its page.
+- Linux Wayland works through the desktop's remote desktop permission (tested on
+  GNOME; KDE Plasma offers the same permission). While a phone is connected the desktop shows that it's being
+  shared. Desktops without that permission (Sway, Hyprland and other wlroots
+  desktops) need an X11 session. Characters that aren't on your keyboard layout
+  can't be typed on GNOME Wayland.
+- On GNOME, the tray icon needs the AppIndicator extension (Ubuntu has it); without
+  it, run the agent again to open its page.
 - If you move the agent program to another folder, turn **Start PairDesk when I
   sign in** off and on again on its page.
 - On Linux without a desktop, `pairdesk-agent --pair` prints the QR code in the terminal.
 - Windows reserves a few shortcuts that no app can send, such as Ctrl+Alt+Delete and
   Win+L. Use the Power tab to lock.
-- Screen view can't show the Windows lock screen or UAC prompts, or a Linux
-  Wayland session (sign in with an X11/Xorg session for now).
+- Screen view can't show the Windows lock screen or UAC prompts.
 - Linux power actions use `loginctl`/`systemctl`, which most desktops allow for the
-  signed-in user; screen off uses `xset` (X11).
+  signed-in user; screen off uses GNOME's display settings, `kscreen-doctor` (KDE)
+  or `xset` (X11).
 
 ## Build from source
 
@@ -96,6 +104,8 @@ cargo run --release            # see --help for options
 
 # End-to-end test of phone code against the real agent (Linux, needs Xvfb)
 tools/e2e.sh
+# The same on a headless GNOME Wayland session (mutter, portals, PipeWire)
+tools/e2e-wayland.sh
 
 # Phone app
 cd mobile
@@ -123,8 +133,8 @@ The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOC
 | 1 | One-time QR pairing, encryption, tray app, auto-start, auto-discovery |
 | 2 | Power actions, app launcher, custom buttons, phone app lock |
 | 3 | Connect from anywhere with Tailscale |
-| **4** | **Live screen view on Windows and Linux X11 (this release)** |
-| 5 | Linux agent on Wayland |
+| 4 | Live screen view on Windows and Linux X11 |
+| **5** | **Linux agent on Wayland (this release)** |
 | 6 | Clipboard sync and file transfer |
 | 7 | Signed installers, Microsoft Store, F-Droid, Flathub |
 

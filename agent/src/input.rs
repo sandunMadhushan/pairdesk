@@ -3,7 +3,8 @@
 //!
 //! The OS input handle (`Enigo`) lives on one dedicated thread. Network tasks
 //! send it commands over a channel, so input is applied in order and the async
-//! runtime never blocks on the OS.
+//! runtime never blocks on the OS. In a Linux Wayland session the same thread
+//! sends the commands to the desktop's remote desktop portal instead.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -53,12 +54,25 @@ impl InputHandle {
         let (tx, rx) = mpsc::channel::<InputCmd>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
 
+        #[cfg(target_os = "linux")]
+        if let Some(remote) = crate::wayland::global() {
+            let remote = remote.clone();
+            thread::Builder::new()
+                .name("pairdesk-input".into())
+                .spawn(move || {
+                    info!("input goes through the remote desktop portal (Wayland)");
+                    run(rx, |cmd| remote.apply(cmd));
+                })
+                .map_err(|e| e.to_string())?;
+            return Ok(Self { tx });
+        }
+
         thread::Builder::new()
             .name("pairdesk-input".into())
             .spawn(move || match Enigo::new(&Settings::default()) {
-                Ok(enigo) => {
+                Ok(mut enigo) => {
                     let _ = ready_tx.send(Ok(()));
-                    run(enigo, rx);
+                    run(rx, |cmd| apply(&mut enigo, cmd).map_err(|e| e.to_string()));
                 }
                 Err(e) => {
                     let _ = ready_tx.send(Err(format!("cannot open input device: {e}")));
@@ -86,7 +100,7 @@ impl InputHandle {
     }
 }
 
-fn run(mut enigo: Enigo, rx: Receiver<InputCmd>) {
+fn run(rx: Receiver<InputCmd>, mut apply: impl FnMut(&InputCmd) -> Result<(), String>) {
     info!("input thread ready");
     while let Ok(first) = rx.recv() {
         // Merge queued moves so a burst of small deltas becomes one OS call.
@@ -111,7 +125,7 @@ fn run(mut enigo: Enigo, rx: Receiver<InputCmd>) {
                 }
                 other => other,
             };
-            if let Err(e) = apply(&mut enigo, &cmd) {
+            if let Err(e) = apply(&cmd) {
                 warn!("input command {cmd:?} failed: {e}");
             }
         }

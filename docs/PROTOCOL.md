@@ -105,6 +105,7 @@ installed apps plus shortcuts the owner set up on the settings page.
 | `ack` | `id`, `ok`, and when not ok: `code` (`not_allowed`, `not_found`, `failed`) and `msg` | Answer to `power` or `launch` |
 | `apps` | `id`, `shortcuts`, `apps`: lists of `{"id","name","kind"}`, kind `app`, `url`, `folder`, `file` or `program` | Answer to `apps` |
 | `pong` | — | Reply to `ping` |
+| `notice` | `msg` | Something for the person to read, e.g. "approve PairDesk on the computer" (since 0.6; older phones ignore it) |
 | `error` | `code`, `msg` | See below |
 
 Error codes. Every code except `bad_message` is followed by the agent closing
@@ -153,8 +154,9 @@ then `count` times: x u16 | y u16 | w u16 | h u16 | len u32 | JPEG bytes
   for `screen_ack`, so a slow link gets fewer frames instead of growing delay.
   With no ack for 15 s the agent stops.
 - Capture: Windows GDI (`BitBlt`, per-monitor DPI aware; `SetCursorPos` for
-  `move_to`), Linux X11 `GetImage` + RandR monitors. Wayland is refused with a
-  clear message. The lock screen and UAC prompts can't be captured.
+  `move_to`), Linux X11 `GetImage` + RandR monitors, Linux Wayland the portal's
+  screen cast through PipeWire (see below). The lock screen and UAC prompts
+  can't be captured.
 - On the computer, the tray icon gets a red dot and the settings page shows who is
   viewing, with a **Stop** button.
 
@@ -216,6 +218,31 @@ records `id=<first 8 bytes of the fingerprint, hex>` and `v=2`. When none of the
 saved addresses answer, the phone looks for its computer's `id` on the network
 and tries the addresses found. Discovery is only a hint: the certificate is
 still checked.
+
+## Linux Wayland
+
+Wayland doesn't let apps inject input or read the screen directly. In a Wayland
+session (`XDG_SESSION_TYPE=wayland`) the agent uses the desktop's
+[remote desktop portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html):
+
+- One portal session holds pointer + keyboard (`RemoteDesktop.SelectDevices`,
+  `persist_mode` 2) and every chosen monitor (`ScreenCast.SelectSources`,
+  monitors, `multiple`, cursor as metadata when offered).
+- The first `Start` shows the desktop's dialog. The returned `restore_token` is
+  saved (`wayland-restore-token` in the data folder) and used next time, so later
+  sessions start without a dialog. Tokens are single-use; each start saves the new one.
+- The session starts when a phone connects (or right away when the owner starts
+  the agent by hand) and closes 15 s after the last phone leaves. Desktops that
+  return no token keep it open while the agent runs, so they ask once per sign-in.
+- Input: `move` → `NotifyPointerMotion`, `move_to` → `NotifyPointerMotionAbsolute`
+  on the monitor's stream, buttons → `NotifyPointerButton` (evdev codes), `scroll`
+  → `NotifyPointerAxisDiscrete`, text and keys → `NotifyKeyboardKeysym`.
+- Screen: `OpenPipeWireRemote`, then a PipeWire stream on the monitor's node
+  (raw BGRx/BGRA/RGBx/RGBA in memory; pointer from `SPA_META_Cursor`). libpipewire
+  is loaded at run time, so the agent also starts where it's missing.
+- If the owner refuses or stops sharing, phones get a `notice`; the agent doesn't
+  ask again by itself until a phone reconnects or the owner presses **Allow
+  control** on the settings page.
 
 ## Updating the agent
 

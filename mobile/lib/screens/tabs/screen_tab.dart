@@ -75,8 +75,9 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
       HapticFeedback.lightImpact();
       _conn.click(b);
     },
-    onScroll: (dx, dy) =>
-        (widget.settings?.naturalScroll ?? true) ? _conn.scroll(dx: dx, dy: dy) : _conn.scroll(dx: -dx, dy: -dy),
+    onScroll: (dx, dy) => (widget.settings?.naturalScroll ?? true)
+        ? _conn.scroll(dx: dx, dy: dy)
+        : _conn.scroll(dx: -dx, dy: -dy),
     onButton: (b, down) {
       _hideHint();
       if (down) {
@@ -306,7 +307,11 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
                   ),
               ],
             ),
-          IconButton(tooltip: 'Full screen', icon: const Icon(Icons.fullscreen), onPressed: _toggleFullscreen),
+          IconButton(
+            tooltip: 'Full screen',
+            icon: const Icon(Icons.fullscreen),
+            onPressed: _toggleFullscreen,
+          ),
         ],
       ),
     );
@@ -401,7 +406,8 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
                           : 'Tap to click there · press and hold to right-click · pinch to zoom',
                     ),
                   ),
-                if (_stats.isNotEmpty) Positioned(left: 8, bottom: 8, child: _Hint(text: _stats, small: true)),
+                if (_stats.isNotEmpty)
+                  Positioned(left: 8, bottom: 8, child: _Hint(text: _stats, small: true)),
                 if (widget.fullscreen)
                   Positioned(
                     right: 8,
@@ -484,7 +490,10 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: DecoratedBox(
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: small ? 6 : 10, vertical: small ? 2 : 6),
           child: Text(

@@ -23,7 +23,9 @@ const fixtures = 'test/fixtures';
 List<int> pemToDer(String pem) =>
     base64.decode(pem.split('\n').where((l) => l.isNotEmpty && !l.startsWith('-----')).join());
 
-final agentFingerprint = sha256.convert(pemToDer(File('$fixtures/test-agent-cert.pem').readAsStringSync())).bytes;
+final agentFingerprint = sha256
+    .convert(pemToDer(File('$fixtures/test-agent-cert.pem').readAsStringSync()))
+    .bytes;
 
 /// A pretend computer that behaves like the Rust agent.
 class FakeAgent {
@@ -78,7 +80,13 @@ class FakeAgent {
             pairing = true;
           case 'auth':
             final ok = await Ed25519().verify(
-              [...utf8.encode('pairdesk-auth-v2'), 0, ...agentFingerprint, ...nonce!, ...b64Decode(claimedId!)!],
+              [
+                ...utf8.encode('pairdesk-auth-v2'),
+                0,
+                ...agentFingerprint,
+                ...nonce!,
+                ...b64Decode(claimedId!)!,
+              ],
               signature: Signature(
                 b64Decode(msg['sig'] as String)!,
                 publicKey: SimplePublicKey(b64Decode(claimedId!)!, type: KeyPairType.ed25519),
@@ -420,6 +428,15 @@ void main() {
     await conn.disconnect();
   });
 
+  test('notices from the computer reach the app', () async {
+    final conn = AgentConnection(pingInterval: const Duration(hours: 1));
+    await conn.pair(infoFor(agent), me, phoneName: 'p');
+    final got = conn.notices.first;
+    agent.socket!.add(jsonEncode({'t': 'notice', 'msg': 'Approve PairDesk on the computer.'}));
+    expect(await got.timeout(const Duration(seconds: 2)), 'Approve PairDesk on the computer.');
+    await conn.disconnect();
+  });
+
   test('pending requests fail when the connection drops', () async {
     agent.allow = {'power': true, 'session': true, 'apps': true};
     final conn = AgentConnection(pingInterval: const Duration(hours: 1));
@@ -452,7 +469,10 @@ void main() {
       final blackhole = await ServerSocket.bind('127.0.0.3', agent.port);
       final held = <Socket>[];
       blackhole.listen(held.add);
-      final conn = AgentConnection(connectTimeout: const Duration(seconds: 6), pingInterval: const Duration(hours: 1));
+      final conn = AgentConnection(
+        connectTimeout: const Duration(seconds: 6),
+        pingInterval: const Duration(hours: 1),
+      );
       final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
       await conn.disconnect();
       laptop.addresses = ['127.0.0.3', '127.0.0.1'];
@@ -461,7 +481,11 @@ void main() {
       await conn.connect(laptop, me, phoneName: 'p');
       watch.stop();
       expect(conn.address, '127.0.0.1');
-      expect(watch.elapsed, lessThan(const Duration(seconds: 2)), reason: 'did not wait 6 s for the dead address');
+      expect(
+        watch.elapsed,
+        lessThan(const Duration(seconds: 2)),
+        reason: 'did not wait 6 s for the dead address',
+      );
       expect(laptop.addresses.first, '127.0.0.1');
       await conn.disconnect();
       for (final s in held) {
@@ -493,7 +517,14 @@ void main() {
     });
 
     test('learns the computer\'s other addresses, such as Tailscale', () async {
-      agent.addrs = ['192.168.1.50', '100.101.102.103', 'pc.tail1234.ts.net', '127.0.0.1', 'evil.example.com', '::1'];
+      agent.addrs = [
+        '192.168.1.50',
+        '100.101.102.103',
+        'pc.tail1234.ts.net',
+        '127.0.0.1',
+        'evil.example.com',
+        '::1',
+      ];
       final conn = AgentConnection(pingInterval: const Duration(milliseconds: 100));
       final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
       expect(laptop.addresses, ['127.0.0.1', '192.168.1.50', '100.101.102.103', 'pc.tail1234.ts.net']);

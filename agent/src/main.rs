@@ -28,6 +28,8 @@ mod state;
 mod store;
 mod tailscale;
 mod tray;
+#[cfg(target_os = "linux")]
+mod wayland;
 mod web;
 
 use std::io::ErrorKind;
@@ -191,14 +193,31 @@ fn main() {
         warn!("cannot keep this computer awake: {e}");
     }
 
-    let input = match input::InputHandle::spawn() {
-        Ok(h) => h,
-        Err(e) => fatal(&e),
-    };
-
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(r) => r,
         Err(e) => fatal(&format!("cannot start: {e}")),
+    };
+
+    // Wayland: pointer, keyboard and screen go through the desktop's
+    // remote desktop portal.
+    #[cfg(target_os = "linux")]
+    if wayland::is_wayland_session() {
+        let remote = wayland::Remote::init(
+            data_dir.clone(),
+            runtime.handle().clone(),
+            state.notices.clone(),
+        );
+        info!("Wayland session: using the remote desktop portal");
+        // Started by the owner at the computer: ask now, not when the
+        // phone first connects.
+        if !args.background && !remote.is_remembered() {
+            remote.start_in_background();
+        }
+    }
+
+    let input = match input::InputHandle::spawn() {
+        Ok(h) => h,
+        Err(e) => fatal(&e),
     };
     {
         let _guard = runtime.enter();

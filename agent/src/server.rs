@@ -236,6 +236,11 @@ async fn serve(
         address: peer.ip().to_string(),
     });
     let mut revocations = state.subscribe_revocations();
+    let mut notices = state.notices.subscribe();
+    #[cfg(target_os = "linux")]
+    if let Some(remote) = crate::wayland::global() {
+        remote.phone_connected();
+    }
     // Buttons this phone is holding, released if it disconnects mid-drag.
     let mut held: HashSet<MouseButton> = HashSet::new();
     // Replies from slow requests (app list, launching) arrive here, so the
@@ -258,6 +263,10 @@ async fn serve(
                 }
                 Some(frame) = frame_rx.recv() => {
                     sink.send(Message::binary(frame)).await.map_err(|e| e.to_string())?;
+                    continue;
+                }
+                Ok(msg) = notices.recv() => {
+                    send(&mut sink, &ServerMsg::Notice { msg }).await?;
                     continue;
                 }
                 _ = revocations.changed() => {
@@ -420,6 +429,10 @@ async fn serve(
         input.send(InputCmd::Up(b));
     }
     state.close_session(session);
+    #[cfg(target_os = "linux")]
+    if let Some(remote) = crate::wayland::global() {
+        remote.phone_disconnected();
+    }
     info!("{peer}: \"{}\" disconnected", who.name);
     result
 }

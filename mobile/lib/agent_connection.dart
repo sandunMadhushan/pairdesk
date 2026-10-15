@@ -119,7 +119,8 @@ bool isTailscaleHost(String host) => isTailscaleAddress(host);
 bool isUsableHost(String host) {
   final ip = InternetAddress.tryParse(host);
   if (ip != null) return ip.type == InternetAddressType.IPv4 && !ip.isLoopback;
-  return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) && host.length < 254;
+  return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) &&
+      host.length < 254;
 }
 
 /// Opens a WebSocket over TLS that only accepts the pinned certificate.
@@ -316,7 +317,12 @@ class AgentConnection extends ChangeNotifier {
   /// Pairs with the computer from a scanned QR code and stays connected.
   /// Returns the computer to save.
   Future<Laptop> pair(PairingInfo info, PhoneIdentity me, {required String phoneName}) async {
-    final laptop = Laptop(fingerprint: info.fingerprint, name: info.name, port: info.port, addresses: info.addresses);
+    final laptop = Laptop(
+      fingerprint: info.fingerprint,
+      name: info.name,
+      port: info.port,
+      addresses: info.addresses,
+    );
     await _connectAny(
       laptop,
       me,
@@ -537,6 +543,11 @@ class AgentConnection extends ChangeNotifier {
       _screenEvents.add(decoded['msg'] as String? ?? 'Screen view stopped.');
       return;
     }
+    if (decoded['t'] == 'notice') {
+      final msg = decoded['msg'];
+      if (msg is String && msg.isNotEmpty) _notices.add(msg);
+      return;
+    }
     if (id is int && (decoded['t'] == 'ack' || decoded['t'] == 'apps' || decoded['t'] == 'screen')) {
       _requests.remove(id)?.complete(decoded);
       return;
@@ -741,7 +752,10 @@ class AgentConnection extends ChangeNotifier {
   Future<AppsList> fetchApps() async {
     _requireFeature('apps');
     final reply = await _request({'t': 'apps'}, timeout: const Duration(seconds: 30));
-    return AppsList(shortcuts: RemoteApp.listFrom(reply['shortcuts']), apps: RemoteApp.listFrom(reply['apps']));
+    return AppsList(
+      shortcuts: RemoteApp.listFrom(reply['shortcuts']),
+      apps: RemoteApp.listFrom(reply['apps']),
+    );
   }
 
   /// Opens an app or shortcut by the ID from [fetchApps].
@@ -749,6 +763,11 @@ class AgentConnection extends ChangeNotifier {
 
   final _frames = StreamController<ScreenFrame>.broadcast();
   final _screenEvents = StreamController<String>.broadcast();
+  final _notices = StreamController<String>.broadcast();
+
+  /// Messages from the computer for the person, e.g. "approve PairDesk on
+  /// the computer" (Linux Wayland).
+  Stream<String> get notices => _notices.stream;
 
   /// Frames from the computer while screen view runs.
   Stream<ScreenFrame> get screenFrames => _frames.stream;
@@ -792,6 +811,7 @@ class AgentConnection extends ChangeNotifier {
   void dispose() {
     _frames.close();
     _screenEvents.close();
+    _notices.close();
     disconnect(notify: false);
     super.dispose();
   }

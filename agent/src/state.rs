@@ -46,6 +46,8 @@ pub struct AppState {
     viewers: Mutex<HashMap<u64, ScreenViewer>>,
     viewers_changed: watch::Sender<usize>,
     pub awake: crate::awake::KeepAwake,
+    /// Messages for every connected phone (e.g. "approve on the computer").
+    pub notices: tokio::sync::broadcast::Sender<String>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -76,6 +78,7 @@ impl AppState {
             viewers: Mutex::new(HashMap::new()),
             viewers_changed: watch::channel(0).0,
             awake: Default::default(),
+            notices: tokio::sync::broadcast::channel(8).0,
         }
     }
 
