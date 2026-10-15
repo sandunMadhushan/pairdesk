@@ -6,8 +6,11 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Protocol version spoken by this agent.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// Protocol version spoken by this agent. Version 2 added pairing,
+/// TLS and signed authentication; version 1 phones are refused.
+pub const PROTOCOL_VERSION: u32 = 2;
+/// Longest phone name kept, in characters.
+pub const MAX_NAME_CHARS: usize = 64;
 
 /// Upper bound for a single relative mouse move, in pixels.
 pub const MAX_MOVE: i32 = 4000;
@@ -55,13 +58,28 @@ pub enum NamedKey {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum ClientMsg {
-    /// First message after connecting.
+    /// First message from an already paired phone. `id` is the phone's
+    /// Ed25519 public key (base64url, no padding).
     Hello {
         #[serde(default)]
         name: Option<String>,
         #[serde(default)]
         v: Option<u32>,
+        #[serde(default)]
+        id: Option<String>,
     },
+    /// First message from a phone that scanned the pairing QR code.
+    Pair {
+        #[serde(default)]
+        v: Option<u32>,
+        token: String,
+        id: String,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Answer to `challenge`: Ed25519 signature (base64url) over the
+    /// bytes described in docs/PROTOCOL.md.
+    Auth { sig: String },
     /// Keep-alive; the agent answers with `pong`.
     Ping,
     /// Relative mouse move in pixels.
@@ -89,9 +107,43 @@ pub enum ClientMsg {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum ServerMsg {
-    Hello { name: String, os: String, v: u32 },
+    /// Random nonce the phone must sign (base64url, 32 bytes).
+    Challenge {
+        nonce: String,
+        v: u32,
+    },
+    /// Authentication succeeded; input commands are accepted from now on.
+    Welcome {
+        name: String,
+        os: String,
+        v: u32,
+        /// True when this connection just completed pairing.
+        paired: bool,
+    },
     Pong,
-    Error { msg: String },
+    Error {
+        code: ErrorCode,
+        msg: String,
+    },
+}
+
+/// Machine-readable error codes. Every code except `bad_message` is
+/// followed by the agent closing the connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorCode {
+    /// The phone speaks a protocol version this agent doesn't support.
+    Version,
+    /// The phone isn't (or is no longer) paired with this computer.
+    NotPaired,
+    /// The pairing code is wrong, used or expired.
+    BadToken,
+    /// The signature didn't verify.
+    BadSignature,
+    /// A message arrived in the wrong order, e.g. input before `auth`.
+    Unexpected,
+    /// The message couldn't be parsed. Not fatal.
+    BadMessage,
 }
 
 impl ClientMsg {
@@ -114,9 +166,31 @@ impl ClientMsg {
             ClientMsg::Text { s } => ClientMsg::Text {
                 s: s.chars().take(MAX_TEXT_CHARS).collect(),
             },
+            ClientMsg::Hello { name, v, id } => ClientMsg::Hello {
+                name: name.map(clean_name),
+                v,
+                id,
+            },
+            ClientMsg::Pair { v, token, id, name } => ClientMsg::Pair {
+                v,
+                token,
+                id,
+                name: name.map(clean_name),
+            },
             other => other,
         }
     }
+}
+
+/// Drops control characters and limits length, so a phone name is safe
+/// to show in logs and on the settings page.
+pub fn clean_name(name: String) -> String {
+    name.chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_NAME_CHARS)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -183,16 +257,40 @@ mod tests {
     }
 
     #[test]
-    fn serializes_server_hello() {
-        let json = serde_json::to_string(&ServerMsg::Hello {
+    fn serializes_server_messages() {
+        let json = serde_json::to_string(&ServerMsg::Welcome {
             name: "laptop".into(),
             os: "windows".into(),
-            v: 1,
+            v: 2,
+            paired: false,
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"hello","name":"laptop","os":"windows","v":1}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false}"#
+        );
+        let json = serde_json::to_string(&ServerMsg::Error {
+            code: ErrorCode::NotPaired,
+            msg: "x".into(),
+        })
+        .unwrap();
+        assert_eq!(json, r#"{"t":"error","code":"not_paired","msg":"x"}"#);
+    }
+
+    #[test]
+    fn parses_pair_and_cleans_name() {
+        let msg = ClientMsg::parse(
+            r#"{"t":"pair","v":2,"token":"tk","id":"pk","name":" Pixel\u0007 7 "}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            msg,
+            ClientMsg::Pair {
+                v: Some(2),
+                token: "tk".into(),
+                id: "pk".into(),
+                name: Some("Pixel 7".into()),
+            }
         );
     }
 }
