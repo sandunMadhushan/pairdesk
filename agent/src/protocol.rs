@@ -199,6 +199,9 @@ pub enum ServerMsg {
         features: Vec<&'static str>,
         /// What the computer's owner allows phones to do.
         allow: Allow,
+        /// Addresses the phone can use to reach this computer: home
+        /// network first, then Tailscale addresses and name.
+        addrs: Vec<String>,
     },
     /// Answer to a request that carried an `id`.
     Ack {
@@ -416,11 +419,12 @@ mod tests {
                 session: false,
                 apps: true,
             },
+            addrs: vec!["192.168.1.5".into(), "100.101.102.103".into()],
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true}}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true},"addrs":["192.168.1.5","100.101.102.103"]}"#
         );
         let json = serde_json::to_string(&ServerMsg::Ack {
             id: Some(4),

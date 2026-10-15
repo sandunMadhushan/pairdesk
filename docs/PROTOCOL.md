@@ -101,7 +101,7 @@ installed apps plus shortcuts the owner set up on the settings page.
 | `t` | Fields | Meaning |
 | --- | --- | --- |
 | `challenge` | `nonce`, `v` | Sign this (see above) |
-| `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `paired` (true right after pairing), `features` (e.g. `["combo","power","apps"]`), `allow` (`{"power":bool,"session":bool,"apps":bool}`) | Signed in; input is accepted |
+| `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `paired` (true right after pairing), `features` (e.g. `["combo","power","apps"]`), `allow` (`{"power":bool,"session":bool,"apps":bool}`), `addrs` (see below) | Signed in; input is accepted |
 | `ack` | `id`, `ok`, and when not ok: `code` (`not_allowed`, `not_found`, `failed`) and `msg` | Answer to `power` or `launch` |
 | `apps` | `id`, `shortcuts`, `apps`: lists of `{"id","name","kind"}`, kind `app`, `url`, `folder`, `file` or `program` | Answer to `apps` |
 | `pong` | — | Reply to `ping` |
@@ -145,6 +145,29 @@ they keep working. Phones check `features` before offering the new tabs.
 - If a phone disconnects while holding a button (`down` without `up`), the agent releases it.
 - The phone pings every 3 s and treats 10 s of silence as a lost connection.
 - Frames larger than 64 KiB are refused.
+
+## Reaching the computer from anywhere (Tailscale)
+
+PairDesk doesn't run its own relay. Away from home it uses
+[Tailscale](https://tailscale.com), which the owner installs on the computer
+and the phone and signs in to with the same account. Tailscale carries the
+same `wss://` connection; pinning and the signed sign-in are unchanged.
+
+- `welcome.addrs` lists every address the phone may use: home-network IPv4
+  addresses first, then Tailscale addresses (100.64.0.0/10) and, when
+  MagicDNS is on, the Tailscale name (`*.ts.net`). Adapters that only exist
+  inside the computer (Docker, WSL, VirtualBox, VMware…) are left out.
+- The phone keeps up to 8 addresses: the one that worked last, then the
+  computer's current list, then older ones. Anything other than an IPv4
+  address or a `*.ts.net` name is ignored.
+- To connect, the phone starts an attempt at each address 250 ms apart and
+  uses the first that passes the certificate check. Home addresses get 3 s,
+  Tailscale ones 8 s (a relayed first connection can be slow).
+- The agent reads `tailscale status --json` (when the command exists) for its
+  settings page and for the Tailscale name; it never changes Tailscale.
+- Optional *keep this computer awake* (settings page): Windows
+  `SetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_CONTINUOUS)`, Linux
+  `systemd-inhibit --what=sleep:idle`. Off by default.
 
 ## Finding the computer again
 

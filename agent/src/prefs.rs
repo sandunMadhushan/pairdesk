@@ -30,6 +30,9 @@ pub struct Prefs {
     pub allow_apps: bool,
     #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
+    /// Keep the computer from sleeping so phones can always reach it.
+    #[serde(default)]
+    pub keep_awake: bool,
 }
 
 impl Default for Prefs {
@@ -39,6 +42,7 @@ impl Default for Prefs {
             allow_session: true,
             allow_apps: true,
             shortcuts: Vec::new(),
+            keep_awake: false,
         }
     }
 }
@@ -127,6 +131,11 @@ impl PrefsStore {
         self.prefs.allow_power = power;
         self.prefs.allow_session = session;
         self.prefs.allow_apps = apps;
+        self.save()
+    }
+
+    pub fn set_keep_awake(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.keep_awake = on;
         self.save()
     }
 

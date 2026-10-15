@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pairdesk/agent_connection.dart';
 import 'package:pairdesk/buttons/custom_button.dart';
 import 'package:pairdesk/screens/button_editor.dart';
+import 'package:pairdesk/screens/remote_help_screen.dart';
 import 'package:pairdesk/screens/settings_screen.dart';
 import 'package:pairdesk/screens/tabs/apps_tab.dart';
 import 'package:pairdesk/screens/tabs/buttons_tab.dart';
@@ -280,5 +281,16 @@ void main() {
       expect(find.text('Set a screen lock first'), findsOneWidget);
       expect(settings.appLock, isFalse);
     });
+  });
+
+  testWidgets('connect-from-anywhere guide fits a phone screen', (tester) async {
+    phoneSize(tester);
+    await tester.pumpWidget(const MaterialApp(home: RemoteHelpScreen()));
+    await tester.pumpAndSettle();
+    expect(find.text('Connect from anywhere'), findsOneWidget);
+    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text('F-Droid'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('Keep this computer awake'), 200);
+    expect(tester.takeException(), isNull);
   });
 }

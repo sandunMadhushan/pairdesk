@@ -41,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _connect(Laptop laptop) async {
     if (_busy) return;
-    final ok = await _withProgress(() => _model.connect(laptop));
+    final ok = await _withProgress(() => _model.connect(laptop), laptop: laptop);
     if (ok) await _openControl(laptop);
   }
 
@@ -89,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Runs [action] behind a progress dialog. Returns true on success.
-  Future<bool> _withProgress(Future<void> Function() action) async {
+  Future<bool> _withProgress(Future<void> Function() action, {Laptop? laptop}) async {
     setState(() => _busy = true);
     final navigator = Navigator.of(context);
     var dialogOpen = true;
@@ -107,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (dialogOpen) navigator.pop();
       dialogOpen = false;
       if (mounted && e.kind != FailureKind.cancelled) {
-        await _explainFailure(e, null);
+        await _explainFailure(e, laptop);
       }
     } finally {
       if (dialogOpen) navigator.pop();
@@ -117,18 +117,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _explainFailure(AgentException e, Laptop? laptop) async {
+    final network = laptop?.reachableAnywhere == true
+        ? '• the phone and the computer are on the same Wi-Fi, or, away from home, '
+              'Tailscale is on, on both of them'
+        : '• the phone and the computer are on the same Wi-Fi\n\n'
+              'To connect when you\'re away from home, set up Tailscale: Settings → Connect from anywhere.';
     final (title, body) = switch (e.kind) {
       FailureKind.unreachable => (
         'Can\'t reach the computer',
         'Check that:\n'
             '• the computer is on and not asleep\n'
             '• PairDesk is running on it (look for the tray icon)\n'
-            '• the phone and the computer are on the same Wi-Fi',
+            '$network',
       ),
       FailureKind.wrongComputer => (
         'Different computer',
         'Another device answered at this computer\'s address, so PairDesk didn\'t connect. '
-            'Make sure the computer is on this Wi-Fi.',
+            'Make sure the computer is on this Wi-Fi, or that Tailscale is on.',
       ),
       FailureKind.notPaired => (
         'Pair again',
@@ -291,7 +296,12 @@ class _LaptopTile extends StatelessWidget {
           child: const Icon(Icons.laptop),
         ),
         title: Text(laptop.name, overflow: TextOverflow.ellipsis),
-        subtitle: Text(os == null ? 'Tap to connect' : '$os · tap to connect'),
+        subtitle: Text(switch ((os, laptop.reachableAnywhere)) {
+          (null, true) => 'Wi-Fi or Tailscale',
+          (null, false) => 'Tap to connect',
+          (final os?, true) => '$os · Wi-Fi or Tailscale',
+          (final os?, false) => '$os · tap to connect',
+        }),
         onTap: onTap,
         trailing: PopupMenuButton<String>(
           tooltip: 'More',

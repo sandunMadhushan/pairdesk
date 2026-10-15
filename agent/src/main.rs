@@ -11,10 +11,12 @@
 mod apps;
 mod auth;
 mod autostart;
+mod awake;
 mod config;
 mod discovery;
 mod identity;
 mod input;
+mod net;
 mod pairing;
 mod power;
 mod prefs;
@@ -22,6 +24,7 @@ mod protocol;
 mod server;
 mod state;
 mod store;
+mod tailscale;
 mod tray;
 mod web;
 
@@ -175,6 +178,25 @@ fn main() {
             state.apps.installed();
         });
     }
+    // Check Tailscale now and then, so phones learn this computer's
+    // Tailscale address without anyone waiting for the command.
+    {
+        let state = state.clone();
+        std::thread::spawn(move || {
+            loop {
+                if let tailscale::Status::Running { ips, dns_name, .. } =
+                    state.tailscale.refresh(std::time::Duration::from_secs(50))
+                {
+                    log::debug!("Tailscale: {ips:?} {dns_name:?}");
+                }
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        });
+    }
+    let keep_awake = state.prefs().get().keep_awake;
+    if keep_awake && let Err(e) = state.awake.set(true) {
+        warn!("cannot keep this computer awake: {e}");
+    }
 
     let input = match input::InputHandle::spawn() {
         Ok(h) => h,
@@ -263,13 +285,16 @@ fn print_banner(state: &AppState, settings_url: &str) {
         state.name
     );
     println!("Paired phones: {}", state.phones().list().len());
-    let addrs = config::lan_addresses();
+    let addrs = net::addresses();
     if addrs.is_empty() {
         println!("No network address found. Is Wi-Fi connected?");
     } else {
         let list: Vec<String> = addrs
             .iter()
-            .map(|a| format!("{a}:{}", state.port))
+            .map(|a| match a.kind {
+                net::Kind::Lan => format!("{}:{}", a.ip, state.port),
+                net::Kind::Tailscale => format!("{}:{} (Tailscale)", a.ip, state.port),
+            })
             .collect();
         println!("Listening on {}", list.join(", "));
     }

@@ -77,6 +77,13 @@
   }
   .target { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
   .hint { font-size: 13px; color: var(--muted); }
+  .status-line { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 7px; flex: none; background: var(--muted); }
+  .dot.ok { background: var(--ok); }
+  .dot.warn { background: #d97706; }
+  ol.steps { margin: 0 0 16px; padding-left: 20px; }
+  ol.steps li { margin-bottom: 6px; }
+  a { color: var(--accent); }
   footer { color: var(--muted); font-size: 13px; margin-top: 24px; overflow-wrap: anywhere; }
   code { font-size: 12px; }
   [hidden] { display: none !important; }
@@ -120,6 +127,21 @@
     <h2 id="phones-title">Paired phones</h2>
     <p class="muted" id="no-phones">No phones yet.</p>
     <ul class="phones" id="phones"></ul>
+  </section>
+
+  <section aria-labelledby="remote-title">
+    <h2 id="remote-title">Connect from anywhere</h2>
+    <div class="status-line" role="status"><span class="dot" id="remote-dot"></span><div id="remote-text">Checking for Tailscale…</div></div>
+    <ol class="steps" id="remote-steps" hidden>
+      <li>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</li>
+      <li>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</li>
+      <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address.</li>
+    </ol>
+    <div class="perms">
+      <label class="switch"><input type="checkbox" id="keep-awake">
+        <span>Keep this computer awake<small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button id="btn-recheck">Check again</button></div>
   </section>
 
   <section aria-labelledby="perm-title">
@@ -280,6 +302,27 @@ function render(s) {
 
   if (s.os !== agentOs) { agentOs = s.os; updateKind(); }
 
+  // Connect from anywhere
+  const r = s.remote || { status: "checking" };
+  const dot = $("remote-dot"), text = $("remote-text");
+  dot.className = "dot" + (r.status === "running" ? " ok" : r.status === "not_connected" ? " warn" : "");
+  if (r.status === "running") {
+    const where = (r.ips || []).join(", ") + (r.dns_name ? " (" + r.dns_name + ")" : "");
+    text.textContent = "Tailscale is on. With Tailscale also on your phone, PairDesk can reach this computer from anywhere at " +
+      where + ". If your phone was paired before you set up Tailscale, open PairDesk on it once at home.";
+  } else if (r.status === "not_connected") {
+    text.textContent = r.reason + " Open Tailscale on this computer to connect from away.";
+  } else if (r.status === "not_installed") {
+    text.textContent = "Not set up. Right now your phone can connect only on the same Wi-Fi. PairDesk uses Tailscale, a free private network, to reach this computer from anywhere:";
+  } else if (r.status === "checking") {
+    text.textContent = "Checking for Tailscale…";
+  } else {
+    text.textContent = "Couldn't read Tailscale's status (" + r.reason + ").";
+  }
+  $("remote-steps").hidden = r.status === "running" || r.status === "checking";
+  const awake = $("keep-awake");
+  if (document.activeElement !== awake) awake.checked = s.keep_awake;
+
   // Permissions
   for (const k of ["power", "session", "apps"]) {
     const box = $("perm-" + k);
@@ -376,6 +419,15 @@ $("sc-form").onsubmit = async (e) => {
     updateKind();
     showBanner("Shortcut added. It shows up under Apps on your phone.");
   } catch (err) { showBanner(err.message, true); }
+};
+
+$("keep-awake").onchange = async (e) => {
+  try { render(await post("keep-awake", { enabled: e.target.checked })); }
+  catch (err) { showBanner(err.message, true); refresh(); }
+};
+$("btn-recheck").onclick = async () => {
+  $("remote-text").textContent = "Checking for Tailscale…";
+  try { render(await post("refresh-remote")); } catch (err) { showBanner(err.message, true); }
 };
 
 $("autostart").onchange = async (e) => {

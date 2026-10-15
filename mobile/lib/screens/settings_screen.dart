@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../settings/app_lock.dart';
+import 'remote_help_screen.dart';
 import '../settings/app_settings.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -73,6 +74,15 @@ class SettingsScreen extends StatelessWidget {
                   items: [for (final v in LockAfter.values) DropdownMenuItem(value: v, child: Text(v.label))],
                 ),
               ),
+            header('Connection'),
+            ListTile(
+              leading: const Icon(Icons.public),
+              title: const Text('Connect from anywhere'),
+              subtitle: const Text('Use PairDesk away from home with Tailscale'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () =>
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteHelpScreen())),
+            ),
             header('Touchpad'),
             ListTile(
               leading: const Icon(Icons.speed),

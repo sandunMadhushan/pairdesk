@@ -227,6 +227,31 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/keep-awake") => {
+            #[derive(Deserialize)]
+            struct Body {
+                enabled: bool,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => {
+                    let result = state.awake.set(b.enabled).and_then(|()| {
+                        state
+                            .prefs()
+                            .set_keep_awake(b.enabled)
+                            .map_err(|e| e.to_string())
+                    });
+                    match result {
+                        Ok(()) => send_state(request, state),
+                        Err(e) => status(request, 500, &e),
+                    }
+                }
+                None => status(request, 400, "bad request"),
+            }
+        }
+        (Method::Post, "/api/refresh-remote") => {
+            state.tailscale.refresh(std::time::Duration::ZERO);
+            send_state(request, state)
+        }
         (Method::Post, "/api/quit") => {
             status(request, 200, "stopping");
             on_quit();
@@ -272,10 +297,39 @@ fn send_state(request: Request, state: &AppState) {
         json!({ "link": link, "svg": svg, "expires_in": remaining.as_secs() })
     });
 
-    let addresses: Vec<String> = crate::config::lan_addresses()
+    let addrs = crate::net::addresses();
+    let addresses: Vec<String> = addrs
         .iter()
-        .map(|a| a.to_string())
+        .filter(|a| a.kind == crate::net::Kind::Lan)
+        .map(|a| a.ip.to_string())
         .collect();
+    let remote = match state.tailscale.peek() {
+        None => json!({ "status": "checking" }),
+        Some(crate::tailscale::Status::NotInstalled) => {
+            // No command, but maybe an adapter (e.g. a portable install).
+            let ips: Vec<String> = addrs
+                .iter()
+                .filter(|a| a.kind == crate::net::Kind::Tailscale)
+                .map(|a| a.ip.to_string())
+                .collect();
+            if ips.is_empty() {
+                json!({ "status": "not_installed" })
+            } else {
+                json!({ "status": "running", "ips": ips })
+            }
+        }
+        Some(crate::tailscale::Status::NotConnected { reason }) => {
+            json!({ "status": "not_connected", "reason": reason })
+        }
+        Some(crate::tailscale::Status::Running {
+            ips,
+            dns_name,
+            tailnet,
+        }) => json!({ "status": "running", "ips": ips, "dns_name": dns_name, "tailnet": tailnet }),
+        Some(crate::tailscale::Status::Unknown { reason }) => {
+            json!({ "status": "unknown", "reason": reason })
+        }
+    };
     let body = json!({
         "name": state.name,
         "version": env!("CARGO_PKG_VERSION"),
@@ -292,6 +346,8 @@ fn send_state(request: Request, state: &AppState) {
             "apps": prefs.allow_apps,
         },
         "shortcuts": shortcuts,
+        "remote": remote,
+        "keep_awake": state.awake.is_on(),
     });
     respond(
         request,

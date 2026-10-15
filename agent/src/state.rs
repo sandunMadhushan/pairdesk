@@ -34,6 +34,8 @@ pub struct AppState {
     revocations: watch::Sender<u64>,
     prefs: Mutex<PrefsStore>,
     pub apps: Catalogue,
+    pub tailscale: crate::tailscale::Cache,
+    pub awake: crate::awake::KeepAwake,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -60,6 +62,8 @@ impl AppState {
             revocations: watch::channel(0).0,
             prefs: Mutex::new(prefs),
             apps: Catalogue::default(),
+            tailscale: Default::default(),
+            awake: Default::default(),
         }
     }
 
@@ -111,7 +115,7 @@ impl AppState {
     pub fn pairing_link(&self) -> Option<(String, Duration)> {
         let guard = lock(&self.pairing);
         let code = guard.as_ref().filter(|c| !c.is_expired())?;
-        let addresses = crate::config::lan_addresses();
+        let addresses: Vec<_> = crate::net::addresses().into_iter().map(|a| a.ip).collect();
         let uri = PairingLink {
             name: &self.name,
             fingerprint: self.identity.fingerprint(),
@@ -121,6 +125,27 @@ impl AppState {
         }
         .to_uri();
         Some((uri, code.remaining()))
+    }
+
+    /// Every address a phone may use, best first: home network, then
+    /// Tailscale addresses, then the Tailscale (MagicDNS) name.
+    pub fn phone_addresses(&self) -> Vec<String> {
+        let mut out: Vec<String> = crate::net::addresses()
+            .into_iter()
+            .map(|a| a.ip.to_string())
+            .collect();
+        if let Some(crate::tailscale::Status::Running { ips, dns_name, .. }) = self.tailscale.peek()
+        {
+            for ip in ips {
+                if !out.contains(&ip) {
+                    out.push(ip);
+                }
+            }
+            if let Some(name) = dns_name {
+                out.push(name);
+            }
+        }
+        out
     }
 
     pub fn pairing_token_valid(&self, token: &str) -> bool {

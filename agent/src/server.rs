@@ -214,6 +214,7 @@ async fn serve(
 ) -> Result<(), String> {
     let (mut sink, mut source) = ws.split();
     let allow = state.prefs().get().allow();
+    let addrs = state.phone_addresses();
     send(
         &mut sink,
         &ServerMsg::Welcome {
@@ -223,6 +224,7 @@ async fn serve(
             paired: who.just_paired,
             features: FEATURES.to_vec(),
             allow,
+            addrs,
         },
     )
     .await?;
