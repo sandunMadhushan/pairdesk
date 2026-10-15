@@ -5,17 +5,20 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: Phase 0 (preview).** Touchpad, mouse buttons, typing and media keys work
-> over your home Wi-Fi. There is **no pairing or encryption yet**: anyone on the same
-> network can connect while the agent is running. Use it only on a network you trust.
-> Pairing arrives in Phase 1.
+> **Status: 0.2 preview (Phase 1).** Pair once with a QR code; after that the phone
+> connects whenever the computer is on, with no prompts. Connections are encrypted
+> and only paired phones get in. Works over your local Wi-Fi; connecting from
+> anywhere (Tailscale) comes in Phase 3.
 
 ## What works now
 
 | | |
 | --- | --- |
-| Laptop | Windows 10/11, Linux (X11 session; Wayland comes in Phase 5) |
-| Phone | Android |
+| Computer | Windows 10/11, Linux (X11 session; Wayland comes in Phase 5) |
+| Phone | Android 6.0 or newer |
+| Pairing | Scan a QR code once. The phone is remembered; remove it any time on the computer |
+| Security | TLS with a pinned certificate, Ed25519 sign-in, one-time pairing codes |
+| Background | Tray icon, starts when you sign in, finds the computer again if its address changes |
 | Touchpad | Move, tap to click, two-finger scroll, two-finger tap for right-click, three-finger tap for middle-click |
 | Buttons | Hold **Left** or **Right** and move with another finger to drag |
 | Keyboard | Type text, plus Enter, Backspace, Esc, Tab, arrows, Delete, Home/End, Page Up/Down |
@@ -26,23 +29,31 @@ no codes or "accept" prompts every time.
 Download the agent and the app from the
 [latest release](https://github.com/sandunMadhushan/pairdesk/releases/latest).
 
-1. **Laptop:** run the agent.
-   - Windows: double-click `pairdesk-agent.exe`. If SmartScreen warns about an unknown
-     publisher, choose **More info → Run anyway** (signed builds come with the first release).
-     When Windows Firewall asks, allow it on **Private networks**.
-   - Linux: `chmod +x pairdesk-agent && ./pairdesk-agent`
-2. The agent window shows an address such as `192.168.1.5:47800`.
-3. **Phone:** install `pairdesk.apk`, open PairDesk, enter that address and tap **Connect**.
+1. **Computer:** run the agent.
+   - Windows: put `pairdesk-agent-…-windows-x64.exe` in a folder you'll keep (for
+     example `Documents\PairDesk`) and double-click it. If SmartScreen warns about
+     an unknown publisher, choose **More info → Run anyway**. When Windows Firewall
+     asks, allow **Private networks**.
+   - Linux: `chmod +x pairdesk-agent-…-linux-x64 && ./pairdesk-agent-…-linux-x64`
+2. A PairDesk page opens in your browser with a QR code.
+3. **Phone:** install the APK, open PairDesk, tap **Scan pairing code** and scan it.
 
-Phone and laptop must be on the same Wi-Fi. Some guest or campus networks block
+That's it. From now on, open PairDesk on the phone and it connects by itself. The
+agent starts when you sign in to the computer and lives in the tray; click the tray
+icon to open its page, pair another phone or remove one.
+
+Phone and computer must be on the same Wi-Fi. Some guest or campus networks block
 devices from talking to each other; a phone hotspot or home Wi-Fi works.
 
-### Known limits in Phase 0
+### Known limits
 
-- Windows does not let a normal app control windows running as administrator, or the
+- Windows doesn't let a normal app control windows running as administrator, or the
   lock/login screen.
-- The agent runs only while its window is open; auto-start comes in Phase 1.
-- Linux Wayland sessions are not supported yet.
+- Linux Wayland sessions aren't supported yet. On GNOME, the tray icon needs the
+  AppIndicator extension; without it, run the agent again to open its page.
+- If you move the agent program to another folder, turn **Start PairDesk when I
+  sign in** off and on again on its page.
+- On Linux without a desktop, `pairdesk-agent --pair` prints the QR code in the terminal.
 
 ## Build from source
 
@@ -52,7 +63,10 @@ Requirements: [Rust](https://rustup.rs) (stable) and [Flutter](https://flutter.d
 # Desktop agent
 cd agent
 cargo test
-cargo run --release            # options: --port 47800 --bind 0.0.0.0
+cargo run --release            # see --help for options
+
+# End-to-end test of phone code against the real agent (Linux, needs Xvfb)
+tools/e2e.sh
 
 # Phone app
 cd mobile
@@ -64,19 +78,20 @@ flutter build apk --release
 ## Project layout
 
 ```text
-agent/     Rust desktop agent (WebSocket server + input injection)
+agent/     Rust desktop agent: TLS server, pairing, settings page, tray, input
 mobile/    Flutter phone app (Android now, iPhone later)
-docs/      Protocol and design notes
+docs/      Protocol and security design
+tools/     End-to-end test script
 ```
 
-The wire protocol is described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
+The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Roadmap
 
 | Phase | Goal |
 | --- | --- |
-| **0** | **Touchpad over home Wi-Fi (this release)** |
-| 1 | One-time QR pairing, encryption, tray app, auto-start, auto-discovery |
+| 0 | Touchpad over home Wi-Fi |
+| **1** | **One-time QR pairing, encryption, tray app, auto-start, auto-discovery (this release)** |
 | 2 | Power actions, app launcher, custom buttons, phone app lock |
 | 3 | Connect from anywhere with Tailscale |
 | 4 | Live screen view on Windows |

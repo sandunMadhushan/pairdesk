@@ -56,6 +56,13 @@ impl InputHandle {
         Ok(Self { tx })
     }
 
+    /// A handle whose commands go to a channel instead of the desktop.
+    #[cfg(test)]
+    pub fn recording() -> (Self, Receiver<InputCmd>) {
+        let (tx, rx) = mpsc::channel();
+        (Self { tx }, rx)
+    }
+
     pub fn send(&self, cmd: InputCmd) {
         if self.tx.send(cmd).is_err() {
             warn!("input thread has stopped; command dropped");

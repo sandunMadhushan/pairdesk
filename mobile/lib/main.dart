@@ -1,32 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 
-import 'agent_connection.dart';
-import 'screens/connect_screen.dart';
+import 'app_model.dart';
+import 'screens/home_screen.dart';
 
-void main() {
-  runApp(const PairDeskApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final model = await AppModel.load();
+  runApp(PairDeskApp(model: model));
 }
 
-class PairDeskApp extends StatefulWidget {
-  const PairDeskApp({super.key});
+class PairDeskApp extends StatelessWidget {
+  const PairDeskApp({super.key, required this.model});
 
-  @override
-  State<PairDeskApp> createState() => _PairDeskAppState();
-}
-
-class _PairDeskAppState extends State<PairDeskApp> {
-  final AgentConnection _connection = AgentConnection();
-
-  @override
-  void dispose() {
-    _connection.dispose();
-    super.dispose();
-  }
+  final AppModel model;
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF2F6FED);
+    const seed = Color(0xFF2457D6);
     return MaterialApp(
       title: 'PairDesk',
       debugShowCheckedModeBanner: false,
@@ -34,7 +25,7 @@ class _PairDeskAppState extends State<PairDeskApp> {
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
       ),
-      home: ConnectScreen(connection: _connection),
+      home: HomeScreen(model: model),
     );
   }
 }

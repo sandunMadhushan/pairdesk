@@ -13,9 +13,14 @@ App ID: `me.madhushan.pairdesk` (must never change after the first public releas
 
 | File | What it does |
 | --- | --- |
-| `lib/agent_connection.dart` | WebSocket connection and protocol messages |
+| `lib/agent_connection.dart` | Pinned-TLS WebSocket, sign-in handshake, protocol messages |
+| `lib/pairing/` | QR link parsing, phone key (Ed25519), saved computers, network discovery |
+| `lib/app_model.dart` | App-wide state |
 | `lib/touchpad_gestures.dart` | Finger events → move / click / scroll (pure Dart, unit-tested) |
 | `lib/touchpad.dart` | Touchpad and hold-to-drag button widgets |
-| `lib/screens/` | Connect screen and control screen |
+| `lib/screens/` | Home (paired computers), QR scanner, control screen |
+
+The QR scanner uses ZXing, not Google ML Kit, so the app has no proprietary
+dependencies (needed for F-Droid).
 
 See [../docs/PROTOCOL.md](../docs/PROTOCOL.md) for the messages.
