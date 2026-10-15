@@ -378,10 +378,13 @@ async fn signed_in(agent: &Agent, seed: u8) -> (Client, Value) {
 async fn welcome_lists_features_and_permissions() {
     let agent = start_agent().await;
     let (_ws, welcome) = signed_in(&agent, 20).await;
-    assert_eq!(welcome["features"], json!(["combo", "power", "apps"]));
+    assert_eq!(
+        welcome["features"],
+        json!(["combo", "power", "apps", "screen"])
+    );
     assert_eq!(
         welcome["allow"],
-        json!({"power": true, "session": true, "apps": true})
+        json!({"power": true, "session": true, "apps": true, "screen": true})
     );
 }
 
@@ -517,4 +520,103 @@ async fn input_keeps_flowing_while_apps_load() {
         agent.input.recv_timeout(Duration::from_secs(2)).unwrap(),
         InputCmd::Move { dx: 1, dy: 1 }
     );
+}
+
+/// Next binary message (a screen frame), skipping text messages.
+async fn recv_frame(ws: &mut Client) -> Vec<u8> {
+    loop {
+        let frame = tokio::time::timeout(Duration::from_secs(10), ws.next())
+            .await
+            .expect("timed out waiting for a screen frame")
+            .expect("connection closed")
+            .expect("read failed");
+        if let Message::Binary(b) = frame {
+            return b.to_vec();
+        }
+    }
+}
+
+#[tokio::test]
+async fn screen_view_follows_the_permission() {
+    let agent = start_agent().await;
+    {
+        let mut prefs = agent.state.prefs();
+        prefs.set_allow_screen(false).unwrap();
+    }
+    let (mut ws, welcome) = signed_in(&agent, 30).await;
+    assert_eq!(welcome["allow"]["screen"], false);
+    send(&mut ws, json!({"t":"screen_start","id":1})).await;
+    assert_eq!(recv(&mut ws).await["code"], "not_allowed");
+}
+
+/// Needs an X display (run under Xvfb); skipped otherwise.
+#[tokio::test(flavor = "multi_thread")]
+async fn streams_the_screen_with_acks_and_can_be_stopped() {
+    if std::env::var_os("DISPLAY").is_none() {
+        eprintln!("no DISPLAY; skipped");
+        return;
+    }
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 31).await;
+    send(&mut ws, json!({"t":"screen_start","id":5,"quality":"low"})).await;
+    let info = recv(&mut ws).await;
+    assert_eq!(info["t"], "screen", "{info}");
+    assert_eq!(info["id"], 5);
+    let (w, h) = (
+        info["width"].as_u64().unwrap(),
+        info["height"].as_u64().unwrap(),
+    );
+    assert!(w <= 960 && w > 0 && h > 0);
+    assert!(!info["monitors"].as_array().unwrap().is_empty());
+
+    // The first frame is the whole screen.
+    let first = recv_frame(&mut ws).await;
+    assert_eq!(&first[..4], b"PDS1");
+    let seq = u32::from_le_bytes(first[4..8].try_into().unwrap());
+    assert_eq!(
+        u16::from_le_bytes(first[8..10].try_into().unwrap()) as u64,
+        w
+    );
+    assert_eq!(
+        u16::from_le_bytes(first[16..18].try_into().unwrap()),
+        1,
+        "one full rect"
+    );
+    assert_eq!(agent.state.viewing_phones().len(), 1);
+
+    // Pointing at the middle of the shown screen moves the real pointer there.
+    send(&mut ws, json!({"t":"move_to","x":0.5,"y":0.5})).await;
+    send(&mut ws, json!({"t":"ping"})).await;
+    loop {
+        if recv(&mut ws).await["t"] == "pong" {
+            break;
+        }
+    }
+    match agent.input.recv_timeout(Duration::from_secs(2)).unwrap() {
+        InputCmd::MoveTo { x, y } => assert!(x > 0 && y > 0, "({x}, {y})"),
+        other => panic!("{other:?}"),
+    }
+
+    // Without acks the agent stops after two frames in flight; an ack
+    // and a refresh bring the next full frame.
+    send(&mut ws, json!({"t":"screen_ack","seq":seq})).await;
+    send(&mut ws, json!({"t":"screen_refresh"})).await;
+    let again = recv_frame(&mut ws).await;
+    assert!(u32::from_le_bytes(again[4..8].try_into().unwrap()) > seq);
+
+    // The computer's owner stops it from the settings page.
+    agent.state.stop_viewing(None);
+    loop {
+        let msg = recv(&mut ws).await;
+        if msg["t"] == "screen_stopped" {
+            assert!(
+                msg["msg"]
+                    .as_str()
+                    .unwrap()
+                    .contains("stopped on the computer")
+            );
+            break;
+        }
+    }
+    assert!(agent.state.viewing_phones().is_empty());
 }

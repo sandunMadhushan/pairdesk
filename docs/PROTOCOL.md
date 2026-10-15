@@ -119,6 +119,40 @@ the connection.
 | `unexpected` | Wrong message for this point in the handshake |
 | `bad_message` | A message couldn't be understood (connection stays open) |
 
+## Screen view
+
+| Direction | `t` | Fields | Meaning |
+| --- | --- | --- | --- |
+| phone → agent | `screen_start` | `id`, `monitor` (optional), `quality`: `low` \| `medium` \| `high` | Start (or restart) screen view. Answered with `screen`, or `ack` with `not_allowed` / `failed` |
+| agent → phone | `screen` | `id`, `monitors` (`[{index,name,width,height,primary}]`), `monitor`, `width`, `height` | Started; binary frames of `width`×`height` follow |
+| phone → agent | `screen_ack` | `seq` | Frame `seq` is shown |
+| phone → agent | `screen_refresh` | — | Send the whole screen again |
+| phone → agent | `screen_stop` | — | Stop |
+| phone → agent | `move_to` | `x`, `y` (0..1 on the viewed monitor) | Move the pointer there (clamped) |
+| agent → phone | `screen_stopped` | `msg` | Stopped on the computer (owner pressed Stop, permission turned off, or the phone stopped answering) |
+
+Frames are WebSocket **binary** messages (little-endian):
+
+```text
+"PDS1" | seq u32 | width u16 | height u16 | cursor_x i16 | cursor_y i16 | count u16
+then `count` times: x u16 | y u16 | w u16 | h u16 | len u32 | JPEG bytes
+```
+
+- The agent scales the monitor to at most 960 / 1280 / 1920 pixels wide (low /
+  medium / high; JPEG quality 50 / 65 / 80; up to 8 / 12 / 15 frames a second).
+- It compares each frame with the last one in 64×64 tiles and sends only the
+  changed tiles, merged into rectangles; above half the screen it sends one
+  full frame. The first frame after `screen_start` or `screen_refresh` is whole.
+- A frame with no rectangles only moves the cursor (`-1, -1` = on another monitor).
+- **Flow control:** at most two frames are unacknowledged; then the agent waits
+  for `screen_ack`, so a slow link gets fewer frames instead of growing delay.
+  With no ack for 15 s the agent stops.
+- Capture: Windows GDI (`BitBlt`, per-monitor DPI aware; `SetCursorPos` for
+  `move_to`), Linux X11 `GetImage` + RandR monitors. Wayland is refused with a
+  clear message. The lock screen and UAC prompts can't be captured.
+- On the computer, the tray icon gets a red dot and the settings page shows who is
+  viewing, with a **Stop** button.
+
 ## Permissions
 
 The settings page on the computer has three switches, all on by default:
@@ -128,6 +162,7 @@ The settings page on the computer has three switches, all on by default:
 | `power` | `lock`, `sleep`, `screen_off` |
 | `session` | `sign_out`, `restart`, `shut_down` |
 | `apps` | `apps`, `launch` |
+| `screen` | `screen_start` (turning it off also stops current viewers) |
 
 Each request is checked against the current switches when it arrives, so a
 change applies at once. The phone also asks for confirmation before

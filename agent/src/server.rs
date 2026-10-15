@@ -25,7 +25,7 @@ use crate::protocol::{
 use crate::state::{AppState, Session};
 
 /// Optional features announced in `welcome`.
-const FEATURES: &[&str] = &["combo", "power", "apps"];
+const FEATURES: &[&str] = &["combo", "power", "apps", "screen"];
 /// Largest WebSocket frame accepted from a phone.
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 /// Time a phone gets to finish TLS, WebSocket and authentication.
@@ -240,13 +240,23 @@ async fn serve(
     // Replies from slow requests (app list, launching) arrive here, so the
     // touchpad keeps working while they run.
     let (reply_tx, mut reply_rx) = tokio::sync::mpsc::unbounded_channel::<ServerMsg>();
+    // Screen frames, as binary messages. At most two are ever waiting.
+    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    let mut viewer: Option<crate::screen::Viewer> = None;
 
     let result = async {
         loop {
             let frame = tokio::select! {
                 frame = source.next() => frame,
                 Some(reply) = reply_rx.recv() => {
+                    if matches!(reply, ServerMsg::ScreenStopped { .. }) {
+                        stop_viewer(&mut viewer, state, session);
+                    }
                     send(&mut sink, &reply).await?;
+                    continue;
+                }
+                Some(frame) = frame_rx.recv() => {
+                    sink.send(Message::binary(frame)).await.map_err(|e| e.to_string())?;
                     continue;
                 }
                 _ = revocations.changed() => {
@@ -309,6 +319,88 @@ async fn serve(
                 ClientMsg::Power { id, a } => power_request(state, id, a, reply_tx.clone()),
                 ClientMsg::Apps { id } => apps_request(state, id, reply_tx.clone()),
                 ClientMsg::Launch { id, app } => launch_request(state, id, app, reply_tx.clone()),
+                ClientMsg::ScreenStart {
+                    id,
+                    monitor,
+                    quality,
+                } => {
+                    stop_viewer(&mut viewer, state, session);
+                    if !state.prefs().get().allow_screen {
+                        send(
+                            &mut sink,
+                            &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))),
+                        )
+                        .await?;
+                        continue;
+                    }
+                    let quality = crate::screen::encode::Quality::preset(
+                        quality.as_deref().unwrap_or("medium"),
+                    );
+                    let (frames, notes) = (frame_tx.clone(), reply_tx.clone());
+                    let started = tokio::task::spawn_blocking(move || {
+                        crate::screen::Viewer::start(monitor, quality, move |out| match out {
+                            crate::screen::Out::Frame(f) => frames.send(f).is_ok(),
+                            crate::screen::Out::Stopped(msg) => {
+                                notes.send(ServerMsg::ScreenStopped { msg }).is_ok()
+                            }
+                        })
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    match started {
+                        Ok((v, monitors)) => {
+                            info!("{peer}: \"{}\" is viewing {}", who.name, v.monitor.name);
+                            state.add_viewer(
+                                session,
+                                crate::state::ScreenViewer {
+                                    phone_id: who.id.clone(),
+                                    stop: v.stop_flag(),
+                                    notify: reply_tx.clone(),
+                                },
+                            );
+                            // Sent before any frame, which waits in frame_rx.
+                            send(
+                                &mut sink,
+                                &ServerMsg::Screen {
+                                    id,
+                                    monitors: monitors
+                                        .iter()
+                                        .map(|m| crate::protocol::MonitorInfo {
+                                            index: m.index,
+                                            name: m.name.clone(),
+                                            width: m.width,
+                                            height: m.height,
+                                            primary: m.primary,
+                                        })
+                                        .collect(),
+                                    monitor: v.monitor.index,
+                                    width: v.size.0,
+                                    height: v.size.1,
+                                },
+                            )
+                            .await?;
+                            viewer = Some(v);
+                        }
+                        Err(e) => send(&mut sink, &ack(id, Err((AckCode::Failed, e)))).await?,
+                    }
+                }
+                ClientMsg::ScreenAck { seq } => {
+                    if let Some(v) = &viewer {
+                        v.ack(seq);
+                    }
+                }
+                ClientMsg::ScreenRefresh => {
+                    if let Some(v) = &viewer {
+                        v.refresh();
+                    }
+                }
+                ClientMsg::ScreenStop => stop_viewer(&mut viewer, state, session),
+                ClientMsg::MoveTo { x, y } => {
+                    if let Some(v) = &viewer {
+                        let (dx, dy) = v.to_desktop(x, y);
+                        input.send(InputCmd::MoveTo { x: dx, y: dy });
+                    }
+                }
                 ClientMsg::Hello { .. } | ClientMsg::Pair { .. } | ClientMsg::Auth { .. } => {
                     send(
                         &mut sink,
@@ -322,6 +414,7 @@ async fn serve(
     }
     .await;
 
+    stop_viewer(&mut viewer, state, session);
     for b in held {
         input.send(InputCmd::Up(b));
     }
@@ -331,6 +424,15 @@ async fn serve(
 }
 
 type Replies = tokio::sync::mpsc::UnboundedSender<ServerMsg>;
+
+/// Ends this phone's screen view, if any. The capture thread is joined
+/// off the async runtime.
+fn stop_viewer(viewer: &mut Option<crate::screen::Viewer>, state: &AppState, session: u64) {
+    if let Some(v) = viewer.take() {
+        state.remove_viewer(session);
+        tokio::task::spawn_blocking(move || drop(v));
+    }
+}
 
 const NOT_ALLOWED: &str = "This is turned off in PairDesk settings on the computer.";
 

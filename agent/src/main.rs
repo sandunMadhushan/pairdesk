@@ -21,6 +21,7 @@ mod pairing;
 mod power;
 mod prefs;
 mod protocol;
+mod screen;
 mod server;
 mod state;
 mod store;
@@ -115,6 +116,8 @@ fn init_logging(data_dir: &Path) {
 
 fn main() {
     tray::attach_console();
+    // Real pixels everywhere (screen view, pointer position, monitor sizes).
+    screen::capture::set_dpi_aware();
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {

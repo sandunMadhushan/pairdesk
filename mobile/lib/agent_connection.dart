@@ -19,6 +19,7 @@ import 'pairing/discovery.dart';
 import 'pairing/identity.dart';
 import 'pairing/laptop.dart';
 import 'pairing/pairing_link.dart';
+import 'screen/frame.dart';
 
 const int defaultAgentPort = 47800;
 
@@ -175,15 +176,21 @@ enum PowerAction {
 
 /// What the computer's owner allows (from `welcome`).
 class Allowed {
-  const Allowed({this.power = false, this.session = false, this.apps = false});
+  const Allowed({this.power = false, this.session = false, this.apps = false, this.screen = false});
   final bool power;
   final bool session;
   final bool apps;
+  final bool screen;
 
   bool action(PowerAction a) => a.endsSession ? session : power;
 
   static Allowed fromJson(Object? j) => j is Map
-      ? Allowed(power: j['power'] == true, session: j['session'] == true, apps: j['apps'] == true)
+      ? Allowed(
+          power: j['power'] == true,
+          session: j['session'] == true,
+          apps: j['apps'] == true,
+          screen: j['screen'] == true,
+        )
       : const Allowed();
 }
 
@@ -512,6 +519,10 @@ class AgentConnection extends ChangeNotifier {
 
   void _onData(dynamic data) {
     _lastHeard = DateTime.now();
+    if (data is List<int>) {
+      _onBinary(data is Uint8List ? data : Uint8List.fromList(data));
+      return;
+    }
     if (data is! String) return;
     final Object? decoded;
     try {
@@ -522,7 +533,11 @@ class AgentConnection extends ChangeNotifier {
     if (decoded is! Map<String, dynamic>) return;
 
     final id = decoded['id'];
-    if (id is int && (decoded['t'] == 'ack' || decoded['t'] == 'apps')) {
+    if (decoded['t'] == 'screen_stopped') {
+      _screenEvents.add(decoded['msg'] as String? ?? 'Screen view stopped.');
+      return;
+    }
+    if (id is int && (decoded['t'] == 'ack' || decoded['t'] == 'apps' || decoded['t'] == 'screen')) {
       _requests.remove(id)?.complete(decoded);
       return;
     }
@@ -716,6 +731,44 @@ class AgentConnection extends ChangeNotifier {
   }
 
   /// Opens an app or shortcut by the ID from [fetchApps].
+  // ---- Screen view ----------------------------------------------------
+
+  final _frames = StreamController<ScreenFrame>.broadcast();
+  final _screenEvents = StreamController<String>.broadcast();
+
+  /// Frames from the computer while screen view runs.
+  Stream<ScreenFrame> get screenFrames => _frames.stream;
+
+  /// Screen view ended on the computer's side (the reason, for people).
+  Stream<String> get screenStopped => _screenEvents.stream;
+
+  void _onBinary(Uint8List data) {
+    try {
+      _frames.add(ScreenFrame.parse(data));
+    } on FormatException catch (e) {
+      debugPrint('bad screen frame: $e');
+      _send({'t': 'screen_refresh'});
+    }
+  }
+
+  /// Starts screen view; frames then arrive on [screenFrames].
+  Future<ScreenInfo> startScreen({int? monitor, String quality = 'medium'}) async {
+    _requireFeature('screen');
+    final reply = await _request({'t': 'screen_start', 'monitor': ?monitor, 'quality': quality});
+    return ScreenInfo.fromJson(reply);
+  }
+
+  /// Tells the computer frame [seq] is shown, so it sends the next one.
+  void ackScreen(int seq) => _send({'t': 'screen_ack', 'seq': seq});
+
+  /// Asks for the whole screen again.
+  void refreshScreen() => _send({'t': 'screen_refresh'});
+
+  void stopScreen() => _send({'t': 'screen_stop'});
+
+  /// Moves the pointer to a point on the shown screen (0..1 from top-left).
+  void moveTo(double x, double y) => _send({'t': 'move_to', 'x': x, 'y': y});
+
   Future<void> launch(String appId) async {
     _requireFeature('apps');
     await _request({'t': 'launch', 'app': appId});
@@ -723,6 +776,8 @@ class AgentConnection extends ChangeNotifier {
 
   @override
   void dispose() {
+    _frames.close();
+    _screenEvents.close();
     disconnect(notify: false);
     super.dispose();
   }

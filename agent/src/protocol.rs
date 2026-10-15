@@ -127,17 +127,28 @@ pub enum ClientMsg {
     },
     /// Answer to `challenge`: Ed25519 signature (base64url) over the
     /// bytes described in docs/PROTOCOL.md.
-    Auth { sig: String },
+    Auth {
+        sig: String,
+    },
     /// Keep-alive; the agent answers with `pong`.
     Ping,
     /// Relative mouse move in pixels.
-    Move { dx: i32, dy: i32 },
+    Move {
+        dx: i32,
+        dy: i32,
+    },
     /// Press and release a mouse button.
-    Click { b: MouseButton },
+    Click {
+        b: MouseButton,
+    },
     /// Press a mouse button and keep it held (for dragging).
-    Down { b: MouseButton },
+    Down {
+        b: MouseButton,
+    },
     /// Release a held mouse button.
-    Up { b: MouseButton },
+    Up {
+        b: MouseButton,
+    },
     /// Scroll in lines. Positive `dy` scrolls down, positive `dx` scrolls right.
     Scroll {
         #[serde(default)]
@@ -146,9 +157,13 @@ pub enum ClientMsg {
         dy: i32,
     },
     /// Type a string of text.
-    Text { s: String },
+    Text {
+        s: String,
+    },
     /// Press and release a named key.
-    Key { k: NamedKey },
+    Key {
+        k: NamedKey,
+    },
     /// Keyboard shortcut: hold `mods`, press `k` (named key) or `c` (one
     /// character), release. With neither, the modifiers alone are tapped
     /// (e.g. the Windows key).
@@ -176,6 +191,30 @@ pub enum ClientMsg {
         #[serde(default)]
         id: Option<u64>,
         app: String,
+    },
+    /// Starts (or restarts) screen view.
+    ScreenStart {
+        #[serde(default)]
+        id: Option<u64>,
+        /// Monitor index from `screen.monitors`; default the main one.
+        #[serde(default)]
+        monitor: Option<u32>,
+        /// `low`, `medium` (default) or `high`.
+        #[serde(default)]
+        quality: Option<String>,
+    },
+    /// The phone has shown frame `seq`; the agent may send more.
+    ScreenAck {
+        seq: u32,
+    },
+    /// Send the whole screen again on the next frame.
+    ScreenRefresh,
+    ScreenStop,
+    /// Moves the pointer to a point on the shown screen, 0..1 from the
+    /// top-left corner.
+    MoveTo {
+        x: f64,
+        y: f64,
     },
 }
 
@@ -213,6 +252,20 @@ pub enum ServerMsg {
         #[serde(skip_serializing_if = "Option::is_none")]
         msg: Option<String>,
     },
+    /// Answer to `screen_start`; binary frames follow.
+    Screen {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<u64>,
+        monitors: Vec<MonitorInfo>,
+        monitor: u32,
+        /// Size of the frames that will arrive.
+        width: u32,
+        height: u32,
+    },
+    /// Screen view ended on the computer's side.
+    ScreenStopped {
+        msg: String,
+    },
     /// Answer to `apps`.
     Apps {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -237,6 +290,17 @@ pub struct Allow {
     pub session: bool,
     /// Launch apps and shortcuts.
     pub apps: bool,
+    /// See the screen.
+    pub screen: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MonitorInfo {
+    pub index: u32,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub primary: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -312,6 +376,18 @@ impl ClientMsg {
             ClientMsg::Scroll { dx, dy } => ClientMsg::Scroll {
                 dx: dx.clamp(-MAX_SCROLL, MAX_SCROLL),
                 dy: dy.clamp(-MAX_SCROLL, MAX_SCROLL),
+            },
+            ClientMsg::MoveTo { x, y } => ClientMsg::MoveTo {
+                x: if x.is_finite() {
+                    x.clamp(0.0, 1.0)
+                } else {
+                    0.5
+                },
+                y: if y.is_finite() {
+                    y.clamp(0.0, 1.0)
+                } else {
+                    0.5
+                },
             },
             ClientMsg::Text { s } => ClientMsg::Text {
                 s: s.chars().take(MAX_TEXT_CHARS).collect(),
@@ -418,13 +494,14 @@ mod tests {
                 power: true,
                 session: false,
                 apps: true,
+                screen: true,
             },
             addrs: vec!["192.168.1.5".into(), "100.101.102.103".into()],
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true},"addrs":["192.168.1.5","100.101.102.103"]}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true},"addrs":["192.168.1.5","100.101.102.103"]}"#
         );
         let json = serde_json::to_string(&ServerMsg::Ack {
             id: Some(4),
@@ -506,6 +583,27 @@ mod tests {
         assert!(ClientMsg::parse(&format!(r#"{{"t":"launch","app":"{long}"}}"#)).is_err());
         // A command line is not an app ID: launch only accepts IDs from `apps`.
         assert!(ClientMsg::parse(r#"{"t":"launch","cmd":"calc.exe"}"#).is_err());
+    }
+
+    #[test]
+    fn parses_screen_messages_and_clamps_points() {
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"screen_start","id":1,"monitor":1,"quality":"low"}"#).unwrap(),
+            ClientMsg::ScreenStart {
+                id: Some(1),
+                monitor: Some(1),
+                quality: Some("low".into())
+            }
+        );
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"screen_ack","seq":9}"#).unwrap(),
+            ClientMsg::ScreenAck { seq: 9 }
+        );
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"move_to","x":1.7,"y":-3}"#).unwrap(),
+            ClientMsg::MoveTo { x: 1.0, y: 0.0 }
+        );
+        assert!(ClientMsg::parse(r#"{"t":"move_to","x":"a","y":0}"#).is_err());
     }
 
     #[test]

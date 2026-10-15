@@ -5,10 +5,11 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.4 preview (Phase 3).** Pair once with a QR code; after that the phone
+> **Status: 0.5 preview (Phase 4).** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
-> launcher and power controls, on your Wi-Fi or from anywhere with Tailscale.
+> launcher, power controls and a live view of the screen, on your Wi-Fi or from
+> anywhere with Tailscale.
 
 ## What works now
 
@@ -27,6 +28,7 @@ no codes or "accept" prompts every time.
 | Apps | Open any installed app, plus websites, folders and programs you add on the computer's settings page |
 | Power | Lock, sleep, screen off, sign out, restart, shut down (each can be switched off on the computer) |
 | App lock | Optional fingerprint, face or screen-lock check to open PairDesk |
+| Screen | Live view of the computer's screen: tap to click there, hold to right-click, pinch to zoom, full screen; red tray dot while watched |
 | Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) (free for personal use); picks Wi-Fi or Tailscale by itself |
 
 ## Quick start
@@ -72,6 +74,8 @@ if it tends to sleep.
 - On Linux without a desktop, `pairdesk-agent --pair` prints the QR code in the terminal.
 - Windows reserves a few shortcuts that no app can send, such as Ctrl+Alt+Delete and
   Win+L. Use the Power tab to lock.
+- Screen view can't show the Windows lock screen or UAC prompts, or a Linux
+  Wayland session (sign in with an X11/Xorg session for now).
 - Linux power actions use `loginctl`/`systemctl`, which most desktops allow for the
   signed-in user; screen off uses `xset` (X11).
 
@@ -113,8 +117,8 @@ The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOC
 | 0 | Touchpad over home Wi-Fi |
 | 1 | One-time QR pairing, encryption, tray app, auto-start, auto-discovery |
 | 2 | Power actions, app launcher, custom buttons, phone app lock |
-| **3** | **Connect from anywhere with Tailscale (this release)** |
-| 4 | Live screen view on Windows |
+| 3 | Connect from anywhere with Tailscale |
+| **4** | **Live screen view on Windows and Linux X11 (this release)** |
 | 5 | Linux agent on Wayland |
 | 6 | Clipboard sync and file transfer |
 | 7 | Signed installers, Microsoft Store, F-Droid, Flathub |

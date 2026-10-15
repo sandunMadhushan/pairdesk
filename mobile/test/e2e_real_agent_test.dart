@@ -5,12 +5,17 @@
 // Run through tools/e2e.sh.
 
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/painting.dart' show Color;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pairdesk/agent_connection.dart';
 import 'package:pairdesk/pairing/identity.dart';
 import 'package:pairdesk/pairing/pairing_link.dart';
+import 'package:pairdesk/screen/compositor.dart';
 
 void main() {
   final link = Platform.environment['PAIRDESK_E2E_LINK'];
@@ -61,6 +66,47 @@ void main() {
       // Later: connect without any code.
       await conn.connect(laptop, me, phoneName: 'E2E phone');
       expect(conn.status, ConnectionStatus.connected);
+
+      // ---- Phase 4: screen view, checked pixel by pixel ----
+      expect(conn.features, contains('screen'));
+      final compositor = ScreenCompositor();
+      final frames = StreamIterator(conn.screenFrames);
+      final screen = await conn.startScreen(quality: 'high');
+      expect((screen.width, screen.height), (1280, 800), reason: 'Xvfb is 1280×800; no scaling at high');
+      Future<Color> pixelAt(int x, int y) async {
+        final img = compositor.image!;
+        final data = (await img.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+        final i = (y * img.width + x) * 4;
+        return Color.fromARGB(255, data.getUint8(i), data.getUint8(i + 1), data.getUint8(i + 2));
+      }
+
+      Future<void> waitForColour(bool Function(Color) ok, String what) async {
+        final deadline = DateTime.now().add(const Duration(seconds: 15));
+        while (DateTime.now().isBefore(deadline)) {
+          expect(await frames.moveNext().timeout(const Duration(seconds: 10)), isTrue);
+          await compositor.apply(frames.current);
+          conn.ackScreen(frames.current.seq);
+          if (compositor.image != null && ok(await pixelAt(100, 100))) return;
+        }
+        fail('screen never showed $what');
+      }
+
+      bool isRed(Color c) => (c.r * 255) > 200 && (c.g * 255) < 60 && (c.b * 255) < 60;
+      bool isGreen(Color c) => (c.g * 255) > 200 && (c.r * 255) < 60 && (c.b * 255) < 60;
+      await waitForColour(isRed, 'the red window');
+      final firstWidth = compositor.image!.width;
+      // The window turns green; only the changed part should be sent.
+      File(Platform.environment['PAIRDESK_E2E_SCREEN_SIGNAL']!).writeAsStringSync('go');
+      await waitForColour(isGreen, 'the window turning green');
+      expect(compositor.image!.width, firstWidth);
+      expect(await pixelAt(1000, 700), isNot(predicate<Color>(isGreen)), reason: 'outside the window');
+      // Tapping a spot on the picture puts the real pointer there (100, 100).
+      conn.moveTo(100 / 1279, 100 / 799);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      conn.stopScreen();
+      await frames.cancel();
+      compositor.dispose();
+
       conn.move(40, 30);
       await Future<void>.delayed(const Duration(milliseconds: 500));
 

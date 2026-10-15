@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
@@ -15,9 +15,11 @@ directories = "6"
 ed25519-dalek = "2"
 enigo = "0.6.1"
 env_logger = "0.11.11"
+fast_image_resize = "6"
 futures-util = "0.3.34"
 gethostname = "1.1.0"
 getrandom = "0.2"
+jpeg-encoder = "0.7"
 local-ip-address = "0.6.13"
 open = "5"
 log = "0.4.34"
@@ -37,10 +39,11 @@ webbrowser = "1"
 
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"
+x11rb = { version = "0.13", features = ["randr"] }
 
 [dev-dependencies]
 tempfile = "3"
