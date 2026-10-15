@@ -7,6 +7,7 @@ import '../touchpad.dart';
 import 'tabs/apps_tab.dart';
 import 'tabs/buttons_tab.dart';
 import 'tabs/power_tab.dart';
+import 'tabs/screen_tab.dart';
 
 class ControlScreen extends StatefulWidget {
   const ControlScreen({super.key, required this.connection, required this.laptopKey, this.settings});
@@ -100,29 +101,41 @@ class _ControlScreenState extends State<ControlScreen> {
               ),
             ],
           ),
-          if (_showKeyboard) ...[
-            const SizedBox(height: 10),
-            _KeyRow(connection: _conn),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _text,
-              focusNode: _textFocus,
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _sendText(),
-              decoration: InputDecoration(
-                hintText: 'Type, then send to the computer',
-                border: const OutlineInputBorder(),
-                isDense: true,
-                suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: _sendText),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
+
+  Widget _keyboardPanel() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          _KeyRow(connection: _conn),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _text,
+            focusNode: _textFocus,
+            autocorrect: false,
+            enableSuggestions: false,
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _sendText(),
+            decoration: InputDecoration(
+              hintText: 'Type, then send to the computer',
+              border: const OutlineInputBorder(),
+              isDense: true,
+              suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: _sendText),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static const _kTouchpad = 0, _kScreen = 1, _kApps = 3;
+  bool get _keyboardTab => _tab == _kTouchpad || _tab == _kScreen;
 
   @override
   Widget build(BuildContext context) {
@@ -134,90 +147,117 @@ class _ControlScreenState extends State<ControlScreen> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: ListenableBuilder(
-            listenable: _conn,
-            builder: (context, _) {
-              final ms = _conn.latency?.inMilliseconds;
-              final route = _conn.viaTailscale ? 'Tailscale' : 'Wi-Fi';
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_conn.agentName ?? 'Computer', overflow: TextOverflow.ellipsis),
-                  Text(
-                    ms == null ? 'Connected via $route' : 'Connected via $route · $ms ms',
-                    style: Theme.of(context).textTheme.bodySmall,
+        appBar: _fullscreen
+            ? null
+            : AppBar(
+                title: ListenableBuilder(
+                  listenable: _conn,
+                  builder: (context, _) {
+                    final ms = _conn.latency?.inMilliseconds;
+                    final route = _conn.viaTailscale ? 'Tailscale' : 'Wi-Fi';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_conn.agentName ?? 'Computer', overflow: TextOverflow.ellipsis),
+                        Text(
+                          ms == null ? 'Connected via $route' : 'Connected via $route · $ms ms',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                actions: [
+                  if (_keyboardTab)
+                    IconButton(
+                      tooltip: _showKeyboard ? 'Hide keyboard' : 'Keyboard',
+                      icon: Icon(_showKeyboard ? Icons.keyboard_hide_outlined : Icons.keyboard_outlined),
+                      onPressed: _toggleKeyboard,
+                    ),
+                  IconButton(
+                    tooltip: 'Disconnect',
+                    icon: const Icon(Icons.link_off),
+                    onPressed: () => Navigator.of(context).maybePop(),
                   ),
                 ],
-              );
-            },
-          ),
-          actions: [
-            if (_tab == 0)
-              IconButton(
-                tooltip: _showKeyboard ? 'Hide keyboard' : 'Keyboard',
-                icon: Icon(_showKeyboard ? Icons.keyboard_hide_outlined : Icons.keyboard_outlined),
-                onPressed: _toggleKeyboard,
               ),
-            IconButton(
-              tooltip: 'Disconnect',
-              icon: const Icon(Icons.link_off),
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-          ],
-        ),
         body: SafeArea(
           bottom: false,
-          child: IndexedStack(
-            index: _tab,
+          top: !_fullscreen,
+          child: Column(
             children: [
-              _touchpadTab(),
-              ButtonsTab(connection: _conn),
-              // Built on first visit, so the app list loads only when wanted.
-              _tab == 2 || _visitedApps
-                  ? AppsTab(connection: _conn, laptopKey: widget.laptopKey)
-                  : const SizedBox.shrink(),
-              PowerTab(connection: _conn),
+              Expanded(
+                child: IndexedStack(
+                  index: _tab,
+                  children: [
+                    _touchpadTab(),
+                    // Built on first visit; streams only while visible.
+                    _visited.contains(_kScreen)
+                        ? ScreenTab(
+                            connection: _conn,
+                            active: _tab == _kScreen,
+                            fullscreen: _fullscreen,
+                            onFullscreen: (on) => setState(() => _fullscreen = on),
+                          )
+                        : const SizedBox.shrink(),
+                    ButtonsTab(connection: _conn),
+                    // Built on first visit, so the app list loads only when wanted.
+                    _visited.contains(_kApps)
+                        ? AppsTab(connection: _conn, laptopKey: widget.laptopKey)
+                        : const SizedBox.shrink(),
+                    PowerTab(connection: _conn),
+                  ],
+                ),
+              ),
+              if (_showKeyboard && _keyboardTab) _keyboardPanel(),
             ],
           ),
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: (i) {
-            if (i != 0 && _showKeyboard) _toggleKeyboard();
-            setState(() {
-              _tab = i;
-              if (i == 2) _visitedApps = true;
-            });
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.touch_app_outlined),
-              selectedIcon: Icon(Icons.touch_app),
-              label: 'Touchpad',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.grid_view_outlined),
-              selectedIcon: Icon(Icons.grid_view_rounded),
-              label: 'Buttons',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.apps_outlined),
-              selectedIcon: Icon(Icons.apps),
-              label: 'Apps',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.power_settings_new_outlined),
-              selectedIcon: Icon(Icons.power_settings_new),
-              label: 'Power',
-            ),
-          ],
-        ),
+        bottomNavigationBar: _fullscreen
+            ? null
+            : NavigationBar(
+                selectedIndex: _tab,
+                onDestinationSelected: (i) {
+                  if (_showKeyboard && i != _kTouchpad && i != _kScreen) _toggleKeyboard();
+                  setState(() {
+                    _tab = i;
+                    _visited.add(i);
+                  });
+                },
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.touch_app_outlined),
+                    selectedIcon: Icon(Icons.touch_app),
+                    label: 'Touchpad',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.desktop_windows_outlined),
+                    selectedIcon: Icon(Icons.desktop_windows),
+                    label: 'Screen',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.grid_view_outlined),
+                    selectedIcon: Icon(Icons.grid_view_rounded),
+                    label: 'Buttons',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.apps_outlined),
+                    selectedIcon: Icon(Icons.apps),
+                    label: 'Apps',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.power_settings_new_outlined),
+                    selectedIcon: Icon(Icons.power_settings_new),
+                    label: 'Power',
+                  ),
+                ],
+              ),
       ),
     );
   }
 
-  bool _visitedApps = false;
+  final Set<int> _visited = {0};
+  bool _fullscreen = false;
 }
 
 class _KeyRow extends StatelessWidget {

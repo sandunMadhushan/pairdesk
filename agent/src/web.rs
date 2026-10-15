@@ -177,10 +177,20 @@ fn handle(
                 power: bool,
                 session: bool,
                 apps: bool,
+                #[serde(default)]
+                screen: Option<bool>,
             }
             match serde_json::from_str::<Body>(&body).ok() {
                 Some(b) => {
-                    let saved = state.prefs().set_permissions(b.power, b.session, b.apps);
+                    let mut prefs = state.prefs();
+                    let mut saved = prefs.set_permissions(b.power, b.session, b.apps);
+                    if let (Ok(()), Some(screen)) = (&saved, b.screen) {
+                        saved = prefs.set_allow_screen(screen);
+                    }
+                    drop(prefs);
+                    if b.screen == Some(false) {
+                        state.stop_viewing(None);
+                    }
                     match saved {
                         Ok(()) => send_state(request, state),
                         Err(e) => status(request, 500, &format!("could not save: {e}")),
@@ -248,6 +258,16 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/stop-screen") => {
+            #[derive(Deserialize)]
+            struct Body {
+                #[serde(default)]
+                id: Option<String>,
+            }
+            let target = serde_json::from_str::<Body>(&body).ok().and_then(|b| b.id);
+            state.stop_viewing(target.as_deref());
+            send_state(request, state)
+        }
         (Method::Post, "/api/refresh-remote") => {
             state.tailscale.refresh(std::time::Duration::ZERO);
             send_state(request, state)
@@ -268,6 +288,7 @@ fn send_state(request: Request, state: &AppState) {
         .map(|s| json!({ "id": s.id, "name": s.name, "kind": s.kind, "target": s.target, "args": s.args }))
         .collect();
     let sessions = state.sessions();
+    let viewing = state.viewing_phones();
     let phones: Vec<_> = state
         .phones()
         .list()
@@ -280,6 +301,7 @@ fn send_state(request: Request, state: &AppState) {
                 "paired_at": p.paired_at,
                 "last_seen": p.last_seen,
                 "connected": connected.is_some(),
+                "viewing": viewing.contains(&p.id),
                 "address": connected.map(|s| s.address.clone()),
             })
         })
@@ -344,6 +366,7 @@ fn send_state(request: Request, state: &AppState) {
             "power": prefs.allow_power,
             "session": prefs.allow_session,
             "apps": prefs.allow_apps,
+            "screen": prefs.allow_screen,
         },
         "shortcuts": shortcuts,
         "remote": remote,

@@ -22,6 +22,13 @@ pub struct Session {
     pub address: String,
 }
 
+/// A phone watching the screen.
+pub struct ScreenViewer {
+    pub phone_id: String,
+    pub stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub notify: tokio::sync::mpsc::UnboundedSender<crate::protocol::ServerMsg>,
+}
+
 pub struct AppState {
     pub identity: Identity,
     pub name: String,
@@ -35,6 +42,9 @@ pub struct AppState {
     prefs: Mutex<PrefsStore>,
     pub apps: Catalogue,
     pub tailscale: crate::tailscale::Cache,
+    /// Phones watching the screen, by session.
+    viewers: Mutex<HashMap<u64, ScreenViewer>>,
+    viewers_changed: watch::Sender<usize>,
     pub awake: crate::awake::KeepAwake,
 }
 
@@ -63,6 +73,8 @@ impl AppState {
             prefs: Mutex::new(prefs),
             apps: Catalogue::default(),
             tailscale: Default::default(),
+            viewers: Mutex::new(HashMap::new()),
+            viewers_changed: watch::channel(0).0,
             awake: Default::default(),
         }
     }
@@ -178,6 +190,59 @@ impl AppState {
         if let Some(s) = lock(&self.sessions).remove(&id) {
             self.phones().touch(&s.phone_id);
         }
+    }
+
+    // ---- screen viewers ----
+
+    pub fn add_viewer(&self, session: u64, viewer: ScreenViewer) {
+        let mut v = lock(&self.viewers);
+        v.insert(session, viewer);
+        let n = v.len();
+        drop(v);
+        self.viewers_changed.send_replace(n);
+    }
+
+    pub fn remove_viewer(&self, session: u64) {
+        let mut v = lock(&self.viewers);
+        if v.remove(&session).is_some() {
+            let n = v.len();
+            drop(v);
+            self.viewers_changed.send_replace(n);
+        }
+    }
+
+    /// Phone IDs currently watching the screen.
+    pub fn viewing_phones(&self) -> Vec<String> {
+        lock(&self.viewers)
+            .values()
+            .map(|v| v.phone_id.clone())
+            .collect()
+    }
+
+    pub fn subscribe_viewers(&self) -> watch::Receiver<usize> {
+        self.viewers_changed.subscribe()
+    }
+
+    /// Ends screen view for one phone (or all with `None`), telling it why.
+    pub fn stop_viewing(&self, phone_id: Option<&str>) {
+        let mut v = lock(&self.viewers);
+        v.retain(|_, viewer| {
+            if phone_id.is_some_and(|id| id != viewer.phone_id) {
+                return true;
+            }
+            viewer
+                .stop
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            let _ = viewer
+                .notify
+                .send(crate::protocol::ServerMsg::ScreenStopped {
+                    msg: "Screen view was stopped on the computer.".into(),
+                });
+            false
+        });
+        let n = v.len();
+        drop(v);
+        self.viewers_changed.send_replace(n);
     }
 
     pub fn sessions(&self) -> Vec<Session> {

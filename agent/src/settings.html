@@ -61,6 +61,10 @@
   .grow { flex: 1; min-width: 0; }
   .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--ok-bg); color: var(--ok); }
   .banner { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+  .banner.viewing { display: flex; align-items: center; gap: 12px; justify-content: space-between;
+    background: #fdecec; color: #a11b1b; }
+  @media (prefers-color-scheme: dark) { .banner.viewing { background: #3a1818; color: #ffb4ab; } }
+  .badge.view { background: #fdecec; color: #a11b1b; }
   .banner.err { background: var(--warn-bg); color: var(--danger); }
   label.switch { display: flex; gap: 10px; align-items: center; cursor: pointer; }
   label.switch input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
@@ -100,6 +104,10 @@
   </header>
 
   <div id="banner" class="banner" hidden role="status"></div>
+  <div id="viewing" class="banner viewing" hidden role="status">
+    <span id="viewing-text"></span>
+    <button id="btn-stop-view">Stop</button>
+  </div>
 
   <section id="pairing" aria-labelledby="pair-title">
     <h2 id="pair-title">Pair a phone</h2>
@@ -154,6 +162,8 @@
         <span>Sign out, restart and shut down<small>Unsaved work in open apps can be lost.</small></span></label>
       <label class="switch"><input type="checkbox" id="perm-apps">
         <span>Open apps and shortcuts<small>Installed apps and the shortcuts below.</small></span></label>
+      <label class="switch"><input type="checkbox" id="perm-screen">
+        <span>See the screen<small>The PairDesk tray icon shows a red dot while a phone is watching.</small></span></label>
     </div>
   </section>
 
@@ -282,7 +292,12 @@ function render(s) {
     meta.textContent = p.connected ? "Connected from " + p.address : "Last used " + ago(p.last_seen);
     info.append(n, meta);
     li.append(info);
-    if (p.connected) {
+    if (p.viewing) {
+      const b = document.createElement("span");
+      b.className = "badge view";
+      b.textContent = "Viewing screen";
+      li.append(b);
+    } else if (p.connected) {
       const b = document.createElement("span");
       b.className = "badge";
       b.textContent = "Connected";
@@ -324,7 +339,14 @@ function render(s) {
   if (document.activeElement !== awake) awake.checked = s.keep_awake;
 
   // Permissions
-  for (const k of ["power", "session", "apps"]) {
+  // Someone is watching the screen
+  const viewers = s.phones.filter((p) => p.viewing);
+  $("viewing").hidden = viewers.length === 0;
+  $("viewing-text").textContent = viewers.length
+    ? viewers.map((p) => p.name).join(", ") + (viewers.length > 1 ? " are" : " is") + " viewing your screen."
+    : "";
+
+  for (const k of ["power", "session", "apps", "screen"]) {
     const box = $("perm-" + k);
     if (document.activeElement !== box) box.checked = s.permissions[k];
   }
@@ -377,11 +399,12 @@ async function refresh() {
 $("btn-pair").onclick = async () => render(await post("pair"));
 $("btn-new").onclick = async () => render(await post("pair"));
 $("btn-cancel").onclick = async () => render(await post("cancel-pair"));
-for (const k of ["power", "session", "apps"]) {
+for (const k of ["power", "session", "apps", "screen"]) {
   $("perm-" + k).onchange = async () => {
     try {
       render(await post("permissions", {
         power: $("perm-power").checked, session: $("perm-session").checked, apps: $("perm-apps").checked,
+        screen: $("perm-screen").checked,
       }));
     } catch (e) { showBanner(e.message, true); refresh(); }
   };
@@ -421,6 +444,9 @@ $("sc-form").onsubmit = async (e) => {
   } catch (err) { showBanner(err.message, true); }
 };
 
+$("btn-stop-view").onclick = async () => {
+  try { render(await post("stop-screen", {})); } catch (e) { showBanner(e.message, true); }
+};
 $("keep-awake").onchange = async (e) => {
   try { render(await post("keep-awake", { enabled: e.target.checked })); }
   catch (err) { showBanner(err.message, true); refresh(); }

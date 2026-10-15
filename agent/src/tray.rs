@@ -11,8 +11,9 @@ use std::sync::Arc;
 
 use crate::state::AppState;
 
-/// 32×32 RGBA tray icon: a phone outline on a blue rounded square.
-fn icon_rgba() -> (Vec<u8>, u32) {
+/// 32×32 RGBA tray icon: a phone outline on a blue rounded square, with a
+/// red dot while a phone is viewing the screen.
+fn icon_rgba(viewing: bool) -> (Vec<u8>, u32) {
     const N: i32 = 32;
     let mut px = vec![0u8; (N * N * 4) as usize];
     let inside_rounded = |x: i32, y: i32, x0: i32, y0: i32, x1: i32, y1: i32, r: i32| {
@@ -31,7 +32,11 @@ fn icon_rgba() -> (Vec<u8>, u32) {
             let inner = inside_rounded(x, y, 13, 8, 18, 21, 1);
             let dot = (x - 15).pow(2) * 4 + (y - 23).pow(2) * 4 <= 5;
             let white = (outer && !inner) || dot;
-            let (r, g, b, a) = if white {
+            let red_ring = viewing && (x - 25).pow(2) + (y - 6).pow(2) <= 49;
+            let red = viewing && (x - 25).pow(2) + (y - 6).pow(2) <= 30;
+            let (r, g, b, a) = if red {
+                (0xe5, 0x2b, 0x2b, 255)
+            } else if red_ring || white {
                 (255, 255, 255, 255)
             } else if bg {
                 (0x24, 0x57, 0xd6, 255)
@@ -42,6 +47,16 @@ fn icon_rgba() -> (Vec<u8>, u32) {
         }
     }
     (px, N as u32)
+}
+
+#[cfg(windows)]
+fn tooltip(state: &AppState) -> String {
+    let viewing = state.viewing_phones().len();
+    if viewing > 0 {
+        format!("PairDesk – {} – your screen is being viewed", state.name)
+    } else {
+        format!("PairDesk – {}", state.name)
+    }
 }
 
 fn open(url: &str) {
@@ -62,7 +77,8 @@ mod platform {
     use windows_sys::Win32::System::Threading::GetCurrentThreadId;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         DispatchMessageW, GetMessageW, MB_ICONERROR, MB_OK, MSG, MessageBoxW, PM_NOREMOVE,
-        PeekMessageW, PostQuitMessage, PostThreadMessageW, TranslateMessage, WM_QUIT, WM_USER,
+        PeekMessageW, PostQuitMessage, PostThreadMessageW, TranslateMessage, WM_APP, WM_QUIT,
+        WM_USER,
     };
 
     static MAIN_THREAD: AtomicU32 = AtomicU32::new(0);
@@ -105,7 +121,19 @@ mod platform {
         }
     }
 
-    pub fn run(_rt: &tokio::runtime::Runtime, state: Arc<AppState>, url: String, no_tray: bool) {
+    /// Posted to the main thread when screen viewers change.
+    const WM_VIEWERS: u32 = WM_APP + 1;
+
+    pub fn run(rt: &tokio::runtime::Runtime, state: Arc<AppState>, url: String, no_tray: bool) {
+        {
+            let mut rx = state.subscribe_viewers();
+            let tid = MAIN_THREAD.load(Ordering::SeqCst);
+            rt.spawn(async move {
+                while rx.changed().await.is_ok() {
+                    unsafe { PostThreadMessageW(tid, WM_VIEWERS, 0, 0) };
+                }
+            });
+        }
         let open_item = MenuItem::new("Open PairDesk", true, None);
         let pair_item = MenuItem::new("Pair a phone…", true, None);
         let quit_item = MenuItem::new("Stop PairDesk", true, None);
@@ -122,7 +150,7 @@ mod platform {
                 ])
                 .map_err(|e| e.to_string())
                 .and_then(|_| {
-                    let (rgba, n) = icon_rgba();
+                    let (rgba, n) = icon_rgba(false);
                     let icon = Icon::from_rgba(rgba, n, n).map_err(|e| e.to_string())?;
                     TrayIconBuilder::new()
                         .with_menu(Box::new(menu))
@@ -147,6 +175,17 @@ mod platform {
                 let r = GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0);
                 if r == 0 || r == -1 {
                     break;
+                }
+                if msg.message == WM_VIEWERS {
+                    if let Some(t) = &tray {
+                        let viewing = !state.viewing_phones().is_empty();
+                        let (rgba, n) = icon_rgba(viewing);
+                        if let Ok(icon) = Icon::from_rgba(rgba, n, n) {
+                            let _ = t.set_icon(Some(icon));
+                        }
+                        let _ = t.set_tooltip(Some(tooltip(&state)));
+                    }
+                    continue;
                 }
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
@@ -198,6 +237,7 @@ mod platform {
     struct Tray {
         url: String,
         name: String,
+        viewing: bool,
     }
 
     #[cfg(target_os = "linux")]
@@ -206,10 +246,14 @@ mod platform {
             "pairdesk".into()
         }
         fn title(&self) -> String {
-            format!("PairDesk – {}", self.name)
+            if self.viewing {
+                format!("PairDesk – {} – your screen is being viewed", self.name)
+            } else {
+                format!("PairDesk – {}", self.name)
+            }
         }
         fn icon_pixmap(&self) -> Vec<ksni::Icon> {
-            let (mut data, n) = icon_rgba();
+            let (mut data, n) = icon_rgba(self.viewing);
             for p in data.chunks_exact_mut(4) {
                 p.rotate_right(1); // RGBA → ARGB
             }
@@ -255,13 +299,19 @@ mod platform {
             let tray = Tray {
                 url,
                 name: state.name.clone(),
+                viewing: false,
             };
+            let state = state.clone();
             rt.spawn(async move {
                 match tray.spawn().await {
                     Ok(handle) => {
-                        // Keep the tray alive until the agent stops.
+                        // Lives until the agent stops; shows screen viewers.
+                        let mut rx = state.subscribe_viewers();
+                        while rx.changed().await.is_ok() {
+                            let viewing = !state.viewing_phones().is_empty();
+                            handle.update(|t| t.viewing = viewing).await;
+                        }
                         std::future::pending::<()>().await;
-                        drop(handle);
                     }
                     Err(e) => {
                         log::warn!("no tray icon ({e}); run pairdesk-agent again to open settings")
@@ -280,3 +330,21 @@ mod platform {
 }
 
 pub use platform::{attach_console, request_quit, run, show_error};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn icon_shows_a_red_dot_only_while_viewed() {
+        let px = |img: &[u8], x: usize, y: usize| -> [u8; 4] {
+            img[(y * 32 + x) * 4..][..4].try_into().unwrap()
+        };
+        let (idle, n) = icon_rgba(false);
+        let (viewed, _) = icon_rgba(true);
+        assert_eq!(n, 32);
+        assert_eq!(px(&viewed, 25, 6), [0xe5, 0x2b, 0x2b, 255], "red dot");
+        assert_ne!(px(&idle, 25, 6), [0xe5, 0x2b, 0x2b, 255]);
+        assert_eq!(px(&idle, 15, 15), px(&viewed, 15, 15), "same phone outline");
+    }
+}

@@ -122,6 +122,31 @@ class FakeAgent {
               }),
             );
             return;
+          case 'screen_start':
+            ws.add(
+              jsonEncode({
+                't': 'screen',
+                'id': msg['id'],
+                'monitors': [
+                  {'index': 0, 'name': 'Display 1 (main)', 'width': 1920, 'height': 1080, 'primary': true},
+                  {'index': 1, 'name': 'Display 2', 'width': 1280, 'height': 1024, 'primary': false},
+                ],
+                'monitor': msg['monitor'] ?? 0,
+                'width': 1280,
+                'height': 720,
+              }),
+            );
+            // A cursor-only frame: "PDS1", seq 1, 1280x720, cursor (640, 360), no rects.
+            final f = ByteData(18)
+              ..setUint32(0, 0x31534450, Endian.little)
+              ..setUint32(4, 1, Endian.little)
+              ..setUint16(8, 1280, Endian.little)
+              ..setUint16(10, 720, Endian.little)
+              ..setInt16(12, 640, Endian.little)
+              ..setInt16(14, 360, Endian.little)
+              ..setUint16(16, 0, Endian.little);
+            ws.add(f.buffer.asUint8List());
+            return;
           case 'apps':
             ws.add(
               jsonEncode({
@@ -502,5 +527,31 @@ void main() {
       expect(l.addresses.length, Laptop.maxAddresses);
       expect(l.addresses.take(3), ['10.0.0.5', '100.64.0.1', '10.0.0.9']);
     });
+  });
+
+  test('screen view: start, frames, acks and pointing', () async {
+    agent.features = ['combo', 'power', 'apps', 'screen'];
+    final conn = AgentConnection(pingInterval: const Duration(hours: 1));
+    await conn.pair(infoFor(agent), me, phoneName: 'p');
+    final firstFrame = conn.screenFrames.first;
+    final info = await conn.startScreen(quality: 'low');
+    expect((info.width, info.height), (1280, 720));
+    expect(info.monitors.map((m) => m.name), ['Display 1 (main)', 'Display 2']);
+    final frame = await firstFrame.timeout(const Duration(seconds: 2));
+    expect(frame.seq, 1);
+    expect((frame.cursorX, frame.cursorY), (640, 360));
+
+    agent.received.clear();
+    conn.ackScreen(1);
+    conn.moveTo(0.25, 0.75);
+    conn.stopScreen();
+    await settle();
+    expect(agent.received, [
+      {'t': 'screen_ack', 'seq': 1},
+      {'t': 'move_to', 'x': 0.25, 'y': 0.75},
+      {'t': 'screen_stop'},
+    ]);
+    expect(agent.received.first.containsKey('id'), isFalse);
+    await conn.disconnect();
   });
 }

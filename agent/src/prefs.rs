@@ -28,6 +28,9 @@ pub struct Prefs {
     /// Launch installed apps and shortcuts.
     #[serde(default = "yes")]
     pub allow_apps: bool,
+    /// See the screen.
+    #[serde(default = "yes")]
+    pub allow_screen: bool,
     #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
     /// Keep the computer from sleeping so phones can always reach it.
@@ -41,6 +44,7 @@ impl Default for Prefs {
             allow_power: true,
             allow_session: true,
             allow_apps: true,
+            allow_screen: true,
             shortcuts: Vec::new(),
             keep_awake: false,
         }
@@ -87,6 +91,7 @@ impl Prefs {
             power: self.allow_power,
             session: self.allow_session,
             apps: self.allow_apps,
+            screen: self.allow_screen,
         }
     }
 
@@ -131,6 +136,11 @@ impl PrefsStore {
         self.prefs.allow_power = power;
         self.prefs.allow_session = session;
         self.prefs.allow_apps = apps;
+        self.save()
+    }
+
+    pub fn set_allow_screen(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.allow_screen = on;
         self.save()
     }
 

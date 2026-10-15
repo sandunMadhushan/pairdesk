@@ -13,7 +13,7 @@ AGENT=${AGENT:-$ROOT/agent/target/release/pairdesk-agent}
 PORT=${PORT:-47811}
 DATA=$(mktemp -d)
 export DISPLAY=:97
-cleanup() { kill ${APID:-} ${XPID:-} 2>/dev/null || true; [ -n "${WINE:-}" ] && { command -v wineserver >/dev/null && wineserver -k || /usr/lib/wine/wineserver -k; } 2>/dev/null; rm -rf "$DATA"; }
+cleanup() { kill ${APID:-} ${SCREENPID:-} ${XPID:-} 2>/dev/null || true; [ -n "${WINE:-}" ] && { command -v wineserver >/dev/null && wineserver -k || /usr/lib/wine/wineserver -k; } 2>/dev/null; rm -rf "$DATA"; }
 trap cleanup EXIT
 
 Xvfb :97 -noreset -screen 0 1280x800x24 >/dev/null 2>&1 & XPID=$!
@@ -22,6 +22,24 @@ python3 - <<'PY'
 from Xlib import display
 d = display.Display(); d.screen().root.warp_pointer(100, 100); d.sync()
 PY
+
+# Something to look at for screen view: a red window, turned green when
+# the phone test asks (by creating $DATA/turn-green).
+python3 - "$DATA/turn-green" <<'PY' & SCREENPID=$!
+import os, sys, time
+from Xlib import X, display
+d = display.Display()
+s = d.screen()
+w = s.root.create_window(0, 0, 400, 300, 0, s.root_depth, X.InputOutput, X.CopyFromParent,
+                         background_pixel=0xFF0000, override_redirect=True)
+w.map(); d.sync()
+while not os.path.exists(sys.argv[1]):
+    time.sleep(0.05)
+w.change_attributes(background_pixel=0x00FF00); w.clear_area(); d.sync()
+while True:
+    time.sleep(1)
+PY
+sleep 0.5
 
 # Power actions are logged, not performed.
 export PAIRDESK_POWER_DRY_RUN=1
@@ -68,7 +86,7 @@ echo "agent link: ${LINK%%&t=*}&t=…"
 (cd "$ROOT/mobile" && PAIRDESK_E2E_LINK="$LINK" PAIRDESK_E2E_SETTINGS="$SETTINGS" \
   PAIRDESK_E2E_OS="${WINE:+windows}" PAIRDESK_E2E_PROGRAM="$E2E_PROGRAM" \
   PAIRDESK_E2E_PROGRAM_ARGS="$E2E_ARGS" PAIRDESK_E2E_APP="$E2E_APP" \
-  PAIRDESK_E2E_TAILSCALE="${E2E_TAILSCALE:-}" \
+  PAIRDESK_E2E_TAILSCALE="${E2E_TAILSCALE:-}" PAIRDESK_E2E_SCREEN_SIGNAL="$DATA/turn-green" \
   flutter test test/e2e_real_agent_test.dart)
 
 # Launched from the phone: the shortcut (and, on Linux, the installed app) ran.

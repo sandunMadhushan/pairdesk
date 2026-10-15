@@ -28,6 +28,11 @@ pub enum InputCmd {
     },
     Text(String),
     Key(NamedKey),
+    /// Absolute pointer position in virtual-desktop pixels.
+    MoveTo {
+        x: i32,
+        y: i32,
+    },
     Combo {
         mods: Vec<Modifier>,
         key: Option<NamedKey>,
@@ -121,6 +126,7 @@ fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
                 enigo.move_mouse(*dx, *dy, Coordinate::Rel)?;
             }
         }
+        InputCmd::MoveTo { x, y } => move_to(enigo, *x, *y)?,
         InputCmd::Click(b) => enigo.button(button(*b), Direction::Click)?,
         InputCmd::Down(b) => enigo.button(button(*b), Direction::Press)?,
         InputCmd::Up(b) => enigo.button(button(*b), Direction::Release)?,
@@ -171,6 +177,21 @@ fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
         }
     }
     Ok(())
+}
+
+/// Windows: `SetCursorPos` covers every monitor (enigo's absolute move
+/// only maps the main one). Linux: XTest absolute motion on the root window.
+#[cfg(windows)]
+fn move_to(_enigo: &mut Enigo, x: i32, y: i32) -> enigo::InputResult<()> {
+    if unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y) } == 0 {
+        return Err(enigo::InputError::Simulate("SetCursorPos failed"));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn move_to(enigo: &mut Enigo, x: i32, y: i32) -> enigo::InputResult<()> {
+    enigo.move_mouse(x, y, Coordinate::Abs)
 }
 
 fn modifier(m: Modifier) -> Key {
