@@ -148,10 +148,10 @@ class _ButtonsTabState extends State<ButtonsTab> {
     if (buttons == null) return const Center(child: CircularProgressIndicator());
     final theme = Theme.of(context);
     if (!widget.connection.features.contains('combo')) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('Update PairDesk on the computer to use buttons.', textAlign: TextAlign.center),
+          padding: const EdgeInsets.all(32),
+          child: Text(widget.connection.outdatedComputerMessage(), textAlign: TextAlign.center),
         ),
       );
     }
@@ -208,9 +208,7 @@ class _ButtonsTabState extends State<ButtonsTab> {
                           b.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
-                          ),
+                          style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSecondaryContainer),
                         ),
                         const SizedBox(height: 2),
                         Text(

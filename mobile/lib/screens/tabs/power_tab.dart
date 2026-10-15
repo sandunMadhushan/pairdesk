@@ -24,9 +24,7 @@ Future<bool> confirmPower(BuildContext context, PowerAction a, String computer) 
     builder: (ctx) => AlertDialog(
       icon: Icon(powerIcon(a)),
       title: Text('${powerLabel(a)} $computer?'),
-      content: Text(
-        'Unsaved work in open apps may be lost. You can\'t undo this from the phone once it starts.',
-      ),
+      content: Text('Unsaved work in open apps may be lost. You can\'t undo this from the phone once it starts.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
         FilledButton(
@@ -65,10 +63,10 @@ class PowerTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (!connection.features.contains('power')) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('Update PairDesk on the computer to use power actions.', textAlign: TextAlign.center),
+          padding: const EdgeInsets.all(32),
+          child: Text(connection.outdatedComputerMessage(), textAlign: TextAlign.center),
         ),
       );
     }

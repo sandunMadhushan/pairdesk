@@ -199,6 +199,7 @@ async fn pairs_then_reconnects_and_sends_input() {
     assert_eq!(welcome["t"], "welcome");
     assert_eq!(welcome["paired"], true);
     assert_eq!(welcome["name"], "test-pc");
+    assert_eq!(welcome["version"], env!("CARGO_PKG_VERSION"));
     assert!(agent.state.is_paired(&id_of(&key)));
     assert!(agent.state.pairing_link().is_none(), "code is used up");
     drop(ws);

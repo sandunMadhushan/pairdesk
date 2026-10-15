@@ -22,6 +22,7 @@ class AppSettings extends ChangeNotifier {
   static const _kLockAfter = 'pairdesk.settings.lockAfter';
   static const _kSpeed = 'pairdesk.settings.pointerSpeed';
   static const _kNatural = 'pairdesk.settings.naturalScroll';
+  static const _kScreenTouchpad = 'pairdesk.settings.screenTouchpad';
 
   static const minSpeed = 0.5;
   static const maxSpeed = 2.5;
@@ -57,6 +58,14 @@ class AppSettings extends ChangeNotifier {
   bool get naturalScroll => _prefs.getBool(_kNatural) ?? true;
   Future<void> setNaturalScroll(bool on) async {
     await _prefs.setBool(_kNatural, on);
+    notifyListeners();
+  }
+
+  /// Screen view: true moves the pointer like a touchpad, false puts it
+  /// where you tap.
+  bool get screenTouchpad => _prefs.getBool(_kScreenTouchpad) ?? true;
+  Future<void> setScreenTouchpad(bool on) async {
+    await _prefs.setBool(_kScreenTouchpad, on);
     notifyListeners();
   }
 }

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pairdesk/agent_connection.dart' show MouseBtn;
 import 'package:pairdesk/touchpad_gestures.dart';
@@ -95,4 +97,128 @@ void main() {
     g.pointerMove(1, const Offset(180, 260), ms(310));
     expect(moves, isEmpty);
   });
+
+  group('screen view extras', () {
+    late List<(MouseBtn, bool)> buttons;
+    late List<double> pinches;
+    late List<_FakeTimer> timers;
+
+    setUp(() {
+      buttons = [];
+      pinches = [];
+      timers = [];
+      g = TouchpadGestures(
+        onMove: (dx, dy) => moves.add((dx, dy)),
+        onClick: clicks.add,
+        onScroll: (dx, dy) => scrolls.add((dx, dy)),
+        onButton: (b, down) => buttons.add((b, down)),
+        onPinch: (scale, _) => pinches.add(scale),
+        sensitivity: 1.0,
+        timer: (d, f) {
+          final t = _FakeTimer(f);
+          timers.add(t);
+          return t;
+        },
+      );
+    });
+
+    void tap(int at) {
+      g.pointerDown(1, const Offset(100, 100), ms(at));
+      g.pointerUp(1, const Offset(100, 100), ms(at + 60));
+    }
+
+    test('a single tap clicks once the double-tap window passes', () {
+      tap(0);
+      expect(clicks, isEmpty);
+      timers.single.fire();
+      expect(clicks, [MouseBtn.left]);
+      expect(buttons, isEmpty);
+    });
+
+    test('tap, then touch and move, drags with the left button held', () {
+      tap(0);
+      g.pointerDown(1, const Offset(100, 100), ms(150));
+      g.pointerMove(1, const Offset(130, 100), ms(200));
+      g.pointerMove(1, const Offset(160, 120), ms(250));
+      expect(buttons, [(MouseBtn.left, true)]);
+      expect(g.dragging, isTrue);
+      g.pointerUp(1, const Offset(160, 120), ms(300));
+      expect(buttons, [(MouseBtn.left, true), (MouseBtn.left, false)]);
+      expect(clicks, isEmpty, reason: 'the tap became the drag');
+      expect(moves, isNotEmpty);
+      expect(timers.single.isActive, isFalse);
+    });
+
+    test('two quick taps are a double click', () {
+      tap(0);
+      tap(150);
+      expect(clicks, [MouseBtn.left, MouseBtn.left]);
+      expect(buttons, isEmpty);
+    });
+
+    test('a touch after the window is a new gesture; the old click went out', () {
+      tap(0);
+      timers.single.fire();
+      g.pointerDown(1, const Offset(100, 100), ms(600));
+      g.pointerMove(1, const Offset(150, 100), ms(650));
+      g.pointerUp(1, const Offset(150, 100), ms(700));
+      expect(clicks, [MouseBtn.left]);
+      expect(buttons, isEmpty, reason: 'just moved the pointer');
+    });
+
+    test('spreading two fingers zooms instead of scrolling', () {
+      g.pointerDown(1, const Offset(100, 300), ms(0));
+      g.pointerDown(2, const Offset(200, 300), ms(5));
+      for (var i = 1; i <= 5; i++) {
+        g.pointerMove(1, Offset(100 - i * 10.0, 300), ms(10 + i * 20));
+        g.pointerMove(2, Offset(200 + i * 10.0, 300), ms(15 + i * 20));
+      }
+      g.pointerUp(1, const Offset(50, 300), ms(200));
+      g.pointerUp(2, const Offset(250, 300), ms(205));
+      expect(scrolls, isEmpty);
+      final total = pinches.fold(1.0, (a, b) => a * b);
+      expect(total, closeTo(2.0, 0.01), reason: 'fingers went from 100 to 200 px apart');
+      expect(clicks, isEmpty);
+    });
+
+    test('two fingers moving together still scroll', () {
+      g.pointerDown(1, const Offset(100, 300), ms(0));
+      g.pointerDown(2, const Offset(200, 300), ms(5));
+      for (var i = 1; i <= 6; i++) {
+        g.pointerMove(1, Offset(100, 300 - i * 15.0), ms(10 + i * 20));
+        g.pointerMove(2, Offset(200, 300 - i * 15.0), ms(15 + i * 20));
+      }
+      expect(pinches, isEmpty);
+      expect(scrolls, isNotEmpty);
+    });
+
+    test('reset releases a held drag', () {
+      tap(0);
+      g.pointerDown(1, const Offset(100, 100), ms(150));
+      g.pointerMove(1, const Offset(140, 100), ms(200));
+      g.reset();
+      expect(buttons, [(MouseBtn.left, true), (MouseBtn.left, false)]);
+    });
+  });
+}
+
+class _FakeTimer implements Timer {
+  _FakeTimer(this._f);
+  final void Function() _f;
+  bool _active = true;
+
+  void fire() {
+    if (!_active) return;
+    _active = false;
+    _f();
+  }
+
+  @override
+  void cancel() => _active = false;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
 }

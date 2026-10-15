@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Live view of the computer's screen. Tap to click there, press and hold
-// to right-click, pinch to zoom. Streams only while this tab is visible.
+// Live view of the computer's screen. Two ways to move the pointer:
+//  - touchpad (default): drag one finger to move it, tap to click, tap and
+//    drag to drag, two fingers to scroll or right-click, pinch to zoom; the
+//    zoomed view follows the pointer;
+//  - tap: the pointer goes where you tap; press and hold to right-click.
+// Streams only while this tab is visible.
 
 import 'dart:async';
 import 'dart:ui' as ui;
@@ -11,12 +15,16 @@ import 'package:flutter/services.dart';
 import '../../agent_connection.dart';
 import '../../screen/compositor.dart';
 import '../../screen/frame.dart';
+import '../../screen/viewport.dart';
+import '../../settings/app_settings.dart';
+import '../../touchpad_gestures.dart';
 
 class ScreenTab extends StatefulWidget {
   const ScreenTab({
     super.key,
     required this.connection,
     required this.active,
+    this.settings,
     this.fullscreen = false,
     this.onFullscreen,
   });
@@ -25,6 +33,9 @@ class ScreenTab extends StatefulWidget {
 
   /// Streams only while true (the tab is visible).
   final bool active;
+
+  /// Pointer speed, scroll direction and the chosen pointer mode.
+  final AppSettings? settings;
   final bool fullscreen;
   final ValueChanged<bool>? onFullscreen;
 
@@ -51,8 +62,54 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
   int _frames = 0, _bytes = 0;
   String _stats = '';
   bool _foreground = true;
+  late bool _touchpad = widget.settings?.screenTouchpad ?? true;
+  final _viewport = ScreenViewport();
+  Size? _viewSize;
+  late final TouchpadGestures _gestures = TouchpadGestures(
+    onMove: (dx, dy) {
+      _hideHint();
+      _conn.move(dx, dy);
+    },
+    onClick: (b) {
+      _hideHint();
+      HapticFeedback.lightImpact();
+      _conn.click(b);
+    },
+    onScroll: (dx, dy) =>
+        (widget.settings?.naturalScroll ?? true) ? _conn.scroll(dx: dx, dy: dy) : _conn.scroll(dx: -dx, dy: -dy),
+    onButton: (b, down) {
+      _hideHint();
+      if (down) {
+        HapticFeedback.selectionClick();
+        _conn.buttonDown(b);
+      } else {
+        _conn.buttonUp(b);
+      }
+    },
+    onPinch: (scale, focal) {
+      final view = _viewSize, image = _compositor.image;
+      if (view == null || image == null) return;
+      setState(() => _viewport.zoomBy(scale, focal, view, _pictureSize(image)));
+    },
+  );
 
   AgentConnection get _conn => widget.connection;
+
+  static Size _pictureSize(ui.Image image) => Size(image.width.toDouble(), image.height.toDouble());
+
+  void _hideHint() {
+    if (_showHint) setState(() => _showHint = false);
+  }
+
+  void _setTouchpad(bool on) {
+    _gestures.reset();
+    setState(() {
+      _touchpad = on;
+      _showHint = true;
+      _viewport.reset();
+    });
+    widget.settings?.setScreenTouchpad(on);
+  }
 
   @override
   void initState() {
@@ -102,6 +159,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
     _framesSub?.cancel();
     _stoppedSub?.cancel();
     _statsTimer?.cancel();
+    _gestures.reset();
     if (_streaming) _conn.stopScreen();
     if (widget.fullscreen) _setSystemFullscreen(false);
     _compositor.dispose();
@@ -134,6 +192,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
   }
 
   void _stop() {
+    _gestures.reset();
     if (!_streaming && !_starting) return;
     _conn.stopScreen();
     _queue.clear();
@@ -166,6 +225,10 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
         setState(() {
           _cursorX = f.cursorX;
           _cursorY = f.cursorY;
+          final view = _viewSize, image = _compositor.image, cx = f.cursorX, cy = f.cursorY;
+          if (_touchpad && view != null && image != null && cx != null && cy != null) {
+            _viewport.follow(Offset(cx.toDouble(), cy.toDouble()), view, _pictureSize(image));
+          }
         });
       }
     } finally {
@@ -174,6 +237,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
   }
 
   void _restart({int? monitor, String? quality}) {
+    if (monitor != null && monitor != _monitor) _viewport.reset();
     _monitor = monitor ?? _monitor;
     _quality = quality ?? _quality;
     if (_streaming || _error != null) _start();
@@ -191,7 +255,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
   void _pointAt(Offset local, Size size, MouseBtn button) {
     if (!_streaming) return;
     HapticFeedback.lightImpact();
-    if (_showHint) setState(() => _showHint = false);
+    _hideHint();
     _conn.moveTo((local.dx / size.width).clamp(0.0, 1.0), (local.dy / size.height).clamp(0.0, 1.0));
     _conn.click(button);
   }
@@ -221,6 +285,13 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
               ),
             ),
           ),
+          IconButton(
+            tooltip: _touchpad
+                ? 'Pointer: touchpad (tap to switch to tap-to-point)'
+                : 'Pointer: tap to point (tap to switch to touchpad)',
+            icon: Icon(_touchpad ? Icons.mouse_outlined : Icons.touch_app_outlined),
+            onPressed: () => _setTouchpad(!_touchpad),
+          ),
           if (monitors.length > 1)
             PopupMenuButton<int>(
               tooltip: 'Choose display',
@@ -235,11 +306,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
                   ),
               ],
             ),
-          IconButton(
-            tooltip: 'Full screen',
-            icon: const Icon(Icons.fullscreen),
-            onPressed: _toggleFullscreen,
-          ),
+          IconButton(tooltip: 'Full screen', icon: const Icon(Icons.fullscreen), onPressed: _toggleFullscreen),
         ],
       ),
     );
@@ -260,6 +327,27 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Getting the screen…')],
               ),
+      );
+    } else if (_touchpad) {
+      _gestures.sensitivity = 1.6 * (widget.settings?.pointerSpeed ?? 1.0);
+      content = LayoutBuilder(
+        builder: (context, box) {
+          final view = box.biggest;
+          _viewSize = view;
+          final t = _viewport.transform(view, _pictureSize(image));
+          return Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (e) => _gestures.pointerDown(e.pointer, e.localPosition, e.timeStamp),
+            onPointerMove: (e) => _gestures.pointerMove(e.pointer, e.localPosition, e.timeStamp),
+            onPointerUp: (e) => _gestures.pointerUp(e.pointer, e.localPosition, e.timeStamp),
+            onPointerCancel: (e) => _gestures.pointerCancel(e.pointer),
+            child: CustomPaint(
+              key: const ValueKey('touchpad-view'),
+              size: view,
+              painter: _ScreenPainter(image, _cursorX, _cursorY, transform: t),
+            ),
+          );
+        },
       );
     } else {
       content = InteractiveViewer(
@@ -302,14 +390,18 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
                     ),
                   ),
                 if (image != null && _showHint && _streaming)
-                  const Positioned(
+                  Positioned(
                     left: 12,
                     right: 12,
                     top: 12,
-                    child: _Hint(text: 'Tap to click · press and hold to right-click · pinch to zoom'),
+                    child: _Hint(
+                      text: _touchpad
+                          ? 'Move with one finger · tap to click · tap, then drag to drag\n'
+                                'Two fingers: scroll · two-finger tap: right-click · pinch to zoom'
+                          : 'Tap to click there · press and hold to right-click · pinch to zoom',
+                    ),
                   ),
-                if (_stats.isNotEmpty)
-                  Positioned(left: 8, bottom: 8, child: _Hint(text: _stats, small: true)),
+                if (_stats.isNotEmpty) Positioned(left: 8, bottom: 8, child: _Hint(text: _stats, small: true)),
                 if (widget.fullscreen)
                   Positioned(
                     right: 8,
@@ -330,23 +422,31 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
 }
 
 class _ScreenPainter extends CustomPainter {
-  _ScreenPainter(this.image, this.cursorX, this.cursorY);
+  _ScreenPainter(this.image, this.cursorX, this.cursorY, {this.transform});
   final ui.Image image;
   final int? cursorX, cursorY;
 
+  /// Touchpad view: where the picture goes. Otherwise it fills [size].
+  final ViewTransform? transform;
+
   @override
   void paint(Canvas canvas, Size size) {
+    final picture = Size(image.width.toDouble(), image.height.toDouble());
+    final t = transform ?? ViewTransform(size.width / picture.width, Offset.zero);
     canvas.drawImageRect(
       image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Offset.zero & size,
+      Offset.zero & picture,
+      transform == null ? Offset.zero & size : t.pictureRect(picture),
       Paint()..filterQuality = FilterQuality.medium,
     );
     final cx = cursorX, cy = cursorY;
     if (cx == null || cy == null) return;
-    // The computer's pointer, drawn as an arrow.
-    final p = Offset(cx * size.width / image.width, cy * size.height / image.height);
-    const s = 1.0;
+    // The computer's pointer, drawn as an arrow; a bit larger in the
+    // touchpad view, where it's what you steer by.
+    final p = transform == null
+        ? Offset(cx * size.width / image.width, cy * size.height / image.height)
+        : t.toView(Offset(cx.toDouble(), cy.toDouble()));
+    final s = transform == null ? 1.0 : 1.3;
     final arrow = Path()
       ..moveTo(p.dx, p.dy)
       ..lineTo(p.dx, p.dy + 16 * s)
@@ -368,7 +468,11 @@ class _ScreenPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ScreenPainter old) =>
-      old.image != image || old.cursorX != cursorX || old.cursorY != cursorY;
+      old.image != image ||
+      old.cursorX != cursorX ||
+      old.cursorY != cursorY ||
+      old.transform?.scale != transform?.scale ||
+      old.transform?.offset != transform?.offset;
 }
 
 class _Hint extends StatelessWidget {
@@ -380,10 +484,7 @@ class _Hint extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(8)),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: small ? 6 : 10, vertical: small ? 2 : 6),
           child: Text(

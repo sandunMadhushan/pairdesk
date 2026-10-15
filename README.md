@@ -28,7 +28,7 @@ no codes or "accept" prompts every time.
 | Apps | Open any installed app, plus websites, folders and programs you add on the computer's settings page |
 | Power | Lock, sleep, screen off, sign out, restart, shut down (each can be switched off on the computer) |
 | App lock | Optional fingerprint, face or screen-lock check to open PairDesk |
-| Screen | Live view of the computer's screen: tap to click there, hold to right-click, pinch to zoom, full screen; red tray dot while watched |
+| Screen | Live view of the computer's screen. Move the pointer like on the touchpad (tap to click, tap-and-drag to drag, two fingers to scroll or right-click, pinch to zoom; the zoomed view follows the pointer), or switch to tap-to-point. Full screen; red tray dot while watched |
 | Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) (free for personal use); picks Wi-Fi or Tailscale by itself |
 
 ## Quick start
@@ -48,6 +48,11 @@ Download the agent and the app from the
 That's it. From now on, open PairDesk on the phone and it connects by itself. The
 agent starts when you sign in to the computer and lives in the tray; click the tray
 icon to open its page, pair another phone or remove one.
+
+**Updating:** download the new agent and open it. From 0.5.1 on, it replaces the
+running older one by itself and the start-at-sign-in entry follows it to its new
+file. (Updating from 0.5.0 or earlier: right-click the PairDesk tray icon →
+**Stop PairDesk** first, then open the new one.)
 
 Phone and computer must be on the same Wi-Fi. Some guest or campus networks block
 devices from talking to each other; a phone hotspot or home Wi-Fi works.

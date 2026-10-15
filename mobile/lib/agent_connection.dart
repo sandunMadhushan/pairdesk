@@ -119,8 +119,7 @@ bool isTailscaleHost(String host) => isTailscaleAddress(host);
 bool isUsableHost(String host) {
   final ip = InternetAddress.tryParse(host);
   if (ip != null) return ip.type == InternetAddressType.IPv4 && !ip.isLoopback;
-  return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) &&
-      host.length < 254;
+  return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) && host.length < 254;
 }
 
 /// Opens a WebSocket over TLS that only accepts the pinned certificate.
@@ -278,6 +277,11 @@ class AgentConnection extends ChangeNotifier {
   String? _agentOs;
   String? get agentOs => _agentOs;
 
+  String? _agentVersion;
+
+  /// The computer's PairDesk release ("0.5.1"); null before 0.5.1.
+  String? get agentVersion => _agentVersion;
+
   Set<String> _features = const {};
 
   /// Optional features the computer supports (`combo`, `power`, `apps`).
@@ -312,12 +316,7 @@ class AgentConnection extends ChangeNotifier {
   /// Pairs with the computer from a scanned QR code and stays connected.
   /// Returns the computer to save.
   Future<Laptop> pair(PairingInfo info, PhoneIdentity me, {required String phoneName}) async {
-    final laptop = Laptop(
-      fingerprint: info.fingerprint,
-      name: info.name,
-      port: info.port,
-      addresses: info.addresses,
-    );
+    final laptop = Laptop(fingerprint: info.fingerprint, name: info.name, port: info.port, addresses: info.addresses);
     await _connectAny(
       laptop,
       me,
@@ -488,6 +487,7 @@ class AgentConnection extends ChangeNotifier {
     if (welcome['t'] != 'welcome') throw _unexpected(welcome);
     _agentName = welcome['name'] as String?;
     _agentOs = welcome['os'] as String?;
+    _agentVersion = welcome['version'] as String?;
     _features = {
       if (welcome['features'] is List)
         for (final f in welcome['features'] as List)
@@ -710,8 +710,25 @@ class AgentConnection extends ChangeNotifier {
 
   void _requireFeature(String feature) {
     if (!_features.contains(feature)) {
-      throw RequestException('unsupported', 'Update PairDesk on the computer to use this.');
+      throw RequestException('unsupported', outdatedComputerMessage());
     }
+  }
+
+  /// What to tell the user when the computer's PairDesk is too old for
+  /// something. Before 0.5.1 the computer didn't say its version; the usual
+  /// cause then is an old copy still running after a new one was downloaded.
+  String outdatedComputerMessage() {
+    final v = _agentVersion;
+    if (v != null) {
+      return 'The computer has PairDesk $v, which can\'t do this. '
+          'Install the latest PairDesk on the computer.';
+    }
+    final where = _agentOs == 'windows'
+        ? 'right-click the PairDesk icon next to the clock (it may be under the ^ arrow)'
+        : 'open the PairDesk icon in the top bar or system tray';
+    return 'The computer is running an older PairDesk.\n\n'
+        'If you just installed a new one there: $where, choose Stop PairDesk, '
+        'then open the new PairDesk. Otherwise download it from pairdesk.madhushan.me.';
   }
 
   /// Lock, sleep, restart… Completes when the computer accepts.
@@ -724,10 +741,7 @@ class AgentConnection extends ChangeNotifier {
   Future<AppsList> fetchApps() async {
     _requireFeature('apps');
     final reply = await _request({'t': 'apps'}, timeout: const Duration(seconds: 30));
-    return AppsList(
-      shortcuts: RemoteApp.listFrom(reply['shortcuts']),
-      apps: RemoteApp.listFrom(reply['apps']),
-    );
+    return AppsList(shortcuts: RemoteApp.listFrom(reply['shortcuts']), apps: RemoteApp.listFrom(reply['apps']));
   }
 
   /// Opens an app or shortcut by the ID from [fetchApps].
