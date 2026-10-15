@@ -232,6 +232,8 @@ pub enum ServerMsg {
         name: String,
         os: String,
         v: u32,
+        /// The agent's release, e.g. "0.5.1" (added in 0.5.1).
+        version: &'static str,
         /// True when this connection just completed pairing.
         paired: bool,
         /// Optional features this agent supports.
@@ -488,6 +490,7 @@ mod tests {
             name: "laptop".into(),
             os: "windows".into(),
             v: 2,
+            version: "9.9.9",
             paired: false,
             features: vec!["power"],
             allow: Allow {
@@ -501,7 +504,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true},"addrs":["192.168.1.5","100.101.102.103"]}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true},"addrs":["192.168.1.5","100.101.102.103"]}"#
         );
         let json = serde_json::to_string(&ServerMsg::Ack {
             id: Some(4),

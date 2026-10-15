@@ -195,6 +195,7 @@ class _ControlScreenState extends State<ControlScreen> {
                     _visited.contains(_kScreen)
                         ? ScreenTab(
                             connection: _conn,
+                            settings: widget.settings,
                             active: _tab == _kScreen,
                             fullscreen: _fullscreen,
                             onFullscreen: (on) => setState(() => _fullscreen = on),
@@ -240,11 +241,7 @@ class _ControlScreenState extends State<ControlScreen> {
                     selectedIcon: Icon(Icons.grid_view_rounded),
                     label: 'Buttons',
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.apps_outlined),
-                    selectedIcon: Icon(Icons.apps),
-                    label: 'Apps',
-                  ),
+                  NavigationDestination(icon: Icon(Icons.apps_outlined), selectedIcon: Icon(Icons.apps), label: 'Apps'),
                   NavigationDestination(
                     icon: Icon(Icons.power_settings_new_outlined),
                     selectedIcon: Icon(Icons.power_settings_new),

@@ -48,9 +48,7 @@ void main() {
       expect(conn.status, ConnectionStatus.connected);
       expect(
         laptop.os,
-        Platform.environment['PAIRDESK_E2E_OS']?.isNotEmpty == true
-            ? Platform.environment['PAIRDESK_E2E_OS']
-            : 'linux',
+        Platform.environment['PAIRDESK_E2E_OS']?.isNotEmpty == true ? Platform.environment['PAIRDESK_E2E_OS'] : 'linux',
       );
 
       // The pairing code is single use.
@@ -100,7 +98,27 @@ void main() {
       await waitForColour(isGreen, 'the window turning green');
       expect(compositor.image!.width, firstWidth);
       expect(await pixelAt(1000, 700), isNot(predicate<Color>(isGreen)), reason: 'outside the window');
-      // Tapping a spot on the picture puts the real pointer there (100, 100).
+      // Tapping a spot on the picture puts the real pointer there.
+      conn.moveTo(300 / 1279, 200 / 799);
+      // The pointer's new place reaches the phone on its own, quickly,
+      // without waiting for a picture change.
+      final watch = Stopwatch()..start();
+      while (true) {
+        expect(await frames.moveNext().timeout(const Duration(seconds: 3)), isTrue);
+        final f = frames.current;
+        conn.ackScreen(f.seq);
+        await compositor.apply(f);
+        if (f.cursorX == 300 && f.cursorY == 200) break;
+      }
+      expect(watch.elapsedMilliseconds, lessThan(1000));
+      // Touchpad-style moves in the screen view are relative, like the touchpad.
+      conn.move(25, 10);
+      while (true) {
+        expect(await frames.moveNext().timeout(const Duration(seconds: 3)), isTrue);
+        final f = frames.current;
+        conn.ackScreen(f.seq);
+        if (f.cursorX == 325 && f.cursorY == 210) break;
+      }
       conn.moveTo(100 / 1279, 100 / 799);
       await Future<void>.delayed(const Duration(milliseconds: 300));
       conn.stopScreen();
@@ -112,11 +130,7 @@ void main() {
 
       // ---- Phase 3: the computer tells the phone all its addresses ----
       expect(laptop.addresses.first, '127.0.0.1', reason: 'the address that worked comes first');
-      expect(
-        laptop.addresses.length,
-        greaterThanOrEqualTo(2),
-        reason: 'learned the computer\'s own addresses',
-      );
+      expect(laptop.addresses.length, greaterThanOrEqualTo(2), reason: 'learned the computer\'s own addresses');
       expect(conn.viaTailscale, isFalse);
       if (Platform.environment['PAIRDESK_E2E_TAILSCALE'] == '1') {
         // The agent saw Tailscale running and told the phone how to reach it.
@@ -180,13 +194,7 @@ void main() {
       expect(status, 200);
       final state = jsonDecode(body) as Map<String, dynamic>;
       final phones = state['phones'] as List;
-      expect([
-        'running',
-        'not_installed',
-        'not_connected',
-        'checking',
-        'unknown',
-      ], contains(state['remote']['status']));
+      expect(['running', 'not_installed', 'not_connected', 'checking', 'unknown'], contains(state['remote']['status']));
       expect(state['keep_awake'], isFalse);
       expect(phones.single['name'], 'E2E phone');
       expect(phones.single['connected'], true);

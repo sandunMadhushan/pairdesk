@@ -221,6 +221,7 @@ async fn serve(
             name: state.name.clone(),
             os: std::env::consts::OS.into(),
             v: PROTOCOL_VERSION,
+            version: env!("CARGO_PKG_VERSION"),
             paired: who.just_paired,
             features: FEATURES.to_vec(),
             allow,

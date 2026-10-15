@@ -17,6 +17,9 @@ use encode::{Quality, Scaler};
 
 /// Frames allowed on the way before waiting for the phone.
 const MAX_IN_FLIGHT: u32 = 2;
+/// Between frames the pointer is checked this often and sent on its own
+/// (a tiny frame), so it follows the finger without waiting for a frame.
+const CURSOR_POLL: Duration = Duration::from_millis(16);
 /// Stop if the phone hasn't acknowledged anything for this long.
 const ACK_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -229,9 +232,30 @@ fn run(
             last_cursor = cursor;
         }
 
-        let spent = started.elapsed();
-        if spent < interval {
-            std::thread::sleep(interval - spent);
+        // Until the next frame: just the pointer, when it moves.
+        let next = started + interval;
+        while let Some(left) = next.checked_duration_since(Instant::now()) {
+            std::thread::sleep(left.min(CURSOR_POLL));
+            if stop.load(Ordering::Relaxed) {
+                return None;
+            }
+            let m = capturer.monitor();
+            let cursor = encode::scale_cursor(capturer.cursor(), m.x, m.y, m.width, m.height, w, h);
+            if cursor == last_cursor {
+                continue;
+            }
+            {
+                let mut c = credit.0.lock().unwrap_or_else(|p| p.into_inner());
+                if c.sent.wrapping_sub(c.acked) >= MAX_IN_FLIGHT {
+                    continue;
+                }
+                seq = seq.wrapping_add(1);
+                c.sent = seq;
+            }
+            if !out(Out::Frame(encode::frame_message(seq, w, h, cursor, &[]))) {
+                return None;
+            }
+            last_cursor = cursor;
         }
     }
 }

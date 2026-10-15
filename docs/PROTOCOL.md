@@ -48,7 +48,7 @@ code replaces the previous one.
       or → {"t":"hello","v":2,"id":"<phone public key>","name":"Pixel 7"}                 afterwards
 3. agent → {"t":"challenge","nonce":"<32 random bytes>","v":2}
 4. phone → {"t":"auth","sig":"<Ed25519 signature>"}
-5. agent → {"t":"welcome","name":"SANDUN-LAPTOP","os":"windows","v":2,"paired":true}
+5. agent → {"t":"welcome","name":"SANDUN-LAPTOP","os":"windows","v":2,"version":"0.5.1","paired":true}
 ```
 
 The signature covers:
@@ -101,7 +101,7 @@ installed apps plus shortcuts the owner set up on the settings page.
 | `t` | Fields | Meaning |
 | --- | --- | --- |
 | `challenge` | `nonce`, `v` | Sign this (see above) |
-| `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `paired` (true right after pairing), `features` (e.g. `["combo","power","apps"]`), `allow` (`{"power":bool,"session":bool,"apps":bool}`), `addrs` (see below) | Signed in; input is accepted |
+| `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `version` (the agent's release, since 0.5.1; phones use it to explain what to update), `paired` (true right after pairing), `features` (e.g. `["combo","power","apps"]`), `allow` (`{"power":bool,"session":bool,"apps":bool}`), `addrs` (see below) | Signed in; input is accepted |
 | `ack` | `id`, `ok`, and when not ok: `code` (`not_allowed`, `not_found`, `failed`) and `msg` | Answer to `power` or `launch` |
 | `apps` | `id`, `shortcuts`, `apps`: lists of `{"id","name","kind"}`, kind `app`, `url`, `folder`, `file` or `program` | Answer to `apps` |
 | `pong` | — | Reply to `ping` |
@@ -144,6 +144,11 @@ then `count` times: x u16 | y u16 | w u16 | h u16 | len u32 | JPEG bytes
   changed tiles, merged into rectangles; above half the screen it sends one
   full frame. The first frame after `screen_start` or `screen_refresh` is whole.
 - A frame with no rectangles only moves the cursor (`-1, -1` = on another monitor).
+  Between frames the agent checks the pointer every 16 ms and sends such a frame
+  when it moved (within the same two-frame limit), so the pointer drawn on the
+  phone keeps up with the finger.
+- The phone moves the pointer either with `move` (touchpad style: relative, with
+  tap-and-drag sent as `down` / `up`) or with `move_to` (tap to point).
 - **Flow control:** at most two frames are unacknowledged; then the agent waits
   for `screen_ack`, so a slow link gets fewer frames instead of growing delay.
   With no ack for 15 s the agent stops.
@@ -211,6 +216,15 @@ records `id=<first 8 bytes of the fingerprint, hex>` and `v=2`. When none of the
 saved addresses answer, the phone looks for its computer's `id` on the network
 and tries the addresses found. Discovery is only a hint: the certificate is
 still checked.
+
+## Updating the agent
+
+Only one agent runs per computer: the second one finds the port taken. It then
+reads `settings-url.txt` and asks the running agent for `api/state`. If that
+agent is an older release it sends `POST api/quit` (with `X-PairDesk: 1`), waits
+up to 20 s for the port and takes over; otherwise it opens the running agent's
+settings page and exits. On every start, if start-at-sign-in is on, its entry is
+rewritten to point to the running program file (quoted, so paths with spaces work).
 
 ## Settings page (computer only)
 

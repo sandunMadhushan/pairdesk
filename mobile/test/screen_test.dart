@@ -87,6 +87,14 @@ class FakeScreenConnection extends AgentConnection {
   void moveTo(double x, double y) => calls.add('move_to ${x.toStringAsFixed(2)} ${y.toStringAsFixed(2)}');
   @override
   void click(MouseBtn b) => calls.add('click ${b.name}');
+  @override
+  void move(int dx, int dy) => calls.add('move');
+  @override
+  void scroll({int dx = 0, int dy = 0}) => calls.add('scroll $dx $dy');
+  @override
+  void buttonDown(MouseBtn b) => calls.add('down ${b.name}');
+  @override
+  void buttonUp(MouseBtn b) => calls.add('up ${b.name}');
 }
 
 void main() {
@@ -120,11 +128,7 @@ void main() {
       final red = await solidPng(64, 40, const Color(0xFFFF0000));
       final blue = await solidPng(32, 20, const Color(0xFF0000FF));
       expect(await comp.apply(ScreenFrame.parse(buildFrame(1, 64, 40, null, [(0, 0, 64, 40, red)]))), isTrue);
-      expect(
-        await comp.apply(ScreenFrame.parse(buildFrame(2, 64, 40, (1, 1), []))),
-        isFalse,
-        reason: 'cursor only',
-      );
+      expect(await comp.apply(ScreenFrame.parse(buildFrame(2, 64, 40, (1, 1), []))), isFalse, reason: 'cursor only');
       await comp.apply(ScreenFrame.parse(buildFrame(3, 64, 40, null, [(32, 20, 32, 20, blue)])));
       final img = comp.image!;
       expect((img.width, img.height), (64, 40));
@@ -163,6 +167,12 @@ void main() {
       expect(conn.calls, contains('ack 1'));
       expect(find.byType(CustomPaint), findsWidgets);
 
+      // Tap-to-point mode: the pointer goes where you tap.
+      expect(find.byKey(const ValueKey('touchpad-view')), findsOneWidget, reason: 'touchpad mode by default');
+      await tester.tap(find.byIcon(Icons.mouse_outlined));
+      await tester.pump();
+      expect(find.byIcon(Icons.touch_app_outlined), findsOneWidget);
+
       // Tap the centre of the picture: pointer goes to the middle, then clicks.
       final box = tester.getRect(find.byType(AspectRatio));
       await tester.tapAt(box.center);
@@ -183,6 +193,76 @@ void main() {
       conn.stopped.add('Screen view was stopped on the computer.');
       await tester.pump();
       expect(find.text('Screen view was stopped on the computer.'), findsOneWidget);
+    });
+
+    testWidgets('touchpad mode: move, click, drag, scroll and zoom like the touchpad', (tester) async {
+      final conn = await showTab(tester);
+      final png = (await tester.runAsync(() => solidPng(64, 40, const Color(0xFF336699))))!;
+      conn.frames.add(ScreenFrame.parse(buildFrame(1, 64, 40, (32, 20), [(0, 0, 64, 40, png)])));
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await tester.pump();
+      }
+      final view = find.byKey(const ValueKey('touchpad-view'));
+      final centre = tester.getCenter(view);
+      conn.calls.clear();
+
+      // One finger anywhere moves the pointer; no jump to the finger.
+      await tester.dragFrom(centre, const Offset(80, 40));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(conn.calls, isNotEmpty);
+      expect(conn.calls.toSet(), {'move'});
+      expect(conn.calls.any((c) => c.startsWith('move_to')), isFalse);
+
+      // A tap clicks (after the double-tap window).
+      conn.calls.clear();
+      await tester.tapAt(centre);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(conn.calls, ['click left']);
+
+      // Tap, then touch again and drag: the left button is held.
+      conn.calls.clear();
+      await tester.tapAt(centre);
+      await tester.pump(const Duration(milliseconds: 80));
+      final g = await tester.startGesture(centre);
+      for (var i = 0; i < 5; i++) {
+        await g.moveBy(const Offset(10, 5));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(conn.calls.first, 'down left');
+      expect(conn.calls.last, 'up left');
+      expect(conn.calls.where((c) => c == 'click left'), isEmpty);
+
+      // Two fingers moving together scroll.
+      conn.calls.clear();
+      final a = await tester.startGesture(centre - const Offset(40, 0), pointer: 11);
+      final b = await tester.startGesture(centre + const Offset(40, 0), pointer: 12);
+      for (var i = 0; i < 6; i++) {
+        await a.moveBy(const Offset(0, -15));
+        await b.moveBy(const Offset(0, -15));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await a.up();
+      await b.up();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(conn.calls.where((c) => c.startsWith('scroll')), isNotEmpty);
+      expect(conn.calls.where((c) => c == 'move'), isEmpty);
+
+      // Pinch zooms the picture on the phone; nothing goes to the computer.
+      conn.calls.clear();
+      final c = await tester.startGesture(centre - const Offset(30, 0), pointer: 21);
+      final d = await tester.startGesture(centre + const Offset(30, 0), pointer: 22);
+      for (var i = 0; i < 6; i++) {
+        await c.moveBy(const Offset(-15, 0));
+        await d.moveBy(const Offset(15, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await c.up();
+      await d.up();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(conn.calls, isEmpty, reason: 'a pinch neither scrolls nor moves the pointer');
     });
 
     testWidgets('explains when screen view is turned off', (tester) async {

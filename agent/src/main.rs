@@ -16,6 +16,7 @@ mod config;
 mod discovery;
 mod identity;
 mod input;
+mod instance;
 mod net;
 mod pairing;
 mod power;
@@ -131,23 +132,12 @@ fn main() {
     };
     init_logging(&data_dir);
 
-    // Only one agent per computer: if the port is taken, PairDesk is most
-    // likely already running, so just show its settings page.
+    // Only one agent per computer. If the port is taken it's most likely
+    // PairDesk already running: an older release gives way to this one,
+    // otherwise its settings page is shown.
     let listener = match std::net::TcpListener::bind((args.bind.as_str(), args.port)) {
         Ok(l) => l,
-        Err(e) if e.kind() == ErrorKind::AddrInUse => {
-            if let Ok(url) = std::fs::read_to_string(data_dir.join(SETTINGS_URL_FILE)) {
-                if !args.background {
-                    info!("PairDesk is already running; opening its settings");
-                    let _ = webbrowser::open(url.trim());
-                }
-                std::process::exit(0);
-            }
-            fatal(&format!(
-                "port {} is used by another program; start PairDesk with --port <another port>",
-                args.port
-            ));
-        }
+        Err(e) if e.kind() == ErrorKind::AddrInUse => take_over(&args, &data_dir),
         Err(e) => fatal(&format!(
             "cannot listen on {}:{}: {e}",
             args.bind, args.port
@@ -252,6 +242,8 @@ fn main() {
             }
         };
     autostart::enable_on_first_run(&data_dir);
+    // Point start-at-sign-in at this copy, in case it's a new download.
+    autostart::refresh();
 
     print_banner(&state, &settings.url);
     if args.pair {
@@ -272,6 +264,51 @@ fn main() {
     }
     let _ = std::fs::remove_file(data_dir.join(SETTINGS_URL_FILE));
     runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+}
+
+/// The port is taken. Replaces an older PairDesk; otherwise shows the
+/// running one's settings page and exits.
+fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
+    const OURS: &str = env!("CARGO_PKG_VERSION");
+    let Some(running) = instance::find(&data_dir.join(SETTINGS_URL_FILE)) else {
+        fatal(&format!(
+            "port {} is used by another program; start PairDesk with --port <another port>",
+            args.port
+        ));
+    };
+    let older = running
+        .version
+        .as_deref()
+        .filter(|v| instance::is_older(v, OURS));
+    let Some(old) = older else {
+        if !args.background {
+            info!("PairDesk is already running; opening its settings");
+            let _ = webbrowser::open(&running.url);
+        }
+        std::process::exit(0);
+    };
+
+    info!("PairDesk {old} is running; replacing it with {OURS}");
+    if let Err(e) = instance::ask_to_quit(&running.url) {
+        warn!("could not ask PairDesk {old} to stop: {e}");
+    }
+    // It closes within a second or so; give it plenty of time.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        match std::net::TcpListener::bind((args.bind.as_str(), args.port)) {
+            Ok(l) => {
+                info!("took over from PairDesk {old}");
+                return l;
+            }
+            Err(e) if e.kind() == ErrorKind::AddrInUse && std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Err(_) => fatal(&format!(
+                "an older PairDesk ({old}) is still running. Stop it from its tray icon \
+                 (Stop PairDesk), then open PairDesk {OURS} again."
+            )),
+        }
+    }
 }
 
 fn fatal(msg: &str) -> ! {
