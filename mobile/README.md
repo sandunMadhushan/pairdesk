@@ -18,7 +18,10 @@ App ID: `me.madhushan.pairdesk` (must never change after the first public releas
 | `lib/app_model.dart` | App-wide state |
 | `lib/touchpad_gestures.dart` | Finger events → move / click / scroll (pure Dart, unit-tested) |
 | `lib/touchpad.dart` | Touchpad and hold-to-drag button widgets |
-| `lib/screens/` | Home (paired computers), QR scanner, control screen |
+| `lib/screens/` | Home (paired computers), QR scanner, settings, button editor |
+| `lib/screens/tabs/` | Control screen tabs: buttons, apps, power |
+| `lib/buttons/` | Custom button model, defaults and storage |
+| `lib/settings/` | Phone settings and the app lock |
 
 The QR scanner uses ZXing, not Google ML Kit, so the app has no proprietary
 dependencies (needed for F-Droid).

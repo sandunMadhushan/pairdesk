@@ -91,7 +91,14 @@ async fn start_agent() -> Agent {
     let phones = PhoneStore::load(dir.path()).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let state = Arc::new(AppState::new(identity, phones, "test-pc".into(), port));
+    let prefs = crate::prefs::PrefsStore::load(dir.path()).unwrap();
+    let state = Arc::new(AppState::new(
+        identity,
+        phones,
+        prefs,
+        "test-pc".into(),
+        port,
+    ));
     let (input, rx) = InputHandle::recording();
     tokio::spawn(crate::server::run(listener, state.clone(), input));
     Agent {
@@ -357,4 +364,157 @@ async fn wrong_certificate_is_rejected_by_the_phone() {
     let agent = start_agent().await;
     let err = connect(agent.port, [9u8; 32]).await.err().unwrap();
     assert!(err.contains("fingerprint"), "{err}");
+}
+
+/// Paired and signed in; returns the client and the welcome message.
+async fn signed_in(agent: &Agent, seed: u8) -> (Client, Value) {
+    let mut ws = pair(agent, &phone_key(seed)).await;
+    let welcome = recv(&mut ws).await;
+    assert_eq!(welcome["t"], "welcome");
+    (ws, welcome)
+}
+
+#[tokio::test]
+async fn welcome_lists_features_and_permissions() {
+    let agent = start_agent().await;
+    let (_ws, welcome) = signed_in(&agent, 20).await;
+    assert_eq!(welcome["features"], json!(["combo", "power", "apps"]));
+    assert_eq!(
+        welcome["allow"],
+        json!({"power": true, "session": true, "apps": true})
+    );
+}
+
+#[tokio::test]
+async fn combo_reaches_the_input_thread() {
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 21).await;
+    send(
+        &mut ws,
+        json!({"t":"combo","mods":["ctrl","shift"],"k":"escape"}),
+    )
+    .await;
+    send(&mut ws, json!({"t":"combo","mods":["ctrl"],"c":"v"})).await;
+    // Round trip so the agent has handled both before we look.
+    send(&mut ws, json!({"t":"ping"})).await;
+    assert_eq!(recv(&mut ws).await["t"], "pong");
+    use crate::protocol::{Modifier, NamedKey};
+    assert_eq!(
+        agent.input.recv_timeout(Duration::from_secs(2)).unwrap(),
+        InputCmd::Combo {
+            mods: vec![Modifier::Ctrl, Modifier::Shift],
+            key: Some(NamedKey::Escape),
+            ch: None
+        }
+    );
+    assert_eq!(
+        agent.input.recv_timeout(Duration::from_secs(2)).unwrap(),
+        InputCmd::Combo {
+            mods: vec![Modifier::Ctrl],
+            key: None,
+            ch: Some('v')
+        }
+    );
+}
+
+#[tokio::test]
+async fn power_actions_follow_the_owners_permissions() {
+    // Never really lock or shut down the machine running the tests.
+    unsafe { std::env::set_var("PAIRDESK_POWER_DRY_RUN", "1") };
+    let agent = start_agent().await;
+    agent
+        .state
+        .prefs()
+        .set_permissions(true, false, true)
+        .unwrap();
+    let (mut ws, welcome) = signed_in(&agent, 22).await;
+    assert_eq!(welcome["allow"]["session"], false);
+
+    send(&mut ws, json!({"t":"power","id":1,"a":"shut_down"})).await;
+    let ack = recv(&mut ws).await;
+    assert_eq!(
+        ack,
+        json!({"t":"ack","id":1,"ok":false,"code":"not_allowed","msg":"This is turned off in PairDesk settings on the computer."})
+    );
+
+    send(&mut ws, json!({"t":"power","id":2,"a":"lock"})).await;
+    assert_eq!(recv(&mut ws).await, json!({"t":"ack","id":2,"ok":true}));
+
+    // The owner turns everything off: even lock is refused now.
+    agent
+        .state
+        .prefs()
+        .set_permissions(false, false, false)
+        .unwrap();
+    send(&mut ws, json!({"t":"power","id":3,"a":"lock"})).await;
+    assert_eq!(recv(&mut ws).await["code"], "not_allowed");
+}
+
+#[tokio::test]
+async fn lists_and_launches_shortcuts_by_id_only() {
+    let agent = start_agent().await;
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("launched");
+    agent
+        .state
+        .prefs()
+        .add_shortcut(
+            "Make marker",
+            crate::prefs::ShortcutKind::Program,
+            "/bin/sh",
+            &format!("-c \"touch '{}'\"", marker.display()),
+        )
+        .unwrap();
+    let (mut ws, _) = signed_in(&agent, 23).await;
+
+    send(&mut ws, json!({"t":"apps","id":7})).await;
+    let list = recv(&mut ws).await;
+    assert_eq!(list["t"], "apps");
+    assert_eq!(list["id"], 7);
+    let shortcut = &list["shortcuts"][0];
+    assert_eq!(shortcut["name"], "Make marker");
+    assert_eq!(shortcut["kind"], "program");
+    assert!(list["apps"].is_array());
+
+    send(&mut ws, json!({"t":"launch","id":8,"app":"nope"})).await;
+    assert_eq!(recv(&mut ws).await["code"], "not_found");
+
+    send(&mut ws, json!({"t":"launch","id":9,"app":shortcut["id"]})).await;
+    assert_eq!(recv(&mut ws).await, json!({"t":"ack","id":9,"ok":true}));
+    for _ in 0..50 {
+        if marker.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(marker.exists(), "the shortcut ran");
+
+    agent
+        .state
+        .prefs()
+        .set_permissions(true, true, false)
+        .unwrap();
+    send(&mut ws, json!({"t":"apps","id":10})).await;
+    assert_eq!(recv(&mut ws).await["code"], "not_allowed");
+    send(&mut ws, json!({"t":"launch","id":11,"app":shortcut["id"]})).await;
+    assert_eq!(recv(&mut ws).await["code"], "not_allowed");
+}
+
+#[tokio::test]
+async fn input_keeps_flowing_while_apps_load() {
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 24).await;
+    send(&mut ws, json!({"t":"apps","id":1})).await;
+    send(&mut ws, json!({"t":"move","dx":1,"dy":1})).await;
+    send(&mut ws, json!({"t":"ping"})).await;
+    let mut got = Vec::new();
+    for _ in 0..2 {
+        got.push(recv(&mut ws).await["t"].as_str().unwrap().to_string());
+    }
+    got.sort();
+    assert_eq!(got, vec!["apps", "pong"]);
+    assert_eq!(
+        agent.input.recv_timeout(Duration::from_secs(2)).unwrap(),
+        InputCmd::Move { dx: 1, dy: 1 }
+    );
 }

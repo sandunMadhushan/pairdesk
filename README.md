@@ -5,9 +5,10 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.2 preview (Phase 1).** Pair once with a QR code; after that the phone
+> **Status: 0.3 preview (Phase 2).** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
-> and only paired phones get in. Works over your local Wi-Fi; connecting from
+> and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
+> launcher and power controls. Works over your local Wi-Fi; connecting from
 > anywhere (Tailscale) comes in Phase 3.
 
 ## What works now
@@ -23,6 +24,10 @@ no codes or "accept" prompts every time.
 | Buttons | Hold **Left** or **Right** and move with another finger to drag |
 | Keyboard | Type text, plus Enter, Backspace, Esc, Tab, arrows, Delete, Home/End, Page Up/Down |
 | Media | Volume, mute, play/pause, next, previous |
+| Shortcut buttons | One-tap shortcuts (Copy, Paste, Alt+Tab, Task Manager…), and your own: key combos, text, apps or power actions |
+| Apps | Open any installed app, plus websites, folders and programs you add on the computer's settings page |
+| Power | Lock, sleep, screen off, sign out, restart, shut down (each can be switched off on the computer) |
+| App lock | Optional fingerprint, face or screen-lock check to open PairDesk |
 
 ## Quick start
 
@@ -54,6 +59,10 @@ devices from talking to each other; a phone hotspot or home Wi-Fi works.
 - If you move the agent program to another folder, turn **Start PairDesk when I
   sign in** off and on again on its page.
 - On Linux without a desktop, `pairdesk-agent --pair` prints the QR code in the terminal.
+- Windows reserves a few shortcuts that no app can send, such as Ctrl+Alt+Delete and
+  Win+L. Use the Power tab to lock.
+- Linux power actions use `loginctl`/`systemctl`, which most desktops allow for the
+  signed-in user; screen off uses `xset` (X11).
 
 ## Build from source
 
@@ -91,8 +100,8 @@ The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOC
 | Phase | Goal |
 | --- | --- |
 | 0 | Touchpad over home Wi-Fi |
-| **1** | **One-time QR pairing, encryption, tray app, auto-start, auto-discovery (this release)** |
-| 2 | Power actions, app launcher, custom buttons, phone app lock |
+| 1 | One-time QR pairing, encryption, tray app, auto-start, auto-discovery |
+| **2** | **Power actions, app launcher, custom buttons, phone app lock (this release)** |
 | 3 | Connect from anywhere with Tailscale |
 | 4 | Live screen view on Windows |
 | 5 | Linux agent on Wayland |

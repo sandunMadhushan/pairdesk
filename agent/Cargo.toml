@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
@@ -19,6 +19,7 @@ futures-util = "0.3.34"
 gethostname = "1.1.0"
 getrandom = "0.2"
 local-ip-address = "0.6.13"
+open = "5"
 log = "0.4.34"
 mdns-sd = "0.13"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
@@ -36,7 +37,7 @@ webbrowser = "1"
 
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"

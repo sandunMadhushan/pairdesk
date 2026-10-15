@@ -48,7 +48,21 @@ enum AgentKey {
   mute('mute'),
   playPause('play_pause'),
   next('next'),
-  prev('prev');
+  prev('prev'),
+  insert('insert'),
+  printScreen('print_screen'),
+  f1('f1'),
+  f2('f2'),
+  f3('f3'),
+  f4('f4'),
+  f5('f5'),
+  f6('f6'),
+  f7('f7'),
+  f8('f8'),
+  f9('f9'),
+  f10('f10'),
+  f11('f11'),
+  f12('f12');
 
   const AgentKey(this.wire);
   final String wire;
@@ -129,6 +143,73 @@ Future<IOWebSocketChannel> openPinnedChannel(
   }
 }
 
+/// Modifier keys for shortcuts.
+enum Modifier { ctrl, alt, shift, meta }
+
+/// Power and session actions.
+enum PowerAction {
+  lock('lock'),
+  sleep('sleep'),
+  screenOff('screen_off'),
+  signOut('sign_out'),
+  restart('restart'),
+  shutDown('shut_down');
+
+  const PowerAction(this.wire);
+  final String wire;
+
+  /// Sign out, restart and shut down can lose unsaved work.
+  bool get endsSession => this == signOut || this == restart || this == shutDown;
+}
+
+/// What the computer's owner allows (from `welcome`).
+class Allowed {
+  const Allowed({this.power = false, this.session = false, this.apps = false});
+  final bool power;
+  final bool session;
+  final bool apps;
+
+  bool action(PowerAction a) => a.endsSession ? session : power;
+
+  static Allowed fromJson(Object? j) => j is Map
+      ? Allowed(power: j['power'] == true, session: j['session'] == true, apps: j['apps'] == true)
+      : const Allowed();
+}
+
+/// An app or shortcut the computer can open.
+class RemoteApp {
+  const RemoteApp({required this.id, required this.name, required this.kind});
+  final String id;
+  final String name;
+
+  /// `app`, `url`, `folder`, `file` or `program`.
+  final String kind;
+
+  static List<RemoteApp> listFrom(Object? j) => [
+    if (j is List)
+      for (final e in j)
+        if (e is Map && e['id'] is String && e['name'] is String)
+          RemoteApp(id: e['id'] as String, name: e['name'] as String, kind: e['kind'] as String? ?? 'app'),
+  ];
+}
+
+class AppsList {
+  const AppsList({required this.shortcuts, required this.apps});
+  final List<RemoteApp> shortcuts;
+  final List<RemoteApp> apps;
+}
+
+/// A refused or failed request.
+class RequestException implements Exception {
+  RequestException(this.code, this.message);
+
+  /// `not_allowed`, `not_found`, `failed`, `timeout`, `unsupported` or `disconnected`.
+  final String code;
+  final String message;
+  @override
+  String toString() => message;
+}
+
 class AgentConnection extends ChangeNotifier {
   AgentConnection({
     this.finder,
@@ -167,6 +248,17 @@ class AgentConnection extends ChangeNotifier {
 
   String? _agentOs;
   String? get agentOs => _agentOs;
+
+  Set<String> _features = const {};
+
+  /// Optional features the computer supports (`combo`, `power`, `apps`).
+  Set<String> get features => _features;
+
+  Allowed _allowed = const Allowed();
+  Allowed get allowed => _allowed;
+
+  int _nextId = 1;
+  final Map<int, Completer<Map<String, dynamic>>> _requests = {};
 
   String? _address;
   String? get address => _address;
@@ -295,6 +387,12 @@ class AgentConnection extends ChangeNotifier {
     if (welcome['t'] != 'welcome') throw _unexpected(welcome);
     _agentName = welcome['name'] as String?;
     _agentOs = welcome['os'] as String?;
+    _features = {
+      if (welcome['features'] is List)
+        for (final f in welcome['features'] as List)
+          if (f is String) f,
+    };
+    _allowed = Allowed.fromJson(welcome['allow']);
     _address = host;
   }
 
@@ -324,6 +422,12 @@ class AgentConnection extends ChangeNotifier {
     }
     if (decoded is! Map<String, dynamic>) return;
 
+    final id = decoded['id'];
+    if (id is int && (decoded['t'] == 'ack' || decoded['t'] == 'apps')) {
+      _requests.remove(id)?.complete(decoded);
+      return;
+    }
+
     final waiting = _reply;
     if (waiting != null && !waiting.isCompleted) {
       _reply = null;
@@ -351,6 +455,12 @@ class AgentConnection extends ChangeNotifier {
   }
 
   Future<void> disconnect({bool notify = true}) async {
+    for (final r in _requests.values) {
+      if (!r.isCompleted) {
+        r.completeError(RequestException('disconnected', 'Disconnected from the computer.'));
+      }
+    }
+    _requests.clear();
     _pingTimer?.cancel();
     _pingTimer = null;
     final reply = _reply;
@@ -434,6 +544,73 @@ class AgentConnection extends ChangeNotifier {
   }
 
   void key(AgentKey k) => _send({'t': 'key', 'k': k.wire});
+
+  /// Keyboard shortcut: hold [mods], press [key] or [char], release.
+  void combo(List<Modifier> mods, {AgentKey? key, String? char}) {
+    _send({
+      't': 'combo',
+      'mods': [for (final m in mods) m.name],
+      'k': ?key?.wire,
+      'c': ?char,
+    });
+  }
+
+  // ---- Requests with answers ------------------------------------------
+
+  Future<Map<String, dynamic>> _request(
+    Map<String, Object?> msg, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    if (_status != ConnectionStatus.connected) {
+      throw RequestException('disconnected', 'Not connected to the computer.');
+    }
+    final id = _nextId++;
+    final c = Completer<Map<String, dynamic>>();
+    _requests[id] = c;
+    _send({...msg, 'id': id});
+    try {
+      final reply = await c.future.timeout(timeout);
+      if (reply['t'] == 'ack' && reply['ok'] != true) {
+        throw RequestException(
+          reply['code'] as String? ?? 'failed',
+          reply['msg'] as String? ?? 'The computer couldn\'t do that.',
+        );
+      }
+      return reply;
+    } on TimeoutException {
+      throw RequestException('timeout', 'The computer didn\'t answer in time.');
+    } finally {
+      _requests.remove(id);
+    }
+  }
+
+  void _requireFeature(String feature) {
+    if (!_features.contains(feature)) {
+      throw RequestException('unsupported', 'Update PairDesk on the computer to use this.');
+    }
+  }
+
+  /// Lock, sleep, restart… Completes when the computer accepts.
+  Future<void> power(PowerAction action) async {
+    _requireFeature('power');
+    await _request({'t': 'power', 'a': action.wire});
+  }
+
+  /// Installed apps and the owner's shortcuts.
+  Future<AppsList> fetchApps() async {
+    _requireFeature('apps');
+    final reply = await _request({'t': 'apps'}, timeout: const Duration(seconds: 30));
+    return AppsList(
+      shortcuts: RemoteApp.listFrom(reply['shortcuts']),
+      apps: RemoteApp.listFrom(reply['apps']),
+    );
+  }
+
+  /// Opens an app or shortcut by the ID from [fetchApps].
+  Future<void> launch(String appId) async {
+    _requireFeature('apps');
+    await _request({'t': 'launch', 'app': appId});
+  }
 
   @override
   void dispose() {

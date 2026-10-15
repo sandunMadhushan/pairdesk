@@ -36,6 +36,10 @@ class FakeAgent {
   late HttpServer _server;
   final received = <Map<String, dynamic>>[];
   final paired = <String>{};
+
+  /// Null = an agent from before Phase 2 (no optional features).
+  List<String>? features = ['combo', 'power', 'apps'];
+  Map<String, bool> allow = {'power': true, 'session': false, 'apps': true};
   WebSocket? socket;
   StreamSubscription<dynamic>? subscription;
 
@@ -85,11 +89,61 @@ class FakeAgent {
             if (!ok) return error('bad_signature');
             if (pairing) paired.add(claimedId!);
             ws.add(
-              jsonEncode({'t': 'welcome', 'name': 'test-laptop', 'os': 'windows', 'v': 2, 'paired': pairing}),
+              jsonEncode({
+                't': 'welcome',
+                'name': 'test-laptop',
+                'os': 'windows',
+                'v': 2,
+                'paired': pairing,
+                'features': ?features,
+                'allow': allow,
+              }),
             );
             return;
           case 'ping':
             ws.add(jsonEncode({'t': 'pong'}));
+            return;
+          case 'power':
+            final ok =
+                allow[msg['a'] == 'shut_down' || msg['a'] == 'restart' || msg['a'] == 'sign_out'
+                    ? 'session'
+                    : 'power']!;
+            ws.add(
+              jsonEncode({
+                't': 'ack',
+                'id': msg['id'],
+                'ok': ok,
+                if (!ok) 'code': 'not_allowed',
+                if (!ok) 'msg': 'This is turned off in PairDesk settings on the computer.',
+              }),
+            );
+            return;
+          case 'apps':
+            ws.add(
+              jsonEncode({
+                't': 'apps',
+                'id': msg['id'],
+                'shortcuts': [
+                  {'id': 's1', 'name': 'Mail', 'kind': 'url'},
+                ],
+                'apps': [
+                  {'id': 'a1', 'name': 'Calculator', 'kind': 'app'},
+                  {'bad': 'entry'},
+                ],
+              }),
+            );
+            return;
+          case 'launch':
+            final known = msg['app'] == 'a1' || msg['app'] == 's1';
+            ws.add(
+              jsonEncode({
+                't': 'ack',
+                'id': msg['id'],
+                'ok': known,
+                if (!known) 'code': 'not_found',
+                if (!known) 'msg': 'That app isn\'t on the computer any more.',
+              }),
+            );
             return;
           default:
             return;
@@ -251,5 +305,94 @@ void main() {
     agent.subscription!.pause();
     await Future<void>.delayed(const Duration(milliseconds: 600));
     expect(conn.status, ConnectionStatus.disconnected);
+  });
+
+  group('phase 2 requests', () {
+    late AgentConnection conn;
+    setUp(() async {
+      conn = AgentConnection(pingInterval: const Duration(hours: 1));
+      await conn.pair(infoFor(agent), me, phoneName: 'p');
+    });
+    tearDown(() => conn.disconnect());
+
+    test('reads features and permissions from welcome', () {
+      expect(conn.features, {'combo', 'power', 'apps'});
+      expect(conn.allowed.power, isTrue);
+      expect(conn.allowed.session, isFalse);
+      expect(conn.allowed.action(PowerAction.lock), isTrue);
+      expect(conn.allowed.action(PowerAction.restart), isFalse);
+    });
+
+    test('sends shortcuts as combo messages', () async {
+      agent.received.clear();
+      conn.combo([Modifier.ctrl, Modifier.shift], key: AgentKey.escape);
+      conn.combo([Modifier.ctrl], char: 'c');
+      conn.combo([Modifier.meta]);
+      await settle();
+      expect(agent.received, [
+        {
+          't': 'combo',
+          'mods': ['ctrl', 'shift'],
+          'k': 'escape',
+        },
+        {
+          't': 'combo',
+          'mods': ['ctrl'],
+          'c': 'c',
+        },
+        {
+          't': 'combo',
+          'mods': ['meta'],
+        },
+      ]);
+    });
+
+    test('power actions report refusals', () async {
+      await conn.power(PowerAction.lock);
+      await expectLater(
+        conn.power(PowerAction.shutDown),
+        throwsA(isA<RequestException>().having((e) => e.code, 'code', 'not_allowed')),
+      );
+      final sent = agent.received.where((m) => m['t'] == 'power').toList();
+      expect(sent.map((m) => m['a']), ['lock', 'shut_down']);
+      expect(sent[0]['id'], isNot(sent[1]['id']), reason: 'each request has its own id');
+    });
+
+    test('lists and launches apps', () async {
+      final list = await conn.fetchApps();
+      expect(list.shortcuts.single.name, 'Mail');
+      expect(list.apps.map((a) => a.name), ['Calculator'], reason: 'malformed entries are skipped');
+      await conn.launch('a1');
+      await expectLater(
+        conn.launch('gone'),
+        throwsA(isA<RequestException>().having((e) => e.code, 'code', 'not_found')),
+      );
+    });
+  });
+
+  test('older computers without Phase 2 features are reported clearly', () async {
+    agent.features = null;
+    final conn = AgentConnection(pingInterval: const Duration(hours: 1));
+    await conn.pair(infoFor(agent), me, phoneName: 'p');
+    expect(conn.features, isEmpty);
+    await expectLater(
+      conn.power(PowerAction.lock),
+      throwsA(isA<RequestException>().having((e) => e.code, 'code', 'unsupported')),
+    );
+    await conn.disconnect();
+  });
+
+  test('pending requests fail when the connection drops', () async {
+    agent.allow = {'power': true, 'session': true, 'apps': true};
+    final conn = AgentConnection(pingInterval: const Duration(hours: 1));
+    await conn.pair(infoFor(agent), me, phoneName: 'p');
+    agent.subscription!.pause(); // never answers
+    final pending = expectLater(
+      conn.fetchApps(),
+      throwsA(isA<RequestException>().having((e) => e.code, 'code', 'disconnected')),
+    );
+    await settle();
+    await conn.disconnect();
+    await pending;
   });
 }

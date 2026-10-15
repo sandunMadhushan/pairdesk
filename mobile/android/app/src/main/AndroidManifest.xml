@@ -6,6 +6,8 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- Finding the computer on Wi-Fi after its address changes (mDNS). -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <!-- Optional app lock with fingerprint or screen lock. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <application
         android:label="PairDesk"
         android:allowBackup="false"

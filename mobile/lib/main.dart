@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_model.dart';
 import 'screens/home_screen.dart';
+import 'settings/app_lock.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,11 @@ class PairDeskApp extends StatelessWidget {
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
       ),
+      builder: (context, child) {
+        final settings = model.settings;
+        if (settings == null || child == null) return child ?? const SizedBox.shrink();
+        return AppLockGate(settings: settings, child: child);
+      },
       home: HomeScreen(model: model),
     );
   }

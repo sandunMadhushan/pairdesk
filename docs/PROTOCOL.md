@@ -81,17 +81,29 @@ Input commands sent before `welcome` are refused and the connection is closed.
 | `scroll` | `dx`, `dy` (int, lines; missing = 0) | Positive `dy` scrolls down, positive `dx` right. Clamped to ±50 |
 | `text` | `s` (string) | Type text. Truncated to 2000 characters |
 | `key` | `k` (see below) | Press and release a named key |
+| `combo` | `mods` (list of `ctrl`, `alt`, `shift`, `meta`), and `k` (named key) **or** `c` (one visible character), or neither | Keyboard shortcut: hold the modifiers, press the key, release. With no key, the modifiers alone are tapped (e.g. `meta` opens the Start menu) |
+| `power` | `a`: `lock` \| `sleep` \| `screen_off` \| `sign_out` \| `restart` \| `shut_down`; `id` | Power and session actions. Answered with `ack` |
+| `apps` | `id` | Asks for the apps and shortcuts that can be opened. Answered with `apps` |
+| `launch` | `app` (an ID from `apps`), `id` | Opens an app or shortcut. Answered with `ack` |
 
 Named keys: `enter`, `backspace`, `escape`, `tab`, `space`, `delete`, `up`, `down`,
 `left`, `right`, `home`, `end`, `page_up`, `page_down`, `volume_up`, `volume_down`,
-`mute`, `play_pause`, `next`, `prev`.
+`mute`, `play_pause`, `next`, `prev`, `insert`, `print_screen`, `f1` … `f12`.
+
+`id` is a number chosen by the phone; the answer carries the same `id`.
+
+A phone can't send a command line, a path or a URL: `launch` only accepts IDs
+from the list the computer gave it, and the list contains the computer's
+installed apps plus shortcuts the owner set up on the settings page.
 
 ## Agent → phone
 
 | `t` | Fields | Meaning |
 | --- | --- | --- |
 | `challenge` | `nonce`, `v` | Sign this (see above) |
-| `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `paired` (true right after pairing) | Signed in; input is accepted |
+| `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `paired` (true right after pairing), `features` (e.g. `["combo","power","apps"]`), `allow` (`{"power":bool,"session":bool,"apps":bool}`) | Signed in; input is accepted |
+| `ack` | `id`, `ok`, and when not ok: `code` (`not_allowed`, `not_found`, `failed`) and `msg` | Answer to `power` or `launch` |
+| `apps` | `id`, `shortcuts`, `apps`: lists of `{"id","name","kind"}`, kind `app`, `url`, `folder`, `file` or `program` | Answer to `apps` |
 | `pong` | — | Reply to `ping` |
 | `error` | `code`, `msg` | See below |
 
@@ -106,6 +118,25 @@ the connection.
 | `bad_signature` | The signature didn't verify |
 | `unexpected` | Wrong message for this point in the handshake |
 | `bad_message` | A message couldn't be understood (connection stays open) |
+
+## Permissions
+
+The settings page on the computer has three switches, all on by default:
+
+| Switch | Covers |
+| --- | --- |
+| `power` | `lock`, `sleep`, `screen_off` |
+| `session` | `sign_out`, `restart`, `shut_down` |
+| `apps` | `apps`, `launch` |
+
+Each request is checked against the current switches when it arrives, so a
+change applies at once. The phone also asks for confirmation before
+`sign_out`, `restart` and `shut_down`. For `lock` and `screen_off` the `ack`
+reports the real result; for the others the agent answers first and acts
+about half a second later, because the computer is about to go away.
+
+Phones from 0.2 don't know these messages and ignore `features` and `allow`;
+they keep working. Phones check `features` before offering the new tabs.
 
 ## Behaviour
 

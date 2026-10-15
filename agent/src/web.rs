@@ -171,6 +171,62 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/permissions") => {
+            #[derive(Deserialize)]
+            struct Body {
+                power: bool,
+                session: bool,
+                apps: bool,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => {
+                    let saved = state.prefs().set_permissions(b.power, b.session, b.apps);
+                    match saved {
+                        Ok(()) => send_state(request, state),
+                        Err(e) => status(request, 500, &format!("could not save: {e}")),
+                    }
+                }
+                None => status(request, 400, "bad request"),
+            }
+        }
+        (Method::Post, "/api/shortcuts/add") => {
+            #[derive(Deserialize)]
+            struct Body {
+                name: String,
+                kind: crate::prefs::ShortcutKind,
+                target: String,
+                #[serde(default)]
+                args: String,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => {
+                    let added = state
+                        .prefs()
+                        .add_shortcut(&b.name, b.kind, &b.target, &b.args);
+                    match added {
+                        Ok(()) => send_state(request, state),
+                        Err(e) => status(request, 422, &e),
+                    }
+                }
+                None => status(request, 400, "bad request"),
+            }
+        }
+        (Method::Post, "/api/shortcuts/remove") => {
+            #[derive(Deserialize)]
+            struct Body {
+                id: String,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => {
+                    let removed = state.prefs().remove_shortcut(&b.id);
+                    match removed {
+                        Ok(_) => send_state(request, state),
+                        Err(e) => status(request, 500, &format!("could not save: {e}")),
+                    }
+                }
+                None => status(request, 400, "bad request"),
+            }
+        }
         (Method::Post, "/api/quit") => {
             status(request, 200, "stopping");
             on_quit();
@@ -180,6 +236,12 @@ fn handle(
 }
 
 fn send_state(request: Request, state: &AppState) {
+    let prefs = state.prefs().get().clone();
+    let shortcuts: Vec<_> = prefs
+        .shortcuts
+        .iter()
+        .map(|s| json!({ "id": s.id, "name": s.name, "kind": s.kind, "target": s.target, "args": s.args }))
+        .collect();
     let sessions = state.sessions();
     let phones: Vec<_> = state
         .phones()
@@ -224,6 +286,12 @@ fn send_state(request: Request, state: &AppState) {
         "autostart": crate::autostart::is_enabled(),
         "pairing": pairing,
         "phones": phones,
+        "permissions": {
+            "power": prefs.allow_power,
+            "session": prefs.allow_session,
+            "apps": prefs.allow_apps,
+        },
+        "shortcuts": shortcuts,
     });
     respond(
         request,
