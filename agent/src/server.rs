@@ -19,9 +19,13 @@ use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
 use crate::auth;
 use crate::input::{InputCmd, InputHandle};
-use crate::protocol::{ClientMsg, ErrorCode, MouseButton, PROTOCOL_VERSION, ServerMsg};
+use crate::protocol::{
+    AckCode, ClientMsg, ErrorCode, MouseButton, PROTOCOL_VERSION, PowerAction, ServerMsg,
+};
 use crate::state::{AppState, Session};
 
+/// Optional features announced in `welcome`.
+const FEATURES: &[&str] = &["combo", "power", "apps"];
 /// Largest WebSocket frame accepted from a phone.
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 /// Time a phone gets to finish TLS, WebSocket and authentication.
@@ -205,10 +209,11 @@ async fn serve(
     ws: Ws,
     who: Authenticated,
     peer: SocketAddr,
-    state: &AppState,
+    state: &Arc<AppState>,
     input: InputHandle,
 ) -> Result<(), String> {
     let (mut sink, mut source) = ws.split();
+    let allow = state.prefs().get().allow();
     send(
         &mut sink,
         &ServerMsg::Welcome {
@@ -216,6 +221,8 @@ async fn serve(
             os: std::env::consts::OS.into(),
             v: PROTOCOL_VERSION,
             paired: who.just_paired,
+            features: FEATURES.to_vec(),
+            allow,
         },
     )
     .await?;
@@ -228,11 +235,18 @@ async fn serve(
     let mut revocations = state.subscribe_revocations();
     // Buttons this phone is holding, released if it disconnects mid-drag.
     let mut held: HashSet<MouseButton> = HashSet::new();
+    // Replies from slow requests (app list, launching) arrive here, so the
+    // touchpad keeps working while they run.
+    let (reply_tx, mut reply_rx) = tokio::sync::mpsc::unbounded_channel::<ServerMsg>();
 
     let result = async {
         loop {
             let frame = tokio::select! {
                 frame = source.next() => frame,
+                Some(reply) = reply_rx.recv() => {
+                    send(&mut sink, &reply).await?;
+                    continue;
+                }
                 _ = revocations.changed() => {
                     if state.is_paired(&who.id) { continue; }
                     let _ = send(&mut sink, &ServerMsg::Error {
@@ -285,6 +299,14 @@ async fn serve(
                 ClientMsg::Scroll { dx, dy } => input.send(InputCmd::Scroll { dx, dy }),
                 ClientMsg::Text { s } => input.send(InputCmd::Text(s)),
                 ClientMsg::Key { k } => input.send(InputCmd::Key(k)),
+                ClientMsg::Combo { mods, k, c } => input.send(InputCmd::Combo {
+                    mods,
+                    key: k,
+                    ch: c,
+                }),
+                ClientMsg::Power { id, a } => power_request(state, id, a, reply_tx.clone()),
+                ClientMsg::Apps { id } => apps_request(state, id, reply_tx.clone()),
+                ClientMsg::Launch { id, app } => launch_request(state, id, app, reply_tx.clone()),
                 ClientMsg::Hello { .. } | ClientMsg::Pair { .. } | ClientMsg::Auth { .. } => {
                     send(
                         &mut sink,
@@ -304,6 +326,91 @@ async fn serve(
     state.close_session(session);
     info!("{peer}: \"{}\" disconnected", who.name);
     result
+}
+
+type Replies = tokio::sync::mpsc::UnboundedSender<ServerMsg>;
+
+const NOT_ALLOWED: &str = "This is turned off in PairDesk settings on the computer.";
+
+fn ack(id: Option<u64>, result: Result<(), (AckCode, String)>) -> ServerMsg {
+    match result {
+        Ok(()) => ServerMsg::Ack {
+            id,
+            ok: true,
+            code: None,
+            msg: None,
+        },
+        Err((code, msg)) => ServerMsg::Ack {
+            id,
+            ok: false,
+            code: Some(code),
+            msg: Some(msg),
+        },
+    }
+}
+
+fn power_request(state: &AppState, id: Option<u64>, action: PowerAction, replies: Replies) {
+    if !state.prefs().get().allows(action) {
+        let _ = replies.send(ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))));
+        return;
+    }
+    tokio::spawn(async move {
+        if matches!(action, PowerAction::Lock | PowerAction::ScreenOff) {
+            // Quick, and the computer stays up: report the real result.
+            let result = tokio::task::spawn_blocking(move || crate::power::run(action))
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()));
+            let _ = replies.send(ack(id, result.map_err(|e| (AckCode::Failed, e))));
+        } else {
+            // The computer is about to go away: answer first, then act.
+            let _ = replies.send(ack(id, Ok(())));
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let result = tokio::task::spawn_blocking(move || crate::power::run(action)).await;
+            if let Ok(Err(e)) = result {
+                warn!("{action:?} failed: {e}");
+            }
+        }
+    });
+}
+
+fn apps_request(state: &Arc<AppState>, id: Option<u64>, replies: Replies) {
+    if !state.prefs().get().allow_apps {
+        let _ = replies.send(ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))));
+        return;
+    }
+    let state = state.clone();
+    tokio::task::spawn_blocking(move || {
+        let prefs = state.prefs().get().clone();
+        let shortcuts = crate::apps::shortcuts(&prefs)
+            .iter()
+            .map(|a| a.entry())
+            .collect();
+        let apps = state.apps.installed().iter().map(|a| a.entry()).collect();
+        let _ = replies.send(ServerMsg::Apps {
+            id,
+            shortcuts,
+            apps,
+        });
+    });
+}
+
+fn launch_request(state: &Arc<AppState>, id: Option<u64>, app: String, replies: Replies) {
+    if !state.prefs().get().allow_apps {
+        let _ = replies.send(ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))));
+        return;
+    }
+    let state = state.clone();
+    tokio::task::spawn_blocking(move || {
+        let prefs = state.prefs().get().clone();
+        let result = match state.apps.find(&app, &prefs) {
+            None => Err((
+                AckCode::NotFound,
+                "That app isn't on the computer any more.".to_string(),
+            )),
+            Some(found) => crate::apps::launch(&found).map_err(|e| (AckCode::Failed, e)),
+        };
+        let _ = replies.send(ack(id, result));
+    });
 }
 
 fn error(code: ErrorCode, msg: &str) -> ServerMsg {

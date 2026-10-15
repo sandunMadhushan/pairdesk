@@ -11,17 +11,28 @@ use std::thread;
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use log::{info, warn};
 
-use crate::protocol::{MouseButton, NamedKey};
+use crate::protocol::{Modifier, MouseButton, NamedKey};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputCmd {
-    Move { dx: i32, dy: i32 },
+    Move {
+        dx: i32,
+        dy: i32,
+    },
     Click(MouseButton),
     Down(MouseButton),
     Up(MouseButton),
-    Scroll { dx: i32, dy: i32 },
+    Scroll {
+        dx: i32,
+        dy: i32,
+    },
     Text(String),
     Key(NamedKey),
+    Combo {
+        mods: Vec<Modifier>,
+        key: Option<NamedKey>,
+        ch: Option<char>,
+    },
 }
 
 /// Cheap, cloneable handle to the input thread.
@@ -127,8 +138,48 @@ fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
             }
         }
         InputCmd::Key(k) => enigo.key(key(*k), Direction::Click)?,
+        InputCmd::Combo { mods, key: k, ch } => {
+            let mut pressed = Vec::new();
+            let mut result = Ok(());
+            for m in mods {
+                let mk = modifier(*m);
+                if pressed.contains(&mk) {
+                    continue;
+                }
+                if let Err(e) = enigo.key(mk, Direction::Press) {
+                    result = Err(e);
+                    break;
+                }
+                pressed.push(mk);
+            }
+            if result.is_ok() {
+                let main = match (k, ch) {
+                    (Some(k), _) => Some(key(*k)),
+                    // Lower-case so Shift stays an explicit modifier.
+                    (None, Some(c)) => Some(Key::Unicode(c.to_lowercase().next().unwrap_or(*c))),
+                    (None, None) => None,
+                };
+                if let Some(main) = main {
+                    result = enigo.key(main, Direction::Click);
+                }
+            }
+            // Always release what was pressed, newest first.
+            for mk in pressed.into_iter().rev() {
+                let _ = enigo.key(mk, Direction::Release);
+            }
+            result?;
+        }
     }
     Ok(())
+}
+
+fn modifier(m: Modifier) -> Key {
+    match m {
+        Modifier::Ctrl => Key::Control,
+        Modifier::Alt => Key::Alt,
+        Modifier::Shift => Key::Shift,
+        Modifier::Meta => Key::Meta,
+    }
 }
 
 fn button(b: MouseButton) -> Button {
@@ -161,5 +212,19 @@ fn key(k: NamedKey) -> Key {
         NamedKey::PlayPause => Key::MediaPlayPause,
         NamedKey::Next => Key::MediaNextTrack,
         NamedKey::Prev => Key::MediaPrevTrack,
+        NamedKey::Insert => Key::Insert,
+        NamedKey::PrintScreen => Key::PrintScr,
+        NamedKey::F1 => Key::F1,
+        NamedKey::F2 => Key::F2,
+        NamedKey::F3 => Key::F3,
+        NamedKey::F4 => Key::F4,
+        NamedKey::F5 => Key::F5,
+        NamedKey::F6 => Key::F6,
+        NamedKey::F7 => Key::F7,
+        NamedKey::F8 => Key::F8,
+        NamedKey::F9 => Key::F9,
+        NamedKey::F10 => Key::F10,
+        NamedKey::F11 => Key::F11,
+        NamedKey::F12 => Key::F12,
     }
 }

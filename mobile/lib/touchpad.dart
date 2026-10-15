@@ -7,9 +7,15 @@ import 'touchpad_gestures.dart';
 
 /// Full-area touchpad that drives the laptop cursor.
 class Touchpad extends StatefulWidget {
-  const Touchpad({super.key, required this.connection});
+  const Touchpad({super.key, required this.connection, this.speed = 1.0, this.naturalScroll = true});
 
   final AgentConnection connection;
+
+  /// Multiplies cursor speed (1.0 = default).
+  final double speed;
+
+  /// True: content follows the fingers.
+  final bool naturalScroll;
 
   @override
   State<Touchpad> createState() => _TouchpadState();
@@ -18,7 +24,9 @@ class Touchpad extends StatefulWidget {
 class _TouchpadState extends State<Touchpad> {
   late final TouchpadGestures _gestures = TouchpadGestures(
     onMove: widget.connection.move,
-    onScroll: (dx, dy) => widget.connection.scroll(dx: dx, dy: dy),
+    onScroll: (dx, dy) => widget.naturalScroll
+        ? widget.connection.scroll(dx: dx, dy: dy)
+        : widget.connection.scroll(dx: -dx, dy: -dy),
     onClick: (b) {
       HapticFeedback.lightImpact();
       widget.connection.click(b);
@@ -36,6 +44,7 @@ class _TouchpadState extends State<Touchpad> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    _gestures.sensitivity = 1.6 * widget.speed;
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (e) {

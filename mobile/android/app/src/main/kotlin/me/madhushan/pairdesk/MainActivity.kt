@@ -1,5 +1,6 @@
 package me.madhushan.pairdesk
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// FragmentActivity is needed for the fingerprint / screen-lock prompt (app lock).
+class MainActivity : FlutterFragmentActivity()

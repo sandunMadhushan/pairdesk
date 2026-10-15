@@ -23,12 +23,27 @@ from Xlib import display
 d = display.Display(); d.screen().root.warp_pointer(100, 100); d.sync()
 PY
 
+# Power actions are logged, not performed.
+export PAIRDESK_POWER_DRY_RUN=1
+
 if [ -n "${WINE:-}" ]; then
+  WINDATA="Z:${DATA//\//\\}"
+  E2E_PROGRAM='C:\windows\system32\cmd.exe'
+  E2E_ARGS="/c \"echo ok > $WINDATA\\shortcut-ran\""
+  E2E_APP=""
   export WINEDEBUG=-all WINEPREFIX="$DATA/wine" WINEDLLOVERRIDES="mscoree,mshtml="
   WINEBIN=$(command -v wine || command -v wine64 || echo /usr/lib/wine/wine64)
   PAIRDESK_HOME="Z:${DATA//\//\\}" "$WINEBIN" "$AGENT" --background --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=600
 else
+  # An installed app for the agent to find: a .desktop file in XDG_DATA_HOME.
+  mkdir -p "$DATA/xdg/applications"
+  printf '[Desktop Entry]\nType=Application\nName=PairDesk E2E App\nExec=sh -c "touch %s/app-ran" %%U\n' "$DATA" \
+    >"$DATA/xdg/applications/pairdesk-e2e.desktop"
+  export XDG_DATA_HOME="$DATA/xdg"
+  E2E_PROGRAM=/bin/sh
+  E2E_ARGS="-c \"touch '$DATA/shortcut-ran'\""
+  E2E_APP="PairDesk E2E App"
   PAIRDESK_HOME="$DATA" "$AGENT" --background --no-tray --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=50
 fi
@@ -42,7 +57,20 @@ LINK=$(curl -sf -X POST -H 'X-PairDesk: 1' "${SETTINGS}api/pair" |
 echo "agent link: ${LINK%%&t=*}&t=…"
 
 (cd "$ROOT/mobile" && PAIRDESK_E2E_LINK="$LINK" PAIRDESK_E2E_SETTINGS="$SETTINGS" \
-  PAIRDESK_E2E_OS="${WINE:+windows}" flutter test test/e2e_real_agent_test.dart)
+  PAIRDESK_E2E_OS="${WINE:+windows}" PAIRDESK_E2E_PROGRAM="$E2E_PROGRAM" \
+  PAIRDESK_E2E_PROGRAM_ARGS="$E2E_ARGS" PAIRDESK_E2E_APP="$E2E_APP" \
+  flutter test test/e2e_real_agent_test.dart)
+
+# Launched from the phone: the shortcut (and, on Linux, the installed app) ran.
+for _ in $(seq 50); do [ -e "$DATA/shortcut-ran" ] && break; sleep 0.2; done
+[ -e "$DATA/shortcut-ran" ] || { echo "shortcut did not run"; exit 1; }
+echo "shortcut launched from the phone: ok"
+if [ -z "${WINE:-}" ]; then
+  for _ in $(seq 50); do [ -e "$DATA/app-ran" ] && break; sleep 0.2; done
+  [ -e "$DATA/app-ran" ] || { echo "installed app did not run"; exit 1; }
+  echo "installed app launched from the phone: ok"
+fi
+grep -q "Lock (dry run" "$DATA/out.txt" "$DATA/agent.log" 2>/dev/null && echo "power actions reached the agent: ok"
 
 python3 - <<'PY'
 from Xlib import display

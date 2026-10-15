@@ -10,6 +10,7 @@ import '../pairing/laptop.dart';
 import '../pairing/pairing_link.dart';
 import 'control_screen.dart';
 import 'scan_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.model});
@@ -41,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _connect(Laptop laptop) async {
     if (_busy) return;
     final ok = await _withProgress(() => _model.connect(laptop));
-    if (ok) await _openControl();
+    if (ok) await _openControl(laptop);
   }
 
   Future<void> _addComputer() async {
@@ -62,24 +63,26 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!ok || !mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text('Paired with ${paired!.name}. It\'s saved on this phone.')));
-    await _openControl();
+    await _openControl(paired!);
   }
 
-  Future<void> _openControl() async {
+  Future<void> _openControl(Laptop laptop) async {
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ControlScreen(connection: _conn)));
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ControlScreen(connection: _conn, laptopKey: laptop.key, settings: _model.settings),
+      ),
+    );
     if (!mounted) return;
     final error = _conn.lastError;
     if (error == null) return;
     if (error.kind == FailureKind.notPaired) {
-      await _explainFailure(error, _model.laptops.firstOrNull);
+      await _explainFailure(error, laptop);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.message),
-          action: _model.laptops.isEmpty
-              ? null
-              : SnackBarAction(label: 'Reconnect', onPressed: () => _connect(_model.laptops.first)),
+          action: SnackBarAction(label: 'Reconnect', onPressed: () => _connect(laptop)),
         ),
       );
     }
@@ -216,7 +219,19 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         final laptops = _model.laptops;
         return Scaffold(
-          appBar: AppBar(title: const Text('PairDesk')),
+          appBar: AppBar(
+            title: const Text('PairDesk'),
+            actions: [
+              if (_model.settings case final settings?)
+                IconButton(
+                  tooltip: 'Settings',
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () =>
+                      Navigator.of(context)
+                          .push(MaterialPageRoute(builder: (_) => SettingsScreen(settings: settings))),
+                ),
+            ],
+          ),
           floatingActionButton: laptops.isEmpty
               ? null
               : FloatingActionButton.extended(

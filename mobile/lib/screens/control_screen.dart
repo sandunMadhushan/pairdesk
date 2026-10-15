@@ -2,12 +2,20 @@
 import 'package:flutter/material.dart';
 
 import '../agent_connection.dart';
+import '../settings/app_settings.dart';
 import '../touchpad.dart';
+import 'tabs/apps_tab.dart';
+import 'tabs/buttons_tab.dart';
+import 'tabs/power_tab.dart';
 
 class ControlScreen extends StatefulWidget {
-  const ControlScreen({super.key, required this.connection});
+  const ControlScreen({super.key, required this.connection, required this.laptopKey, this.settings});
 
   final AgentConnection connection;
+
+  /// Identifies the computer (favourite apps are kept per computer).
+  final String laptopKey;
+  final AppSettings? settings;
 
   @override
   State<ControlScreen> createState() => _ControlScreenState();
@@ -18,6 +26,7 @@ class _ControlScreenState extends State<ControlScreen> {
   final _textFocus = FocusNode();
   bool _showKeyboard = false;
   bool _closing = false;
+  int _tab = 0;
 
   AgentConnection get _conn => widget.connection;
 
@@ -59,6 +68,62 @@ class _ControlScreenState extends State<ControlScreen> {
     }
   }
 
+  Widget _touchpadTab() {
+    final settings = widget.settings;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: Column(
+        children: [
+          _MediaRow(connection: _conn),
+          const SizedBox(height: 8),
+          Expanded(
+            child: settings == null
+                ? Touchpad(connection: _conn)
+                : ListenableBuilder(
+                    listenable: settings,
+                    builder: (_, _) => Touchpad(
+                      connection: _conn,
+                      speed: settings.pointerSpeed,
+                      naturalScroll: settings.naturalScroll,
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: HoldButton(connection: _conn, button: MouseBtn.left, label: 'Left'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: HoldButton(connection: _conn, button: MouseBtn.right, label: 'Right'),
+              ),
+            ],
+          ),
+          if (_showKeyboard) ...[
+            const SizedBox(height: 10),
+            _KeyRow(connection: _conn),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _text,
+              focusNode: _textFocus,
+              autocorrect: false,
+              enableSuggestions: false,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _sendText(),
+              decoration: InputDecoration(
+                hintText: 'Type, then send to the computer',
+                border: const OutlineInputBorder(),
+                isDense: true,
+                suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: _sendText),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -70,13 +135,14 @@ class _ControlScreenState extends State<ControlScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_conn.agentName ?? 'Laptop', overflow: TextOverflow.ellipsis),
+          title: Text(_conn.agentName ?? 'Computer', overflow: TextOverflow.ellipsis),
           actions: [
-            IconButton(
-              tooltip: _showKeyboard ? 'Hide keyboard' : 'Keyboard',
-              icon: Icon(_showKeyboard ? Icons.keyboard_hide_outlined : Icons.keyboard_outlined),
-              onPressed: _toggleKeyboard,
-            ),
+            if (_tab == 0)
+              IconButton(
+                tooltip: _showKeyboard ? 'Hide keyboard' : 'Keyboard',
+                icon: Icon(_showKeyboard ? Icons.keyboard_hide_outlined : Icons.keyboard_outlined),
+                onPressed: _toggleKeyboard,
+              ),
             IconButton(
               tooltip: 'Disconnect',
               icon: const Icon(Icons.link_off),
@@ -85,51 +151,57 @@ class _ControlScreenState extends State<ControlScreen> {
           ],
         ),
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Column(
-              children: [
-                _MediaRow(connection: _conn),
-                const SizedBox(height: 8),
-                Expanded(child: Touchpad(connection: _conn)),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: HoldButton(connection: _conn, button: MouseBtn.left, label: 'Left'),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: HoldButton(connection: _conn, button: MouseBtn.right, label: 'Right'),
-                    ),
-                  ],
-                ),
-                if (_showKeyboard) ...[
-                  const SizedBox(height: 10),
-                  _KeyRow(connection: _conn),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _text,
-                    focusNode: _textFocus,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendText(),
-                    decoration: InputDecoration(
-                      hintText: 'Type, then send to the laptop',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                      suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: _sendText),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          bottom: false,
+          child: IndexedStack(
+            index: _tab,
+            children: [
+              _touchpadTab(),
+              ButtonsTab(connection: _conn),
+              // Built on first visit, so the app list loads only when wanted.
+              _tab == 2 || _visitedApps
+                  ? AppsTab(connection: _conn, laptopKey: widget.laptopKey)
+                  : const SizedBox.shrink(),
+              PowerTab(connection: _conn),
+            ],
           ),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _tab,
+          onDestinationSelected: (i) {
+            if (i != 0 && _showKeyboard) _toggleKeyboard();
+            setState(() {
+              _tab = i;
+              if (i == 2) _visitedApps = true;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.touch_app_outlined),
+              selectedIcon: Icon(Icons.touch_app),
+              label: 'Touchpad',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.grid_view_outlined),
+              selectedIcon: Icon(Icons.grid_view_rounded),
+              label: 'Buttons',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.apps_outlined),
+              selectedIcon: Icon(Icons.apps),
+              label: 'Apps',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.power_settings_new_outlined),
+              selectedIcon: Icon(Icons.power_settings_new),
+              label: 'Power',
+            ),
+          ],
         ),
       ),
     );
   }
+
+  bool _visitedApps = false;
 }
 
 class _KeyRow extends StatelessWidget {

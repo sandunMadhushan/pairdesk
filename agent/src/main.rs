@@ -8,6 +8,7 @@
 // Release builds on Windows run without a console window.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod apps;
 mod auth;
 mod autostart;
 mod config;
@@ -15,6 +16,8 @@ mod discovery;
 mod identity;
 mod input;
 mod pairing;
+mod power;
+mod prefs;
 mod protocol;
 mod server;
 mod state;
@@ -153,12 +156,25 @@ fn main() {
         Ok(p) => p,
         Err(e) => fatal(&format!("cannot load paired phones: {e}")),
     };
+    let prefs = match prefs::PrefsStore::load(&data_dir) {
+        Ok(p) => p,
+        Err(e) => fatal(&format!("cannot load settings: {e}")),
+    };
     let state = Arc::new(AppState::new(
         identity,
         phones,
+        prefs,
         config::device_name(),
         args.port,
     ));
+
+    // Scan installed apps now, so the phone's app list opens instantly.
+    {
+        let state = state.clone();
+        std::thread::spawn(move || {
+            state.apps.installed();
+        });
+    }
 
     let input = match input::InputHandle::spawn() {
         Ok(h) => h,

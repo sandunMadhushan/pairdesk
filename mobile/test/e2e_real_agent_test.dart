@@ -64,8 +64,57 @@ void main() {
       conn.move(40, 30);
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
+      // ---- Phase 2: shortcuts, power, apps ----
+      expect(conn.features, containsAll(['combo', 'power', 'apps']));
+      conn.combo([Modifier.ctrl], char: 'c');
+      conn.combo([Modifier.alt], key: AgentKey.tab);
+      // The agent runs with PAIRDESK_POWER_DRY_RUN, so nothing really locks.
+      await conn.power(PowerAction.lock);
+      await conn.power(PowerAction.sleep);
+
+      // The owner turns off restart/shut down on the settings page: refused at once.
+      var (status, body) = await call(
+        'POST',
+        'api/permissions',
+        headers: {'X-PairDesk': '1'},
+        body: {'power': true, 'session': false, 'apps': true},
+      );
+      expect(status, 200);
+      await expectLater(
+        conn.power(PowerAction.shutDown),
+        throwsA(isA<RequestException>().having((e) => e.code, 'code', 'not_allowed')),
+      );
+
+      // A program shortcut added on the settings page can be opened from the phone.
+      final env = Platform.environment;
+      (status, body) = await call(
+        'POST',
+        'api/shortcuts/add',
+        headers: {'X-PairDesk': '1'},
+        body: {
+          'name': 'E2E marker',
+          'kind': 'program',
+          'target': env['PAIRDESK_E2E_PROGRAM']!,
+          'args': env['PAIRDESK_E2E_PROGRAM_ARGS']!,
+        },
+      );
+      expect(status, 200, reason: body);
+      final apps = await conn.fetchApps();
+      final shortcut = apps.shortcuts.singleWhere((a) => a.name == 'E2E marker');
+      expect(shortcut.kind, 'program');
+      await conn.launch(shortcut.id);
+      await expectLater(
+        conn.launch('not-an-id'),
+        throwsA(isA<RequestException>().having((e) => e.code, 'code', 'not_found')),
+      );
+      final appName = env['PAIRDESK_E2E_APP'];
+      if (appName != null && appName.isNotEmpty) {
+        final installed = apps.apps.singleWhere((a) => a.name == appName);
+        await conn.launch(installed.id);
+      }
+
       // The settings page lists the phone as connected.
-      var (status, body) = await call('GET', 'api/state');
+      (status, body) = await call('GET', 'api/state');
       expect(status, 200);
       final state = jsonDecode(body) as Map<String, dynamic>;
       final phones = state['phones'] as List;

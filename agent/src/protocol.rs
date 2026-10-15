@@ -52,6 +52,54 @@ pub enum NamedKey {
     PlayPause,
     Next,
     Prev,
+    Insert,
+    PrintScreen,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+}
+
+/// Modifier keys held during a `combo`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Modifier {
+    Ctrl,
+    Alt,
+    Shift,
+    /// The Windows key, or Super on Linux.
+    Meta,
+}
+
+/// Power and session actions. Which ones are allowed is set on the
+/// computer's settings page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PowerAction {
+    Lock,
+    Sleep,
+    ScreenOff,
+    SignOut,
+    Restart,
+    ShutDown,
+}
+
+impl PowerAction {
+    /// Actions that end the session and can lose unsaved work.
+    pub fn ends_session(self) -> bool {
+        matches!(
+            self,
+            PowerAction::SignOut | PowerAction::Restart | PowerAction::ShutDown
+        )
+    }
 }
 
 /// Messages sent by the phone.
@@ -101,6 +149,34 @@ pub enum ClientMsg {
     Text { s: String },
     /// Press and release a named key.
     Key { k: NamedKey },
+    /// Keyboard shortcut: hold `mods`, press `k` (named key) or `c` (one
+    /// character), release. With neither, the modifiers alone are tapped
+    /// (e.g. the Windows key).
+    Combo {
+        #[serde(default)]
+        mods: Vec<Modifier>,
+        #[serde(default)]
+        k: Option<NamedKey>,
+        #[serde(default)]
+        c: Option<char>,
+    },
+    /// Lock, sleep, sign out, restart, shut down…
+    Power {
+        #[serde(default)]
+        id: Option<u64>,
+        a: PowerAction,
+    },
+    /// Asks for the apps and shortcuts that can be launched.
+    Apps {
+        #[serde(default)]
+        id: Option<u64>,
+    },
+    /// Opens an app or shortcut by the ID from `apps`.
+    Launch {
+        #[serde(default)]
+        id: Option<u64>,
+        app: String,
+    },
 }
 
 /// Messages sent by the agent.
@@ -119,12 +195,64 @@ pub enum ServerMsg {
         v: u32,
         /// True when this connection just completed pairing.
         paired: bool,
+        /// Optional features this agent supports.
+        features: Vec<&'static str>,
+        /// What the computer's owner allows phones to do.
+        allow: Allow,
+    },
+    /// Answer to a request that carried an `id`.
+    Ack {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<u64>,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<AckCode>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        msg: Option<String>,
+    },
+    /// Answer to `apps`.
+    Apps {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<u64>,
+        /// Shortcuts set up on the settings page.
+        shortcuts: Vec<AppEntry>,
+        /// Apps installed on the computer.
+        apps: Vec<AppEntry>,
     },
     Pong,
     Error {
         code: ErrorCode,
         msg: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Allow {
+    /// Lock, sleep, screen off.
+    pub power: bool,
+    /// Sign out, restart, shut down.
+    pub session: bool,
+    /// Launch apps and shortcuts.
+    pub apps: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AckCode {
+    /// Turned off on the computer's settings page.
+    NotAllowed,
+    /// No app or shortcut with that ID.
+    NotFound,
+    /// The computer tried and failed.
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AppEntry {
+    pub id: String,
+    pub name: String,
+    /// `app`, `url`, `folder`, `file` or `program`.
+    pub kind: &'static str,
 }
 
 /// Machine-readable error codes. Every code except `bad_message` is
@@ -150,6 +278,25 @@ impl ClientMsg {
     /// Parses one JSON text frame and clamps values to safe ranges.
     pub fn parse(text: &str) -> Result<Self, String> {
         let msg: ClientMsg = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        if let ClientMsg::Combo { mods, k, c } = &msg {
+            if k.is_some() && c.is_some() {
+                return Err("combo takes `k` or `c`, not both".into());
+            }
+            if c.is_some_and(|c| c.is_control() || c.is_whitespace()) {
+                return Err("combo `c` must be a visible character".into());
+            }
+            if k.is_none() && c.is_none() && mods.is_empty() {
+                return Err("empty combo".into());
+            }
+            if mods.len() > 4 {
+                return Err("too many modifiers".into());
+            }
+        }
+        if let ClientMsg::Launch { app, .. } = &msg
+            && app.len() > 256
+        {
+            return Err("app ID too long".into());
+        }
         Ok(msg.clamped())
     }
 
@@ -263,11 +410,28 @@ mod tests {
             os: "windows".into(),
             v: 2,
             paired: false,
+            features: vec!["power"],
+            allow: Allow {
+                power: true,
+                session: false,
+                apps: true,
+            },
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true}}"#
+        );
+        let json = serde_json::to_string(&ServerMsg::Ack {
+            id: Some(4),
+            ok: false,
+            code: Some(AckCode::NotAllowed),
+            msg: None,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            r#"{"t":"ack","id":4,"ok":false,"code":"not_allowed"}"#
         );
         let json = serde_json::to_string(&ServerMsg::Error {
             code: ErrorCode::NotPaired,
@@ -275,6 +439,69 @@ mod tests {
         })
         .unwrap();
         assert_eq!(json, r#"{"t":"error","code":"not_paired","msg":"x"}"#);
+    }
+
+    #[test]
+    fn parses_and_checks_combos() {
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"combo","mods":["ctrl","shift"],"k":"escape"}"#).unwrap(),
+            ClientMsg::Combo {
+                mods: vec![Modifier::Ctrl, Modifier::Shift],
+                k: Some(NamedKey::Escape),
+                c: None
+            }
+        );
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"combo","mods":["ctrl"],"c":"c"}"#).unwrap(),
+            ClientMsg::Combo {
+                mods: vec![Modifier::Ctrl],
+                k: None,
+                c: Some('c')
+            }
+        );
+        assert!(ClientMsg::parse(r#"{"t":"combo","mods":["meta"]}"#).is_ok());
+        assert!(ClientMsg::parse(r#"{"t":"combo","k":"f4","mods":["alt"]}"#).is_ok());
+        assert!(ClientMsg::parse(r#"{"t":"combo"}"#).is_err(), "empty");
+        assert!(
+            ClientMsg::parse(r#"{"t":"combo","c":"ab"}"#).is_err(),
+            "two chars"
+        );
+        assert!(
+            ClientMsg::parse(r#"{"t":"combo","c":"\n"}"#).is_err(),
+            "control"
+        );
+        assert!(
+            ClientMsg::parse(r#"{"t":"combo","k":"enter","c":"x"}"#).is_err(),
+            "both"
+        );
+        assert!(ClientMsg::parse(r#"{"t":"combo","mods":["hyper"],"c":"x"}"#).is_err());
+    }
+
+    #[test]
+    fn parses_power_apps_and_launch() {
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"power","id":3,"a":"shut_down"}"#).unwrap(),
+            ClientMsg::Power {
+                id: Some(3),
+                a: PowerAction::ShutDown
+            }
+        );
+        assert!(ClientMsg::parse(r#"{"t":"power","a":"format_disk"}"#).is_err());
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"apps","id":1}"#).unwrap(),
+            ClientMsg::Apps { id: Some(1) }
+        );
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"launch","app":"a1"}"#).unwrap(),
+            ClientMsg::Launch {
+                id: None,
+                app: "a1".into()
+            }
+        );
+        let long = "x".repeat(300);
+        assert!(ClientMsg::parse(&format!(r#"{{"t":"launch","app":"{long}"}}"#)).is_err());
+        // A command line is not an app ID: launch only accepts IDs from `apps`.
+        assert!(ClientMsg::parse(r#"{"t":"launch","cmd":"calc.exe"}"#).is_err());
     }
 
     #[test]

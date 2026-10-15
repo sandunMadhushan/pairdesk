@@ -63,7 +63,20 @@
   .banner { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
   .banner.err { background: var(--warn-bg); color: var(--danger); }
   label.switch { display: flex; gap: 10px; align-items: center; cursor: pointer; }
-  label.switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+  label.switch input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+  .perms { display: grid; gap: 12px; margin-top: 8px; }
+  .perms small { display: block; color: var(--muted); }
+  form.add { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  form.add .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 520px) { form.add .fields { grid-template-columns: 1fr; } }
+  form.add label { display: grid; gap: 4px; font-size: 14px; }
+  form.add .wide { grid-column: 1 / -1; }
+  input[type=text], select {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); min-width: 0; width: 100%;
+  }
+  .target { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .hint { font-size: 13px; color: var(--muted); }
   footer { color: var(--muted); font-size: 13px; margin-top: 24px; overflow-wrap: anywhere; }
   code { font-size: 12px; }
   [hidden] { display: none !important; }
@@ -107,6 +120,43 @@
     <h2 id="phones-title">Paired phones</h2>
     <p class="muted" id="no-phones">No phones yet.</p>
     <ul class="phones" id="phones"></ul>
+  </section>
+
+  <section aria-labelledby="perm-title">
+    <h2 id="perm-title">What paired phones can do</h2>
+    <p class="muted">Touchpad and keyboard are always on for paired phones.</p>
+    <div class="perms">
+      <label class="switch"><input type="checkbox" id="perm-power">
+        <span>Lock, sleep and turn off the screen</span></label>
+      <label class="switch"><input type="checkbox" id="perm-session">
+        <span>Sign out, restart and shut down<small>Unsaved work in open apps can be lost.</small></span></label>
+      <label class="switch"><input type="checkbox" id="perm-apps">
+        <span>Open apps and shortcuts<small>Installed apps and the shortcuts below.</small></span></label>
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-title">
+    <h2 id="sc-title">Shortcuts</h2>
+    <p class="muted" id="no-shortcuts">Add websites, folders or programs to open from your phone. Installed apps show up on the phone without adding them here.</p>
+    <ul class="phones" id="shortcuts"></ul>
+    <form class="add" id="sc-form">
+      <div class="fields">
+        <label>Name<input type="text" id="sc-name" maxlength="64" placeholder="e.g. Class notes" required></label>
+        <label>Type
+          <select id="sc-kind">
+            <option value="url">Website</option>
+            <option value="path">File or folder</option>
+            <option value="program">Program</option>
+          </select>
+        </label>
+        <label class="wide"><span id="sc-target-label">Address</span>
+          <input type="text" id="sc-target" placeholder="https://" required></label>
+        <label class="wide" id="sc-args-row" hidden>Arguments (optional)
+          <input type="text" id="sc-args" placeholder='e.g. --new-window "C:\My Files"'></label>
+      </div>
+      <div class="hint" id="sc-hint"></div>
+      <div class="row"><button class="primary" type="submit">Add shortcut</button></div>
+    </form>
   </section>
 
   <section aria-labelledby="settings-title">
@@ -228,6 +278,41 @@ function render(s) {
     list.append(li);
   }
 
+  if (s.os !== agentOs) { agentOs = s.os; updateKind(); }
+
+  // Permissions
+  for (const k of ["power", "session", "apps"]) {
+    const box = $("perm-" + k);
+    if (document.activeElement !== box) box.checked = s.permissions[k];
+  }
+
+  // Shortcuts
+  const sc = $("shortcuts");
+  sc.replaceChildren();
+  $("no-shortcuts").hidden = s.shortcuts.length > 0;
+  const kindName = { url: "Website", path: "File or folder", program: "Program" };
+  for (const x of s.shortcuts) {
+    const li = document.createElement("li");
+    const info = document.createElement("div");
+    info.className = "grow";
+    const n = document.createElement("div");
+    n.className = "phone-name";
+    n.textContent = x.name;
+    const t = document.createElement("div");
+    t.className = "target";
+    t.textContent = kindName[x.kind] + " · " + x.target + (x.args ? " " + x.args : "");
+    info.append(n, t);
+    const rm = document.createElement("button");
+    rm.className = "danger";
+    rm.textContent = "Remove";
+    rm.setAttribute("aria-label", "Remove " + x.name);
+    rm.onclick = async () => {
+      try { render(await post("shortcuts/remove", { id: x.id })); } catch (e) { showBanner(e.message, true); }
+    };
+    li.append(info, rm);
+    sc.append(li);
+  }
+
   const auto = $("autostart");
   if (document.activeElement !== auto) auto.checked = s.autostart;
   $("version").textContent = "PairDesk " + s.version + " · " + s.os + " · port " + s.port;
@@ -249,6 +334,50 @@ async function refresh() {
 $("btn-pair").onclick = async () => render(await post("pair"));
 $("btn-new").onclick = async () => render(await post("pair"));
 $("btn-cancel").onclick = async () => render(await post("cancel-pair"));
+for (const k of ["power", "session", "apps"]) {
+  $("perm-" + k).onchange = async () => {
+    try {
+      render(await post("permissions", {
+        power: $("perm-power").checked, session: $("perm-session").checked, apps: $("perm-apps").checked,
+      }));
+    } catch (e) { showBanner(e.message, true); refresh(); }
+  };
+}
+
+const kindHelp = {
+  url: ["Address", "https://", "Opens in your default browser."],
+  path: ["File or folder", "C:\\Users\\you\\Documents", "Tip: in File Explorer, Shift + right-click the item and choose Copy as path."],
+  program: ["Program", "C:\\Program Files\\App\\app.exe", "The program file itself. It runs directly, without a command prompt."],
+};
+const kindHelpLinux = {
+  url: kindHelp.url,
+  path: ["File or folder", "/home/you/Documents", "Opens with its default app."],
+  program: ["Program", "/usr/bin/firefox", "The program file itself. It runs directly, without a shell."],
+};
+let agentOs = "windows";
+function updateKind() {
+  const help = agentOs === "windows" ? kindHelp : kindHelpLinux;
+  const [label, placeholder, hint] = help[$("sc-kind").value];
+  $("sc-target-label").textContent = label;
+  $("sc-target").placeholder = placeholder;
+  $("sc-hint").textContent = hint;
+  $("sc-args-row").hidden = $("sc-kind").value !== "program";
+}
+$("sc-kind").onchange = updateKind;
+updateKind();
+$("sc-form").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    render(await post("shortcuts/add", {
+      name: $("sc-name").value, kind: $("sc-kind").value,
+      target: $("sc-target").value, args: $("sc-args").value,
+    }));
+    $("sc-form").reset();
+    updateKind();
+    showBanner("Shortcut added. It shows up under Apps on your phone.");
+  } catch (err) { showBanner(err.message, true); }
+};
+
 $("autostart").onchange = async (e) => {
   try { render(await post("autostart", { enabled: e.target.checked })); }
   catch (err) { showBanner(err.message, true); refresh(); }

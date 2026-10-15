@@ -10,6 +10,7 @@ import 'pairing/discovery.dart';
 import 'pairing/identity.dart';
 import 'pairing/laptop.dart';
 import 'pairing/pairing_link.dart';
+import 'settings/app_settings.dart';
 
 class AppModel extends ChangeNotifier {
   AppModel({
@@ -18,6 +19,7 @@ class AppModel extends ChangeNotifier {
     required List<Laptop> laptops,
     required this.phoneName,
     required this.connection,
+    this.settings,
   }) : _laptops = List.of(laptops) {
     _sort();
   }
@@ -28,6 +30,7 @@ class AppModel extends ChangeNotifier {
       PhoneIdentity.loadOrCreate(SecureKeyVault()),
       store.load(),
       _deviceName(),
+      AppSettings.load(),
     ]);
     return AppModel(
       identity: results[0] as PhoneIdentity,
@@ -35,6 +38,7 @@ class AppModel extends ChangeNotifier {
       laptops: results[1] as List<Laptop>,
       phoneName: results[2] as String,
       connection: AgentConnection(finder: NsdLaptopFinder()),
+      settings: results[3] as AppSettings,
     );
   }
 
@@ -56,6 +60,9 @@ class AppModel extends ChangeNotifier {
   final LaptopStore store;
   final String phoneName;
   final AgentConnection connection;
+
+  /// Phone preferences. Null only in tests.
+  final AppSettings? settings;
 
   List<Laptop> _laptops;
   List<Laptop> get laptops => List.unmodifiable(_laptops);

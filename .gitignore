@@ -10,3 +10,4 @@ agent/target/
 *.iml
 .DS_Store
 Thumbs.db
+mobile/android/build/

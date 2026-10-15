@@ -9,8 +9,10 @@ use std::time::Duration;
 
 use tokio::sync::watch;
 
+use crate::apps::Catalogue;
 use crate::identity::Identity;
 use crate::pairing::{PairingCode, PairingLink};
+use crate::prefs::PrefsStore;
 use crate::store::PhoneStore;
 
 /// A phone that is connected right now.
@@ -30,6 +32,8 @@ pub struct AppState {
     next_session: AtomicU64,
     /// Bumped whenever a phone is removed, so its open connection closes.
     revocations: watch::Sender<u64>,
+    prefs: Mutex<PrefsStore>,
+    pub apps: Catalogue,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -38,7 +42,13 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl AppState {
-    pub fn new(identity: Identity, phones: PhoneStore, name: String, port: u16) -> Self {
+    pub fn new(
+        identity: Identity,
+        phones: PhoneStore,
+        prefs: PrefsStore,
+        name: String,
+        port: u16,
+    ) -> Self {
         Self {
             identity,
             name,
@@ -48,7 +58,14 @@ impl AppState {
             sessions: Mutex::new(HashMap::new()),
             next_session: AtomicU64::new(1),
             revocations: watch::channel(0).0,
+            prefs: Mutex::new(prefs),
+            apps: Catalogue::default(),
         }
+    }
+
+    /// The owner's permissions and shortcuts.
+    pub fn prefs(&self) -> MutexGuard<'_, PrefsStore> {
+        lock(&self.prefs)
     }
 
     // ---- paired phones ----
