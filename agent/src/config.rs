@@ -87,24 +87,6 @@ pub fn device_name() -> String {
     }
 }
 
-/// Local IPv4 addresses phones can try, excluding loopback and
-/// link-local addresses.
-pub fn lan_addresses() -> Vec<std::net::Ipv4Addr> {
-    let mut out = Vec::new();
-    if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
-        for (_, ip) in ifaces {
-            if let std::net::IpAddr::V4(v4) = ip
-                && !v4.is_loopback()
-                && !v4.is_link_local()
-                && !out.contains(&v4)
-            {
-                out.push(v4);
-            }
-        }
-    }
-    out
-}
-
 /// Random bytes from the operating system.
 pub fn random_bytes<const N: usize>() -> [u8; N] {
     let mut buf = [0u8; N];

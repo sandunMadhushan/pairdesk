@@ -64,6 +64,22 @@ void main() {
       conn.move(40, 30);
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
+      // ---- Phase 3: the computer tells the phone all its addresses ----
+      expect(laptop.addresses.first, '127.0.0.1', reason: 'the address that worked comes first');
+      expect(
+        laptop.addresses.length,
+        greaterThanOrEqualTo(2),
+        reason: 'learned the computer\'s own addresses',
+      );
+      expect(conn.viaTailscale, isFalse);
+      if (Platform.environment['PAIRDESK_E2E_TAILSCALE'] == '1') {
+        // The agent saw Tailscale running and told the phone how to reach it.
+        expect(laptop.addresses, containsAll(['100.101.102.103', 'e2e-pc.tail1234.ts.net']));
+        expect(laptop.reachableAnywhere, isTrue);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      expect(conn.latency, isNotNull, reason: 'ping round trip measured');
+
       // ---- Phase 2: shortcuts, power, apps ----
       expect(conn.features, containsAll(['combo', 'power', 'apps']));
       conn.combo([Modifier.ctrl], char: 'c');
@@ -118,6 +134,14 @@ void main() {
       expect(status, 200);
       final state = jsonDecode(body) as Map<String, dynamic>;
       final phones = state['phones'] as List;
+      expect([
+        'running',
+        'not_installed',
+        'not_connected',
+        'checking',
+        'unknown',
+      ], contains(state['remote']['status']));
+      expect(state['keep_awake'], isFalse);
       expect(phones.single['name'], 'E2E phone');
       expect(phones.single['connected'], true);
 

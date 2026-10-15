@@ -111,6 +111,17 @@ class AgentException implements Exception {
   }
 }
 
+/// Tailscale addresses (100.64.0.0/10) and MagicDNS names (*.ts.net).
+bool isTailscaleHost(String host) => isTailscaleAddress(host);
+
+/// IPv4 addresses and Tailscale names; anything else from the computer is ignored.
+bool isUsableHost(String host) {
+  final ip = InternetAddress.tryParse(host);
+  if (ip != null) return ip.type == InternetAddressType.IPv4 && !ip.isLoopback;
+  return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) &&
+      host.length < 254;
+}
+
 /// Opens a WebSocket over TLS that only accepts the pinned certificate.
 /// Exposed for tests.
 @visibleForTesting
@@ -214,6 +225,8 @@ class AgentConnection extends ChangeNotifier {
   AgentConnection({
     this.finder,
     this.connectTimeout = const Duration(seconds: 3),
+    this.remoteConnectTimeout = const Duration(seconds: 8),
+    this.stagger = const Duration(milliseconds: 250),
     this.replyTimeout = const Duration(seconds: 8),
     this.pingInterval = const Duration(seconds: 3),
     this.deadAfter = const Duration(seconds: 10),
@@ -221,7 +234,15 @@ class AgentConnection extends ChangeNotifier {
 
   /// Finds a computer whose address changed. Null disables discovery.
   final LaptopFinder? finder;
+
+  /// Home-network addresses answer fast or not at all.
   final Duration connectTimeout;
+
+  /// Tailscale may need a few seconds to reach a computer through a relay.
+  final Duration remoteConnectTimeout;
+
+  /// Gap between starting attempts at successive addresses.
+  final Duration stagger;
   final Duration replyTimeout;
   final Duration pingInterval;
   final Duration deadAfter;
@@ -232,6 +253,7 @@ class AgentConnection extends ChangeNotifier {
   DateTime _lastHeard = DateTime.now();
   Completer<Map<String, dynamic>>? _reply;
   bool _cancelRequested = false;
+  Completer<(String, IOWebSocketChannel)?>? _race;
 
   /// Set when the connection drops during the handshake.
   AgentException? _handshakeLost;
@@ -262,6 +284,17 @@ class AgentConnection extends ChangeNotifier {
 
   String? _address;
   String? get address => _address;
+
+  /// True when this connection goes through Tailscale.
+  bool get viaTailscale => _address != null && isTailscaleHost(_address!);
+
+  List<String> _agentAddrs = const [];
+
+  DateTime? _pingSentAt;
+  Duration? _latency;
+
+  /// Round-trip time of the last ping.
+  Duration? get latency => _latency;
 
   /// Why the last connection ended, if it ended badly.
   AgentException? _lastError;
@@ -312,33 +345,16 @@ class AgentConnection extends ChangeNotifier {
     _setProgress('Connecting to ${laptop.name}…');
 
     AgentException? best;
-    Future<bool> tryAll(List<String> addresses) async {
-      for (final host in addresses) {
-        if (_cancelRequested) {
-          _fail(AgentException(FailureKind.cancelled, 'Cancelled.'));
-        }
-        try {
-          await _open(host, laptop, me, first);
-          return true;
-        } on AgentException catch (e) {
-          // A definite answer from the right computer ends the search.
-          if (e.kind != FailureKind.unreachable && e.kind != FailureKind.wrongComputer) {
-            await disconnect(notify: false);
-            _fail(e);
-          }
-          if (best == null || e.kind == FailureKind.wrongComputer) best = e;
-          await disconnect(notify: false);
-        }
-      }
-      return false;
+    void note(AgentException e) {
+      if (best == null || e.kind == FailureKind.wrongComputer) best = e;
     }
 
-    var ok = await tryAll(laptop.addresses);
-    if (!ok && useDiscovery && finder != null) {
+    var ok = await _tryHosts(laptop.addresses, laptop, me, first, note);
+    if (!ok && useDiscovery && finder != null && !_cancelRequested) {
       _setProgress('Looking for ${laptop.name} on this Wi-Fi…');
       final found = await finder!.find(laptop.shortId);
       final fresh = found.where((a) => !laptop.addresses.contains(a)).toList();
-      ok = await tryAll(fresh);
+      ok = await _tryHosts(fresh, laptop, me, first, note);
     }
     if (_cancelRequested) _fail(AgentException(FailureKind.cancelled, 'Cancelled.'));
     if (!ok) {
@@ -346,7 +362,7 @@ class AgentConnection extends ChangeNotifier {
     }
 
     laptop
-      ..rememberAddress(_address!)
+      ..learnAddresses(working: _address!, fromComputer: _agentAddrs)
       ..name = _agentName ?? laptop.name
       ..os = _agentOs ?? laptop.os
       ..lastUsed = DateTime.now().millisecondsSinceEpoch;
@@ -359,14 +375,92 @@ class AgentConnection extends ChangeNotifier {
         _lost(AgentException(FailureKind.unreachable, 'The computer stopped answering.'));
         return;
       }
+      _pingSentAt = DateTime.now();
       _send({'t': 'ping'});
     });
     notifyListeners();
   }
 
-  /// One attempt at one address: TLS + pin, then hello/pair, challenge, auth.
-  Future<void> _open(String host, Laptop laptop, PhoneIdentity me, Map<String, Object?> first) async {
-    final channel = await openPinnedChannel(host, laptop.port, laptop.fingerprint, timeout: connectTimeout);
+  /// Tries [hosts] until one completes the handshake. Connections start
+  /// a moment apart and the first to answer wins, so a dead home address
+  /// doesn't delay a working Tailscale one (and the other way round).
+  Future<bool> _tryHosts(
+    List<String> hosts,
+    Laptop laptop,
+    PhoneIdentity me,
+    Map<String, Object?> first,
+    void Function(AgentException) note,
+  ) async {
+    final remaining = List.of(hosts);
+    while (remaining.isNotEmpty) {
+      if (_cancelRequested) _fail(AgentException(FailureKind.cancelled, 'Cancelled.'));
+      final winner = await _raceChannels(remaining, laptop, note);
+      if (winner == null) return false;
+      final (host, channel) = winner;
+      remaining.remove(host);
+      try {
+        await _handshake(host, channel, laptop, me, first);
+        return true;
+      } on AgentException catch (e) {
+        await disconnect(notify: false);
+        // A definite answer from the right computer ends the search.
+        if (e.kind != FailureKind.unreachable && e.kind != FailureKind.wrongComputer) _fail(e);
+        note(e);
+      }
+    }
+    return false;
+  }
+
+  /// Opens pinned connections to [hosts], [stagger] apart; returns the
+  /// first that succeeds and closes any that finish later.
+  Future<(String, IOWebSocketChannel)?> _raceChannels(
+    List<String> hosts,
+    Laptop laptop,
+    void Function(AgentException) note,
+  ) {
+    if (hosts.isEmpty) return Future.value(null);
+    final done = Completer<(String, IOWebSocketChannel)?>();
+    _race = done;
+    var pending = hosts.length;
+    void finished() {
+      pending--;
+      if (pending == 0 && !done.isCompleted) done.complete(null);
+    }
+
+    for (var i = 0; i < hosts.length; i++) {
+      final host = hosts[i];
+      Future<void>.delayed(stagger * i, () async {
+        if (done.isCompleted || _cancelRequested) return finished();
+        try {
+          final ch = await openPinnedChannel(
+            host,
+            laptop.port,
+            laptop.fingerprint,
+            timeout: isTailscaleHost(host) ? remoteConnectTimeout : connectTimeout,
+          );
+          if (done.isCompleted || _cancelRequested) {
+            unawaited(ch.sink.close().catchError((_) {}));
+          } else {
+            done.complete((host, ch));
+          }
+        } on AgentException catch (e) {
+          note(e);
+        } finally {
+          finished();
+        }
+      });
+    }
+    return done.future;
+  }
+
+  /// hello/pair, challenge, auth on an open channel.
+  Future<void> _handshake(
+    String host,
+    IOWebSocketChannel channel,
+    Laptop laptop,
+    PhoneIdentity me,
+    Map<String, Object?> first,
+  ) async {
     _channel = channel;
     _handshakeLost = null;
     _sub = channel.stream.listen(
@@ -393,6 +487,11 @@ class AgentConnection extends ChangeNotifier {
           if (f is String) f,
     };
     _allowed = Allowed.fromJson(welcome['allow']);
+    _agentAddrs = [
+      if (welcome['addrs'] is List)
+        for (final a in welcome['addrs'] as List)
+          if (a is String && isUsableHost(a)) a,
+    ];
     _address = host;
   }
 
@@ -434,6 +533,12 @@ class AgentConnection extends ChangeNotifier {
       waiting.complete(decoded);
       return;
     }
+    if (decoded['t'] == 'pong' && _pingSentAt != null) {
+      _latency = DateTime.now().difference(_pingSentAt!);
+      _pingSentAt = null;
+      notifyListeners();
+      return;
+    }
     if (decoded['t'] == 'error') {
       if (decoded['code'] == 'bad_message') {
         debugPrint('agent: ${decoded['msg']}');
@@ -447,6 +552,8 @@ class AgentConnection extends ChangeNotifier {
   Future<void> cancel() async {
     if (_status != ConnectionStatus.connecting) return;
     _cancelRequested = true;
+    final race = _race;
+    if (race != null && !race.isCompleted) race.complete(null);
     final reply = _reply;
     _reply = null;
     if (reply != null && !reply.isCompleted) {
@@ -479,6 +586,8 @@ class AgentConnection extends ChangeNotifier {
     }
     _status = ConnectionStatus.disconnected;
     _progress = null;
+    _latency = null;
+    _pingSentAt = null;
     if (notify) notifyListeners();
   }
 

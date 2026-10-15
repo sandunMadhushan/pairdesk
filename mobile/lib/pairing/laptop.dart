@@ -9,6 +9,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'codec.dart';
 
+/// Same test as the connection uses (100.64.0.0/10 or *.ts.net).
+bool isTailscaleAddress(String host) {
+  if (host.toLowerCase().endsWith('.ts.net')) return true;
+  final parts = host.split('.');
+  if (parts.length != 4) return false;
+  final a = int.tryParse(parts[0]), b = int.tryParse(parts[1]);
+  return a == 100 && b != null && b >= 64 && b <= 127;
+}
+
 class Laptop {
   Laptop({
     required this.fingerprint,
@@ -36,10 +45,25 @@ class Laptop {
 
   String get key => b64Encode(fingerprint);
 
-  /// Puts [address] first, keeping at most 4 addresses.
+  static const maxAddresses = 8;
+
+  /// Puts [address] first, keeping at most [maxAddresses].
   void rememberAddress(String address) {
-    addresses = [address, ...addresses.where((a) => a != address)].take(4).toList();
+    addresses = [address, ...addresses.where((a) => a != address)].take(maxAddresses).toList();
   }
+
+  /// After connecting: the address that worked first, then what the
+  /// computer says it has now (e.g. a new Tailscale address), then older ones.
+  void learnAddresses({required String working, List<String> fromComputer = const []}) {
+    final merged = <String>[];
+    for (final a in [working, ...fromComputer, ...addresses]) {
+      if (!merged.contains(a)) merged.add(a);
+    }
+    addresses = merged.take(maxAddresses).toList();
+  }
+
+  /// True when the phone knows a Tailscale route to this computer.
+  bool get reachableAnywhere => addresses.any(isTailscaleAddress);
 
   Map<String, Object?> toJson() => {
     'fp': key,

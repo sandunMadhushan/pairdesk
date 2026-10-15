@@ -5,11 +5,10 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.3 preview (Phase 2).** Pair once with a QR code; after that the phone
+> **Status: 0.4 preview (Phase 3).** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
-> launcher and power controls. Works over your local Wi-Fi; connecting from
-> anywhere (Tailscale) comes in Phase 3.
+> launcher and power controls, on your Wi-Fi or from anywhere with Tailscale.
 
 ## What works now
 
@@ -28,6 +27,7 @@ no codes or "accept" prompts every time.
 | Apps | Open any installed app, plus websites, folders and programs you add on the computer's settings page |
 | Power | Lock, sleep, screen off, sign out, restart, shut down (each can be switched off on the computer) |
 | App lock | Optional fingerprint, face or screen-lock check to open PairDesk |
+| Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) (free for personal use); picks Wi-Fi or Tailscale by itself |
 
 ## Quick start
 
@@ -49,6 +49,17 @@ icon to open its page, pair another phone or remove one.
 
 Phone and computer must be on the same Wi-Fi. Some guest or campus networks block
 devices from talking to each other; a phone hotspot or home Wi-Fi works.
+
+### Use it away from home
+
+1. Install [Tailscale](https://tailscale.com/download) on the computer and on the
+   phone, and sign in to both with the same account (free for personal use).
+2. Open PairDesk on the phone once at home, so it learns the computer's Tailscale address.
+3. Away from home, turn Tailscale on, on the phone, and open PairDesk. The title bar
+   shows whether you're connected via Wi-Fi or Tailscale.
+
+The computer must be awake: turn on **Keep this computer awake** on its PairDesk page
+if it tends to sleep.
 
 ### Known limits
 
@@ -101,8 +112,8 @@ The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOC
 | --- | --- |
 | 0 | Touchpad over home Wi-Fi |
 | 1 | One-time QR pairing, encryption, tray app, auto-start, auto-discovery |
-| **2** | **Power actions, app launcher, custom buttons, phone app lock (this release)** |
-| 3 | Connect from anywhere with Tailscale |
+| 2 | Power actions, app launcher, custom buttons, phone app lock |
+| **3** | **Connect from anywhere with Tailscale (this release)** |
 | 4 | Live screen view on Windows |
 | 5 | Linux agent on Wayland |
 | 6 | Clipboard sync and file transfer |

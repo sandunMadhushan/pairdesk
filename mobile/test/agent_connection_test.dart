@@ -40,6 +40,9 @@ class FakeAgent {
   /// Null = an agent from before Phase 2 (no optional features).
   List<String>? features = ['combo', 'power', 'apps'];
   Map<String, bool> allow = {'power': true, 'session': false, 'apps': true};
+
+  /// Addresses announced in welcome (Phase 3).
+  List<String>? addrs;
   WebSocket? socket;
   StreamSubscription<dynamic>? subscription;
 
@@ -97,6 +100,7 @@ class FakeAgent {
                 'paired': pairing,
                 'features': ?features,
                 'allow': allow,
+                'addrs': ?addrs,
               }),
             );
             return;
@@ -394,5 +398,109 @@ void main() {
     await settle();
     await conn.disconnect();
     await pending;
+  });
+
+  group('phase 3: reaching the computer from anywhere', () {
+    test('recognises Tailscale addresses and names', () {
+      expect(isTailscaleHost('100.101.102.103'), isTrue);
+      expect(isTailscaleHost('100.64.0.1'), isTrue);
+      expect(isTailscaleHost('100.128.0.1'), isFalse);
+      expect(isTailscaleHost('192.168.1.5'), isFalse);
+      expect(isTailscaleHost('sandun-pc.tail1234.ts.net'), isTrue);
+      expect(isUsableHost('sandun-pc.tail1234.ts.net'), isTrue);
+      expect(isUsableHost('evil.example.com'), isFalse);
+      expect(isUsableHost('127.0.0.1'), isFalse);
+      expect(isUsableHost('::1'), isFalse);
+    });
+
+    test('a hanging address does not hold up a working one', () async {
+      // Accepts TCP but never answers TLS, like a stale address on another network.
+      final blackhole = await ServerSocket.bind('127.0.0.3', agent.port);
+      final held = <Socket>[];
+      blackhole.listen(held.add);
+      final conn = AgentConnection(
+        connectTimeout: const Duration(seconds: 6),
+        pingInterval: const Duration(hours: 1),
+      );
+      final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
+      await conn.disconnect();
+      laptop.addresses = ['127.0.0.3', '127.0.0.1'];
+
+      final watch = Stopwatch()..start();
+      await conn.connect(laptop, me, phoneName: 'p');
+      watch.stop();
+      expect(conn.address, '127.0.0.1');
+      expect(
+        watch.elapsed,
+        lessThan(const Duration(seconds: 2)),
+        reason: 'did not wait 6 s for the dead address',
+      );
+      expect(laptop.addresses.first, '127.0.0.1');
+      await conn.disconnect();
+      for (final s in held) {
+        s.destroy();
+      }
+      await blackhole.close();
+    });
+
+    test('cancel stops a slow connection attempt straight away', () async {
+      final blackhole = await ServerSocket.bind('127.0.0.3', agent.port);
+      blackhole.listen((_) {});
+      final conn = AgentConnection(connectTimeout: const Duration(seconds: 10));
+      final laptop = Laptop(
+        fingerprint: Uint8List.fromList(agentFingerprint),
+        name: 'test-laptop',
+        port: agent.port,
+        addresses: ['127.0.0.3'],
+      );
+      final watch = Stopwatch()..start();
+      final attempt = expectLater(
+        conn.connect(laptop, me, phoneName: 'p'),
+        throwsA(isA<AgentException>().having((e) => e.kind, 'kind', FailureKind.cancelled)),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await conn.cancel();
+      await attempt;
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+      await blackhole.close();
+    });
+
+    test('learns the computer\'s other addresses, such as Tailscale', () async {
+      agent.addrs = [
+        '192.168.1.50',
+        '100.101.102.103',
+        'pc.tail1234.ts.net',
+        '127.0.0.1',
+        'evil.example.com',
+        '::1',
+      ];
+      final conn = AgentConnection(pingInterval: const Duration(milliseconds: 100));
+      final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
+      expect(laptop.addresses, ['127.0.0.1', '192.168.1.50', '100.101.102.103', 'pc.tail1234.ts.net']);
+      expect(laptop.reachableAnywhere, isTrue);
+      expect(conn.viaTailscale, isFalse);
+
+      // Survives a save and reload.
+      expect(Laptop.fromJson(laptop.toJson())!.reachableAnywhere, isTrue);
+
+      // Latency is measured from ping to pong.
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(conn.latency, isNotNull);
+      expect(conn.latency!, lessThan(const Duration(seconds: 1)));
+      await conn.disconnect();
+      expect(conn.latency, isNull);
+    });
+
+    test('keeps at most eight addresses, newest first', () {
+      final l = Laptop(
+        fingerprint: Uint8List(32),
+        name: 'x',
+        port: 1,
+        addresses: [for (var i = 0; i < 8; i++) '10.0.0.$i'],
+      );
+      l.learnAddresses(working: '10.0.0.5', fromComputer: ['100.64.0.1', '10.0.0.9']);
+      expect(l.addresses.length, Laptop.maxAddresses);
+      expect(l.addresses.take(3), ['10.0.0.5', '100.64.0.1', '10.0.0.9']);
+    });
   });
 }

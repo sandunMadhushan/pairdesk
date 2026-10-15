@@ -42,6 +42,11 @@ void main() {
     await tester.pumpWidget(app(m!));
     expect(find.text('Sandun-PC'), findsOneWidget);
     expect(find.text('Windows · tap to connect'), findsOneWidget);
+    laptop.addresses = ['192.168.1.5', '100.101.102.103'];
+    await tester.pumpWidget(app(m));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(app(m));
+    expect(find.text('Windows · Wi-Fi or Tailscale'), findsOneWidget);
     expect(find.text('Scan pairing code'), findsOneWidget);
 
     await tester.tap(find.byTooltip('More'));

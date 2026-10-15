@@ -135,7 +135,23 @@ class _ControlScreenState extends State<ControlScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_conn.agentName ?? 'Computer', overflow: TextOverflow.ellipsis),
+          title: ListenableBuilder(
+            listenable: _conn,
+            builder: (context, _) {
+              final ms = _conn.latency?.inMilliseconds;
+              final route = _conn.viaTailscale ? 'Tailscale' : 'Wi-Fi';
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_conn.agentName ?? 'Computer', overflow: TextOverflow.ellipsis),
+                  Text(
+                    ms == null ? 'Connected via $route' : 'Connected via $route · $ms ms',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              );
+            },
+          ),
           actions: [
             if (_tab == 0)
               IconButton(

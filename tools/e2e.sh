@@ -44,7 +44,16 @@ else
   E2E_PROGRAM=/bin/sh
   E2E_ARGS="-c \"touch '$DATA/shortcut-ran'\""
   E2E_APP="PairDesk E2E App"
-  PAIRDESK_HOME="$DATA" "$AGENT" --background --no-tray --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
+  # A stand-in `tailscale` command, so the agent reports a Tailscale address.
+  mkdir -p "$DATA/bin"
+  cat >"$DATA/bin/tailscale" <<'TS'
+#!/bin/sh
+[ "$1 $2" = "status --json" ] || exit 2
+echo '{"BackendState":"Running","Self":{"DNSName":"e2e-pc.tail1234.ts.net.","TailscaleIPs":["100.101.102.103","fd7a:115c:a1e0::1"]},"CurrentTailnet":{"Name":"e2e","MagicDNSEnabled":true}}'
+TS
+  chmod +x "$DATA/bin/tailscale"
+  E2E_TAILSCALE=1
+  PATH="$DATA/bin:$PATH" PAIRDESK_HOME="$DATA" "$AGENT" --background --no-tray --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=50
 fi
 for _ in $(seq $WAIT); do [ -s "$DATA/settings-url.txt" ] && break; sleep 0.2; done
@@ -59,6 +68,7 @@ echo "agent link: ${LINK%%&t=*}&t=…"
 (cd "$ROOT/mobile" && PAIRDESK_E2E_LINK="$LINK" PAIRDESK_E2E_SETTINGS="$SETTINGS" \
   PAIRDESK_E2E_OS="${WINE:+windows}" PAIRDESK_E2E_PROGRAM="$E2E_PROGRAM" \
   PAIRDESK_E2E_PROGRAM_ARGS="$E2E_ARGS" PAIRDESK_E2E_APP="$E2E_APP" \
+  PAIRDESK_E2E_TAILSCALE="${E2E_TAILSCALE:-}" \
   flutter test test/e2e_real_agent_test.dart)
 
 # Launched from the phone: the shortcut (and, on Linux, the installed app) ran.
