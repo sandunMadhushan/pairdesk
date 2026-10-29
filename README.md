@@ -5,7 +5,7 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.6 preview (Phase 5).** Pair once with a QR code; after that the phone
+> **Status: 0.7 preview (Phase 6).** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls and a live view of the screen, on your Wi-Fi or from
@@ -29,6 +29,8 @@ no codes or "accept" prompts every time.
 | Power | Lock, sleep, screen off, sign out, restart, shut down (each can be switched off on the computer) |
 | App lock | Optional fingerprint, face or screen-lock check to open PairDesk |
 | Screen | Live view of the computer's screen. Move the pointer like on the touchpad (tap to click, tap-and-drag to drag, two fingers to scroll or right-click, pinch to zoom; the zoomed view follows the pointer), or switch to tap-to-point. Full screen; red tray dot while watched |
+| Clipboard | Copy the computer's clipboard to the phone, send the phone's clipboard to the computer, or paste it straight into the computer's active window |
+| Files | Phone → computer: pick files, or **Share → PairDesk** from any app; saved in `Downloads/PairDesk`. Computer → phone: drop files on PairDesk's page, or right-click → **Send to → PairDesk phone** (Windows), "Send to phone (PairDesk)" (GNOME Files, Dolphin); saved in `Download/PairDesk` |
 | Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) (free for personal use); picks Wi-Fi or Tailscale by itself |
 
 ## Quick start
@@ -43,8 +45,8 @@ Download the agent and the app from the
      asks, allow **Private networks**.
    - Linux: `chmod +x pairdesk-agent-…-linux-x64 && ./pairdesk-agent-…-linux-x64`.
      In a Wayland session (the default on Ubuntu and Fedora), your desktop asks
-     once whether PairDesk may control it: tick **Allow Remote Interaction**, pick
-     your screen, keep **Remember This Selection** on and press **Share**.
+     once whether PairDesk may control it: tick **Allow Remote Interaction** (keep
+     **Allow Clipboard Access** on), pick your screen, keep **Remember This Selection** on and press **Share**.
 2. A PairDesk page opens in your browser with a QR code.
 3. **Phone:** install the APK, open PairDesk, tap **Scan pairing code** and scan it.
 
@@ -134,8 +136,8 @@ The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOC
 | 2 | Power actions, app launcher, custom buttons, phone app lock |
 | 3 | Connect from anywhere with Tailscale |
 | 4 | Live screen view on Windows and Linux X11 |
-| **5** | **Linux agent on Wayland (this release)** |
-| 6 | Clipboard sync and file transfer |
+| 5 | Linux agent on Wayland |
+| **6** | **Clipboard sync and file transfer (this release)** |
 | 7 | Signed installers, Microsoft Store, F-Droid, Flathub |
 
 ## Contributing

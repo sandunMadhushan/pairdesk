@@ -12,8 +12,10 @@ mod apps;
 mod auth;
 mod autostart;
 mod awake;
+mod clipboard;
 mod config;
 mod discovery;
+mod files;
 mod identity;
 mod input;
 mod instance;
@@ -24,6 +26,7 @@ mod prefs;
 mod protocol;
 mod screen;
 mod server;
+mod shell_menu;
 mod state;
 mod store;
 mod tailscale;
@@ -51,6 +54,8 @@ struct Args {
     /// Print a pairing QR code in the terminal.
     pair: bool,
     no_tray: bool,
+    /// `--send FILE…`: hand files to the running PairDesk for the phone.
+    send: Vec<std::path::PathBuf>,
 }
 
 fn usage() -> String {
@@ -61,6 +66,7 @@ fn usage() -> String {
            --pair          print a pairing QR code in this terminal\n  \
            --background    start quietly (used when starting at sign-in)\n  \
            --no-tray       don't show a tray icon\n  \
+           --send FILE...  send files to the connected phone (PairDesk must be running)\n  \
            --port <PORT>   port for phones (default {DEFAULT_PORT})\n  \
            --bind <ADDR>   address to listen on (default 0.0.0.0)\n  \
            --version       print the version\n\n\
@@ -79,6 +85,7 @@ fn parse_args() -> Result<Args, String> {
         background: false,
         pair: false,
         no_tray: false,
+        send: Vec::new(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -91,6 +98,12 @@ fn parse_args() -> Result<Args, String> {
             "--background" => a.background = true,
             "--pair" => a.pair = true,
             "--no-tray" => a.no_tray = true,
+            "--send" => {
+                a.send.extend(it.by_ref().map(std::path::PathBuf::from));
+                if a.send.is_empty() {
+                    return Err("--send needs at least one file".into());
+                }
+            }
             "--version" | "-V" => {
                 println!("pairdesk-agent {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
@@ -132,6 +145,9 @@ fn main() {
         Ok(d) => d,
         Err(e) => fatal(&format!("cannot create the PairDesk data folder: {e}")),
     };
+    if !args.send.is_empty() {
+        send_files(&data_dir, &args.send);
+    }
     init_logging(&data_dir);
 
     // Only one agent per computer. If the port is taken it's most likely
@@ -263,6 +279,7 @@ fn main() {
     autostart::enable_on_first_run(&data_dir);
     // Point start-at-sign-in at this copy, in case it's a new download.
     autostart::refresh();
+    shell_menu::install(&data_dir);
 
     print_banner(&state, &settings.url);
     if args.pair {
@@ -326,6 +343,32 @@ fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
                 "an older PairDesk ({old}) is still running. Stop it from its tray icon \
                  (Stop PairDesk), then open PairDesk {OURS} again."
             )),
+        }
+    }
+}
+
+/// `--send`: from the file manager's "Send to" menu. Errors are shown in a
+/// message box, since there's no window otherwise.
+fn send_files(data_dir: &Path, paths: &[std::path::PathBuf]) -> ! {
+    let paths: Vec<_> = paths
+        .iter()
+        .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))
+        .collect();
+    let result = std::fs::read_to_string(data_dir.join(SETTINGS_URL_FILE))
+        .map_err(|_| {
+            "PairDesk isn't running. Start PairDesk, open it on your phone, then try again."
+                .to_string()
+        })
+        .and_then(|url| instance::send_paths(url.trim(), &paths));
+    match result {
+        Ok(_) => {
+            println!("Sending {} file(s) to your phone.", paths.len());
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("PairDesk: {e}");
+            tray::show_error(&e);
+            std::process::exit(1);
         }
     }
 }

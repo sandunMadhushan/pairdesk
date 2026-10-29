@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test: the phone app's connection code against the real agent,
-# on a virtual X display. Needs Xvfb, python3-xlib, curl, Flutter and a
-# built agent.
+# on a virtual X display. Needs Xvfb, python3-xlib, xclip, curl, Flutter and
+# a built agent.
 #
 #   cargo build --release --manifest-path agent/Cargo.toml && tools/e2e.sh
 #
@@ -9,11 +9,11 @@
 #   WINE=1 AGENT=agent/target/x86_64-pc-windows-gnu/release/pairdesk-agent.exe tools/e2e.sh
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-AGENT=${AGENT:-$ROOT/agent/target/release/pairdesk-agent}
+AGENT=$(realpath "${AGENT:-$ROOT/agent/target/release/pairdesk-agent}")
 PORT=${PORT:-47811}
 DATA=$(mktemp -d)
 export DISPLAY=:97
-cleanup() { kill ${APID:-} ${SCREENPID:-} ${XPID:-} 2>/dev/null || true; [ -n "${WINE:-}" ] && { command -v wineserver >/dev/null && wineserver -k || /usr/lib/wine/wineserver -k; } 2>/dev/null; rm -rf "$DATA"; }
+cleanup() { kill ${APID:-} ${SCREENPID:-} ${XPID:-} 2>/dev/null || true; [ -n "${WINE:-}" ] && { command -v wineserver >/dev/null && wineserver -k || /usr/lib/wine/wineserver -k; } 2>/dev/null; if [ -n "${KEEP:-}" ]; then echo "kept $DATA"; else rm -rf "$DATA"; fi; }
 trap cleanup EXIT
 
 Xvfb :97 -noreset -screen 0 1280x800x24 >/dev/null 2>&1 & XPID=$!
@@ -43,6 +43,8 @@ sleep 0.5
 
 # Power actions are logged, not performed.
 export PAIRDESK_POWER_DRY_RUN=1
+# Files from the phone land here.
+mkdir -p "$DATA/downloads"
 
 if [ -n "${WINE:-}" ]; then
   WINDATA="Z:${DATA//\//\\}"
@@ -51,8 +53,17 @@ if [ -n "${WINE:-}" ]; then
   E2E_APP=""
   export WINEDEBUG=-all WINEPREFIX="$DATA/wine" WINEDLLOVERRIDES="mscoree,mshtml="
   WINEBIN=$(command -v wine || command -v wine64 || echo /usr/lib/wine/wine64)
-  PAIRDESK_HOME="Z:${DATA//\//\\}" "$WINEBIN" "$AGENT" --background --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
+  PAIRDESK_DOWNLOADS="Z:${DATA//\//\\}\\downloads" PAIRDESK_HOME="Z:${DATA//\//\\}" "$WINEBIN" "$AGENT" --background --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=600
+  # "Send to phone" as Explorer runs it, with the file as a Windows path.
+  cat >"$DATA/send.sh" <<SEND
+#!/bin/sh
+p=\$(printf '%s' "\$1" | tr '/' '\\\\')
+export WINEDEBUG=-all WINEPREFIX='$WINEPREFIX' WINEDLLOVERRIDES='mscoree,mshtml=' PAIRDESK_HOME='Z:${DATA//\//\\}'
+exec '$WINEBIN' '$AGENT' --send "Z:\$p"
+SEND
+  chmod +x "$DATA/send.sh"
+  E2E_SEND_CMD="$DATA/send.sh"
 else
   # An installed app for the agent to find: a .desktop file in XDG_DATA_HOME.
   mkdir -p "$DATA/xdg/applications"
@@ -71,7 +82,11 @@ echo '{"BackendState":"Running","Self":{"DNSName":"e2e-pc.tail1234.ts.net.","Tai
 TS
   chmod +x "$DATA/bin/tailscale"
   E2E_TAILSCALE=1
-  PATH="$DATA/bin:$PATH" PAIRDESK_HOME="$DATA" "$AGENT" --background --no-tray --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
+  # Clipboard checked with another X program; files sent like the file manager does.
+  E2E_CLIP_CHECK="xclip -o -selection clipboard"
+  E2E_CLIP_SET="printf 'copied on the computer' | xclip -selection clipboard >/dev/null 2>&1"
+  E2E_SEND_CMD="PAIRDESK_HOME='$DATA' '$AGENT' --send"
+  PATH="$DATA/bin:$PATH" PAIRDESK_DOWNLOADS="$DATA/downloads" PAIRDESK_HOME="$DATA" "$AGENT" --background --no-tray --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=50
 fi
 for _ in $(seq $WAIT); do [ -s "$DATA/settings-url.txt" ] && break; sleep 0.2; done
@@ -87,6 +102,8 @@ echo "agent link: ${LINK%%&t=*}&t=…"
   PAIRDESK_E2E_OS="${WINE:+windows}" PAIRDESK_E2E_PROGRAM="$E2E_PROGRAM" \
   PAIRDESK_E2E_PROGRAM_ARGS="$E2E_ARGS" PAIRDESK_E2E_APP="$E2E_APP" \
   PAIRDESK_E2E_TAILSCALE="${E2E_TAILSCALE:-}" PAIRDESK_E2E_SCREEN_SIGNAL="$DATA/turn-green" \
+  PAIRDESK_E2E_DOWNLOADS="$DATA/downloads" PAIRDESK_E2E_CLIP_CHECK="${E2E_CLIP_CHECK:-}" \
+  PAIRDESK_E2E_CLIP_SET="${E2E_CLIP_SET:-}" PAIRDESK_E2E_SEND_CMD="${E2E_SEND_CMD:-}" \
   flutter test test/e2e_real_agent_test.dart)
 
 # Launched from the phone: the shortcut (and, on Linux, the installed app) ran.

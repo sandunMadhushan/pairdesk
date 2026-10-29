@@ -216,6 +216,53 @@ pub enum ClientMsg {
         x: f64,
         y: f64,
     },
+    /// Asks for the computer's clipboard text; answered with `clip`.
+    ClipGet {
+        #[serde(default)]
+        id: Option<u64>,
+    },
+    /// Puts text on the computer's clipboard and, with `paste`, pastes it
+    /// into the active window (Ctrl+V). Answered with `ack`.
+    ClipSet {
+        #[serde(default)]
+        id: Option<u64>,
+        text: String,
+        #[serde(default)]
+        paste: bool,
+    },
+    /// The phone wants to send a file (see `files.rs`).
+    FileOffer {
+        fid: u32,
+        name: String,
+        size: u64,
+    },
+    /// The phone takes a file the computer offered.
+    FileAccept {
+        fid: u32,
+    },
+    /// Bytes of a file received so far (flow control).
+    FileProgress {
+        fid: u32,
+        received: u64,
+    },
+    /// All bytes are sent; the checksum to verify.
+    FileEnd {
+        fid: u32,
+        sha256: String,
+    },
+    /// The phone saved (or couldn't save) a file from the computer.
+    FileDone {
+        fid: u32,
+        ok: bool,
+        #[serde(default)]
+        msg: Option<String>,
+    },
+    /// Stops a transfer in either direction.
+    FileCancel {
+        fid: u32,
+        #[serde(default)]
+        msg: Option<String>,
+    },
 }
 
 /// Messages sent by the agent.
@@ -273,6 +320,43 @@ pub enum ServerMsg {
     Notice {
         msg: String,
     },
+    /// Answer to `clip_get`.
+    Clip {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<u64>,
+        text: String,
+    },
+    /// The computer wants to send a file.
+    FileOffer {
+        fid: u32,
+        name: String,
+        size: u64,
+    },
+    FileAccept {
+        fid: u32,
+    },
+    FileProgress {
+        fid: u32,
+        received: u64,
+    },
+    FileEnd {
+        fid: u32,
+        sha256: String,
+    },
+    /// A file from the phone was saved (`name`: under which name), or not.
+    FileDone {
+        fid: u32,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        msg: Option<String>,
+    },
+    FileCancel {
+        fid: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        msg: Option<String>,
+    },
     /// Answer to `apps`.
     Apps {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -299,6 +383,10 @@ pub struct Allow {
     pub apps: bool,
     /// See the screen.
     pub screen: bool,
+    /// Read and set the clipboard.
+    pub clipboard: bool,
+    /// Send files to this computer.
+    pub files: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -398,6 +486,16 @@ impl ClientMsg {
             },
             ClientMsg::Text { s } => ClientMsg::Text {
                 s: s.chars().take(MAX_TEXT_CHARS).collect(),
+            },
+            ClientMsg::ClipSet { id, text, paste } => ClientMsg::ClipSet {
+                id,
+                text: crate::clipboard::clamp(text),
+                paste,
+            },
+            ClientMsg::FileOffer { fid, name, size } => ClientMsg::FileOffer {
+                fid,
+                name: name.chars().take(512).collect(),
+                size,
             },
             ClientMsg::Hello { name, v, id } => ClientMsg::Hello {
                 name: name.map(clean_name),
@@ -503,13 +601,15 @@ mod tests {
                 session: false,
                 apps: true,
                 screen: true,
+                clipboard: true,
+                files: false,
             },
             addrs: vec!["192.168.1.5".into(), "100.101.102.103".into()],
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true},"addrs":["192.168.1.5","100.101.102.103"]}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true,"clipboard":true,"files":false},"addrs":["192.168.1.5","100.101.102.103"]}"#
         );
         let json = serde_json::to_string(&ServerMsg::Ack {
             id: Some(4),

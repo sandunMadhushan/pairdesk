@@ -381,11 +381,11 @@ async fn welcome_lists_features_and_permissions() {
     let (_ws, welcome) = signed_in(&agent, 20).await;
     assert_eq!(
         welcome["features"],
-        json!(["combo", "power", "apps", "screen"])
+        json!(["combo", "power", "apps", "screen", "clipboard", "files"])
     );
     assert_eq!(
         welcome["allow"],
-        json!({"power": true, "session": true, "apps": true, "screen": true})
+        json!({"power": true, "session": true, "apps": true, "screen": true, "clipboard": true, "files": true})
     );
 }
 
@@ -620,4 +620,231 @@ async fn streams_the_screen_with_acks_and_can_be_stopped() {
         }
     }
     assert!(agent.state.viewing_phones().is_empty());
+}
+
+// ---------------------------------------------------------------- Phase 6
+
+/// One downloads folder for this test run (the setting is process-wide).
+fn downloads() -> &'static std::path::Path {
+    static DIR: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let d = tempfile::tempdir().unwrap();
+        // SAFETY: set once, before any test reads it.
+        unsafe { std::env::set_var("PAIRDESK_DOWNLOADS", d.path()) };
+        d
+    })
+    .path()
+}
+
+#[tokio::test]
+async fn clipboard_both_ways_and_paste() {
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 40).await;
+    send(
+        &mut ws,
+        json!({"t":"clip_set","id":1,"text":"from the phone ශ්‍රී"}),
+    )
+    .await;
+    assert_eq!(recv(&mut ws).await, json!({"t":"ack","id":1,"ok":true}));
+    send(&mut ws, json!({"t":"clip_get","id":2})).await;
+    assert_eq!(
+        recv(&mut ws).await,
+        json!({"t":"clip","id":2,"text":"from the phone ශ්‍රී"})
+    );
+    // Paste: set, then Ctrl+V in the active window.
+    send(
+        &mut ws,
+        json!({"t":"clip_set","id":3,"text":"pasted","paste":true}),
+    )
+    .await;
+    assert_eq!(recv(&mut ws).await["ok"], true);
+    use crate::protocol::Modifier;
+    assert_eq!(
+        agent.input.recv_timeout(Duration::from_secs(2)).unwrap(),
+        InputCmd::Combo {
+            mods: vec![Modifier::Ctrl],
+            key: None,
+            ch: Some('v')
+        }
+    );
+    // Switched off on the computer.
+    agent.state.prefs().set_allow_clipboard(false).unwrap();
+    send(&mut ws, json!({"t":"clip_get","id":4})).await;
+    assert_eq!(recv(&mut ws).await["code"], "not_allowed");
+}
+
+/// Sends `data` the way the phone does; returns the agent's final answer.
+async fn phone_sends(
+    ws: &mut Client,
+    fid: u32,
+    name: &str,
+    data: &[u8],
+    sha: Option<String>,
+) -> Value {
+    send(
+        ws,
+        json!({"t":"file_offer","fid":fid,"name":name,"size":data.len()}),
+    )
+    .await;
+    let answer = recv(ws).await;
+    if answer["t"] != "file_accept" {
+        return answer;
+    }
+    for (i, c) in data.chunks(crate::files::CHUNK).enumerate() {
+        let m = crate::files::chunk_message(fid, (i * crate::files::CHUNK) as u64, c);
+        ws.send(Message::binary(m)).await.unwrap();
+    }
+    let sha = sha.unwrap_or_else(|| crate::files::hex(&Sha256::digest(data)));
+    send(ws, json!({"t":"file_end","fid":fid,"sha256":sha})).await;
+    loop {
+        let m = recv(ws).await;
+        if m["t"] != "file_progress" {
+            return m;
+        }
+    }
+}
+
+#[tokio::test]
+async fn receives_files_from_the_phone() {
+    let dir = downloads();
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 41).await;
+    let data: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+    let done = phone_sends(&mut ws, 1, "../holiday photo.jpg", &data, None).await;
+    assert_eq!(done["t"], "file_done");
+    assert_eq!(done["ok"], true);
+    let name = done["name"].as_str().unwrap().to_string();
+    assert!(name.starts_with("holiday photo"), "{name}");
+    assert_eq!(std::fs::read(dir.join(&name)).unwrap(), data);
+
+    // A damaged file is refused and nothing is left behind.
+    let done = phone_sends(&mut ws, 2, "broken.bin", b"abc", Some("00".repeat(32))).await;
+    assert_eq!(done["ok"], false);
+    assert!(done["msg"].as_str().unwrap().contains("checksum"));
+    assert!(!dir.join("broken.bin").exists());
+    assert!(
+        std::fs::read_dir(dir).unwrap().all(|e| !e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".part")),
+        "no part files"
+    );
+
+    // The settings page lists both.
+    let list = agent.state.transfers();
+    assert_eq!(list[0].state, crate::state::TransferState::Failed);
+    assert_eq!(list[1].state, crate::state::TransferState::Done);
+    assert_eq!(list[1].path.as_deref(), Some(dir.join(&name).as_path()));
+
+    // Switched off on the computer.
+    agent.state.prefs().set_allow_files(false).unwrap();
+    let refused = phone_sends(&mut ws, 3, "x.txt", b"x", None).await;
+    assert_eq!(refused["t"], "file_cancel");
+}
+
+#[tokio::test]
+async fn a_phone_that_disconnects_mid_file_leaves_no_part_file() {
+    let dir = downloads();
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 42).await;
+    send(
+        &mut ws,
+        json!({"t":"file_offer","fid":9,"name":"half.bin","size":1_000_000}),
+    )
+    .await;
+    assert_eq!(recv(&mut ws).await["t"], "file_accept");
+    ws.send(Message::binary(crate::files::chunk_message(
+        9, 0, &[1; 1000],
+    )))
+    .await
+    .unwrap();
+    drop(ws);
+    for _ in 0..50 {
+        if agent.state.transfers()[0].state == crate::state::TransferState::Failed {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(
+        agent.state.transfers()[0].state,
+        crate::state::TransferState::Failed
+    );
+    assert!(!dir.join("half.bin").exists());
+    assert!(std::fs::read_dir(dir).unwrap().all(|e| {
+        !e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("pairdesk-")
+    }));
+}
+
+#[tokio::test]
+async fn sends_files_to_the_phone() {
+    let agent = start_agent().await;
+    let (mut ws, welcome) = signed_in(&agent, 43).await;
+    let _ = welcome;
+    let src = tempfile::tempdir().unwrap();
+    let path = src.path().join("notes.txt");
+    let data: Vec<u8> = (0..(crate::files::WINDOW as usize + 300_000))
+        .map(|i| (i * 13) as u8)
+        .collect();
+    std::fs::write(&path, &data).unwrap();
+    let file = Arc::new(crate::files::Outbound::from_path(&path).unwrap());
+    assert_eq!(agent.state.send_file(None, file), 1);
+
+    let offer = recv(&mut ws).await;
+    assert_eq!(offer["t"], "file_offer");
+    assert_eq!(offer["name"], "notes.txt");
+    assert_eq!(offer["size"], data.len());
+    let fid = offer["fid"].as_u64().unwrap();
+    assert!(fid >= crate::files::AGENT_FIDS as u64);
+    send(&mut ws, json!({"t":"file_accept","fid":fid})).await;
+
+    let mut got = Vec::new();
+    let mut acked = 0usize;
+    let sha = loop {
+        let m = tokio::time::timeout(Duration::from_secs(10), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        match m {
+            Message::Binary(b) => {
+                let (f, off, bytes) = crate::files::parse_chunk(&b).unwrap();
+                assert_eq!((f as u64, off as usize), (fid, got.len()));
+                got.extend_from_slice(bytes);
+                if got.len() - acked >= crate::files::PROGRESS_EVERY as usize
+                    || got.len() == data.len()
+                {
+                    acked = got.len();
+                    send(
+                        &mut ws,
+                        json!({"t":"file_progress","fid":fid,"received":acked}),
+                    )
+                    .await;
+                }
+            }
+            Message::Text(t) => {
+                let v: Value = serde_json::from_str(&t).unwrap();
+                assert_eq!(v["t"], "file_end");
+                break v["sha256"].as_str().unwrap().to_string();
+            }
+            _ => {}
+        }
+    };
+    assert_eq!(got, data);
+    assert_eq!(sha, crate::files::hex(&Sha256::digest(&data)));
+    send(&mut ws, json!({"t":"file_done","fid":fid,"ok":true})).await;
+    for _ in 0..50 {
+        if agent.state.transfers()[0].state == crate::state::TransferState::Done {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let t = &agent.state.transfers()[0];
+    assert_eq!(
+        (t.state, t.incoming, t.done),
+        (crate::state::TransferState::Done, false, data.len() as u64)
+    );
 }

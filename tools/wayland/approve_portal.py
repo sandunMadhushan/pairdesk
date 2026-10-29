@@ -33,12 +33,15 @@ def walk(o):
 def dialog():
     desktop = Atspi.get_desktop(0)
     for i in range(desktop.get_child_count()):
-        app = desktop.get_child_at_index(i)
-        if app is None or app.get_name() != "xdg-desktop-portal-gnome":
+        try:
+            app = desktop.get_child_at_index(i)
+            if app is None or app.get_name() != "xdg-desktop-portal-gnome":
+                continue
+            for o in walk(app):
+                if o.get_role_name() == "frame" and o.get_name() == "Remote Desktop":
+                    return o
+        except Exception:  # noqa: BLE001 - an app that went away
             continue
-        for o in walk(app):
-            if o.get_role_name() == "frame" and o.get_name() == "Remote Desktop":
-                return o
     return None
 
 

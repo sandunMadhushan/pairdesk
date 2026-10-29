@@ -64,6 +64,22 @@ pub fn ask_to_quit(url: &str) -> Result<(), String> {
 /// A minimal HTTP/1.0 request to the settings page on 127.0.0.1.
 /// `url` is the page address, e.g. `http://127.0.0.1:50123/<secret>/`.
 fn request(url: &str, method: &str, path: &str) -> Result<(u16, String), String> {
+    request_with(url, method, path, "")
+}
+
+/// Asks the running PairDesk to send files to the connected phone(s).
+pub fn send_paths(url: &str, paths: &[std::path::PathBuf]) -> Result<String, String> {
+    let body = serde_json::json!({
+        "paths": paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+    })
+    .to_string();
+    match request_with(url, "POST", "api/send-paths", &body)? {
+        (200, answer) => Ok(answer),
+        (_, msg) => Err(msg),
+    }
+}
+
+fn request_with(url: &str, method: &str, path: &str, body: &str) -> Result<(u16, String), String> {
     let rest = url
         .strip_prefix("http://")
         .ok_or("not a local settings address")?;
@@ -82,9 +98,13 @@ fn request(url: &str, method: &str, path: &str) -> Result<(u16, String), String>
     let base = base.trim_end_matches('/');
     let mut req = format!("{method} /{base}/{path} HTTP/1.0\r\nHost: {host}\r\n");
     if method == "POST" {
-        req.push_str("X-PairDesk: 1\r\nContent-Length: 0\r\n");
+        req.push_str(&format!(
+            "X-PairDesk: 1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n",
+            body.len()
+        ));
     }
     req.push_str("\r\n");
+    req.push_str(body);
     stream
         .write_all(req.as_bytes())
         .map_err(|e| e.to_string())?;

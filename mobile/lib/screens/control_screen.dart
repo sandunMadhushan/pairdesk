@@ -4,6 +4,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../agent_connection.dart';
+import '../files/share_inbox.dart';
+import '../files/transfers.dart';
+import 'exchange_sheet.dart';
 import '../settings/app_settings.dart';
 import '../touchpad.dart';
 import 'tabs/apps_tab.dart';
@@ -12,9 +15,18 @@ import 'tabs/power_tab.dart';
 import 'tabs/screen_tab.dart';
 
 class ControlScreen extends StatefulWidget {
-  const ControlScreen({super.key, required this.connection, required this.laptopKey, this.settings});
+  const ControlScreen({
+    super.key,
+    required this.connection,
+    required this.laptopKey,
+    this.settings,
+    this.inbox,
+  });
 
   final AgentConnection connection;
+
+  /// What other apps shared (default: the app-wide inbox).
+  final ShareInbox? inbox;
 
   /// Identifies the computer (favourite apps are kept per computer).
   final String laptopKey;
@@ -33,23 +45,65 @@ class _ControlScreenState extends State<ControlScreen> {
 
   AgentConnection get _conn => widget.connection;
   StreamSubscription<String>? _notices;
+  StreamSubscription<Transfer>? _received;
+  late final Exchange _exchange = Exchange(_conn, _say);
+  ShareInbox get _inbox => widget.inbox ?? ShareInbox.instance;
+
+  void _say(String text, {SnackBarAction? action}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          duration: Duration(seconds: action == null ? 5 : 8),
+          showCloseIcon: action == null,
+          action: action,
+        ),
+      );
+  }
 
   @override
   void initState() {
     super.initState();
     _conn.addListener(_onConnectionChanged);
-    _notices = _conn.notices.listen((msg) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text(msg), duration: const Duration(seconds: 8), showCloseIcon: true),
-        );
+    _notices = _conn.notices.listen((msg) => _say(msg));
+    _received = _conn.transfers.received.listen((t) {
+      _say(
+        'Received ${t.name}',
+        action: t.openUri == null ? null : SnackBarAction(label: 'Open', onPressed: () => _exchange.open(t)),
+      );
     });
+    _inbox.addListener(_takeShared);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeShared());
+  }
+
+  /// "Share → PairDesk" from another app: files go to the computer, text
+  /// to its clipboard.
+  void _takeShared() {
+    if (!mounted || _conn.status != ConnectionStatus.connected) return;
+    final items = _inbox.take();
+    if (items == null) return;
+    if (items.files.isNotEmpty) {
+      _exchange.sendFiles(items.files);
+    } else if (items.text != null) {
+      _exchange.sendText(items.text!);
+    }
+  }
+
+  void _openExchange() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => ExchangeSheet(exchange: _exchange),
+    );
   }
 
   @override
   void dispose() {
+    _inbox.removeListener(_takeShared);
+    _received?.cancel();
     _notices?.cancel();
     _conn.removeListener(_onConnectionChanged);
     _text.dispose();
@@ -179,7 +233,25 @@ class _ControlScreenState extends State<ControlScreen> {
                     );
                   },
                 ),
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(2),
+                  child: ListenableBuilder(
+                    listenable: _conn.transfers,
+                    builder: (context, _) {
+                      final active = _conn.transfers.items.where((t) => !t.finished).toList();
+                      if (active.isEmpty) return const SizedBox(height: 2);
+                      final size = active.fold<int>(0, (a, t) => a + t.size);
+                      final done = active.fold<int>(0, (a, t) => a + t.done);
+                      return LinearProgressIndicator(minHeight: 2, value: size == 0 ? null : done / size);
+                    },
+                  ),
+                ),
                 actions: [
+                  IconButton(
+                    tooltip: 'Clipboard and files',
+                    icon: const Icon(Icons.swap_vert),
+                    onPressed: _openExchange,
+                  ),
                   if (_keyboardTab)
                     IconButton(
                       tooltip: _showKeyboard ? 'Hide keyboard' : 'Keyboard',

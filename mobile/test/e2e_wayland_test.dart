@@ -121,6 +121,22 @@ void main() {
         await appSaw('key ctrl+a');
         conn.key(AgentKey.enter);
         await appSaw('key Return');
+
+        // Clipboard through the portal: the window sees what the phone sent,
+        // and the phone gets what the window copied.
+        expect(conn.features, contains('clipboard'));
+        await conn.clipboardSet('from the phone ✓');
+        await appSaw('clipboard from the phone ✓');
+        await conn.clipboardSet('pasted from the phone', paste: true);
+        await appSaw('key ctrl+v');
+        File('${env['PAIRDESK_E2E_SCREEN_SIGNAL']!}.clip').writeAsStringSync('go');
+        final deadline = DateTime.now().add(const Duration(seconds: 5));
+        var text = '';
+        while (DateTime.now().isBefore(deadline) && text != 'copied in gtk') {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          text = await conn.clipboardGet();
+        }
+        expect(text, 'copied in gtk');
       }
 
       conn.stopScreen();

@@ -345,6 +345,18 @@ impl Remote {
         })
     }
 
+    /// The clipboard through the portal session, if the session shares it.
+    /// `None`: use another way (no session, or no clipboard in it).
+    pub fn clipboard_get(self: &Arc<Self>) -> Option<Result<String, String>> {
+        let s = self.current().filter(|s| s.clipboard)?;
+        Some(self.rt.block_on(s.clipboard()))
+    }
+
+    pub fn clipboard_set(self: &Arc<Self>, text: &str) -> Option<Result<(), String>> {
+        let s = self.current().filter(|s| s.clipboard)?;
+        Some(self.rt.block_on(s.set_clipboard(text.to_string())))
+    }
+
     /// Opens the picture of monitor `index`.
     pub fn open_screen(
         self: &Arc<Self>,

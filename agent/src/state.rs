@@ -20,7 +20,52 @@ use crate::store::PhoneStore;
 pub struct Session {
     pub phone_id: String,
     pub address: String,
+    /// Reaches the connection (to send it a file).
+    pub cmd: tokio::sync::mpsc::UnboundedSender<SessionCmd>,
 }
+
+/// Work for one phone connection, from the settings page or `--send`.
+#[derive(Debug)]
+pub enum SessionCmd {
+    SendFile(std::sync::Arc<crate::files::Outbound>),
+}
+
+impl std::fmt::Debug for crate::files::Outbound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Outbound({})", self.path.display())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferState {
+    Waiting,
+    Active,
+    Done,
+    Failed,
+}
+
+/// A file going to or coming from a phone, for the settings page.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Transfer {
+    pub id: u64,
+    /// The phone's name.
+    pub phone: String,
+    /// From the phone to this computer.
+    pub incoming: bool,
+    pub name: String,
+    pub size: u64,
+    pub done: u64,
+    pub state: TransferState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+    /// Where a received file was saved.
+    #[serde(skip)]
+    pub path: Option<std::path::PathBuf>,
+}
+
+/// Transfers kept in the list.
+const MAX_TRANSFERS: usize = 30;
 
 /// A phone watching the screen.
 pub struct ScreenViewer {
@@ -48,6 +93,8 @@ pub struct AppState {
     pub awake: crate::awake::KeepAwake,
     /// Messages for every connected phone (e.g. "approve on the computer").
     pub notices: tokio::sync::broadcast::Sender<String>,
+    transfers: Mutex<Vec<Transfer>>,
+    next_transfer: AtomicU64,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -79,6 +126,8 @@ impl AppState {
             viewers_changed: watch::channel(0).0,
             awake: Default::default(),
             notices: tokio::sync::broadcast::channel(8).0,
+            transfers: Mutex::new(Vec::new()),
+            next_transfer: AtomicU64::new(1),
         }
     }
 
@@ -246,6 +295,95 @@ impl AppState {
         let n = v.len();
         drop(v);
         self.viewers_changed.send_replace(n);
+    }
+
+    // ---- files ----
+
+    /// Queues `file` for every connected phone, or the one with id `phone`.
+    /// Returns how many phones will get it.
+    pub fn send_file(
+        &self,
+        phone: Option<&str>,
+        file: std::sync::Arc<crate::files::Outbound>,
+    ) -> usize {
+        lock(&self.sessions)
+            .values()
+            .filter(|s| phone.is_none_or(|p| p == s.phone_id))
+            .filter(|s| s.cmd.send(SessionCmd::SendFile(file.clone())).is_ok())
+            .count()
+    }
+
+    pub fn transfer_start(&self, phone: &str, incoming: bool, name: &str, size: u64) -> u64 {
+        let id = self.next_transfer.fetch_add(1, Ordering::Relaxed);
+        let mut list = lock(&self.transfers);
+        list.push(Transfer {
+            id,
+            phone: phone.to_string(),
+            incoming,
+            name: name.to_string(),
+            size,
+            done: 0,
+            state: TransferState::Waiting,
+            msg: None,
+            path: None,
+        });
+        // Forget the oldest finished ones.
+        while list.len() > MAX_TRANSFERS {
+            match list
+                .iter()
+                .position(|t| matches!(t.state, TransferState::Done | TransferState::Failed))
+            {
+                Some(i) => {
+                    list.remove(i);
+                }
+                None => break,
+            }
+        }
+        id
+    }
+
+    pub fn transfer_progress(&self, id: u64, done: u64) {
+        if let Some(t) = lock(&self.transfers).iter_mut().find(|t| t.id == id) {
+            t.done = done.min(t.size);
+            t.state = TransferState::Active;
+        }
+    }
+
+    /// `Ok(path)`: done (received files have a path); `Err`: why it failed.
+    pub fn transfer_end(&self, id: u64, result: Result<Option<std::path::PathBuf>, String>) {
+        if let Some(t) = lock(&self.transfers).iter_mut().find(|t| t.id == id) {
+            match result {
+                Ok(path) => {
+                    t.state = TransferState::Done;
+                    t.done = t.size;
+                    if let Some(p) = &path
+                        && let Some(n) = p.file_name()
+                    {
+                        t.name = n.to_string_lossy().into_owned();
+                    }
+                    t.path = path;
+                }
+                Err(msg) => {
+                    t.state = TransferState::Failed;
+                    t.msg = Some(msg);
+                }
+            }
+        }
+    }
+
+    /// Newest first.
+    pub fn transfers(&self) -> Vec<Transfer> {
+        let mut list = lock(&self.transfers).clone();
+        list.reverse();
+        list
+    }
+
+    pub fn transfer_path(&self, id: u64) -> Option<std::path::PathBuf> {
+        lock(&self.transfers)
+            .iter()
+            .find(|t| t.id == id)?
+            .path
+            .clone()
     }
 
     pub fn sessions(&self) -> Vec<Session> {

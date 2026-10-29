@@ -65,10 +65,24 @@ def on_activate(app):
     keys.connect("key-pressed", key)
     win.add_controller(keys)
 
+    clipboard = Gdk.Display.get_default().get_clipboard()
+
+    def got_text(cb, res):
+        try:
+            write(f"clipboard {cb.read_text_finish(res)}")
+        except Exception as e:  # noqa: BLE001
+            write(f"clipboard error {e}")
+
+    clipboard.connect("changed", lambda cb: cb.read_text_async(None, got_text))
+    copied = [False]
+
     def poll():
         if os.path.exists(signal_path) and win.has_css_class("red"):
             win.remove_css_class("red")
             win.add_css_class("green")
+        if not copied[0] and os.path.exists(signal_path + ".clip"):
+            copied[0] = True
+            clipboard.set("copied in gtk")
         return True
 
     GLib.timeout_add(50, poll)

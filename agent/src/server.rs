@@ -2,7 +2,7 @@
 //! The phone-facing server: TLS, then WebSocket, then pairing or
 //! authentication, then input commands.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,16 +18,18 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
 use crate::auth;
+use crate::files;
 use crate::input::{InputCmd, InputHandle};
 use crate::protocol::{
     AckCode, ClientMsg, ErrorCode, MouseButton, PROTOCOL_VERSION, PowerAction, ServerMsg,
 };
-use crate::state::{AppState, Session};
+use crate::state::{AppState, Session, SessionCmd};
 
 /// Optional features announced in `welcome`.
-const FEATURES: &[&str] = &["combo", "power", "apps", "screen"];
-/// Largest WebSocket frame accepted from a phone.
-const MAX_FRAME_BYTES: usize = 64 * 1024;
+const FEATURES: &[&str] = &["combo", "power", "apps", "screen", "clipboard", "files"];
+/// Largest WebSocket message accepted from a phone (a file chunk is 128 KiB,
+/// clipboard text up to 200 KB).
+const MAX_FRAME_BYTES: usize = 512 * 1024;
 /// Time a phone gets to finish TLS, WebSocket and authentication.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(15);
 /// Pause before answering a failed attempt, to slow down guessing.
@@ -231,9 +233,11 @@ async fn serve(
     .await?;
     info!("{peer}: \"{}\" connected", who.name);
 
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<SessionCmd>();
     let session = state.open_session(Session {
         phone_id: who.id.clone(),
         address: peer.ip().to_string(),
+        cmd: cmd_tx,
     });
     let mut revocations = state.subscribe_revocations();
     let mut notices = state.notices.subscribe();
@@ -249,6 +253,12 @@ async fn serve(
     // Screen frames, as binary messages. At most two are ever waiting.
     let (frame_tx, mut frame_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
     let mut viewer: Option<crate::screen::Viewer> = None;
+    // Files coming from the phone, and answers for files going to it.
+    let mut incoming: HashMap<u32, files::Incoming> = HashMap::new();
+    let mut outgoing: HashMap<u32, tokio::sync::mpsc::UnboundedSender<files::Reply>> =
+        HashMap::new();
+    let (sent_tx, mut sent_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    let mut next_fid = files::AGENT_FIDS;
 
     let result = async {
         loop {
@@ -269,6 +279,40 @@ async fn serve(
                     send(&mut sink, &ServerMsg::Notice { msg }).await?;
                     continue;
                 }
+                Some(cmd) = cmd_rx.recv() => {
+                    match cmd {
+                        SessionCmd::SendFile(file) => {
+                            let fid = next_fid;
+                            next_fid = next_fid.wrapping_add(1).max(files::AGENT_FIDS);
+                            let (answers_tx, answers) = tokio::sync::mpsc::unbounded_channel();
+                            outgoing.insert(fid, answers_tx);
+                            info!("{peer}: sending \"{}\" to \"{}\"", file.name, who.name);
+                            let tid = state.transfer_start(&who.name, false, &file.name, file.size);
+                            let (st, frames, replies, done) =
+                                (state.clone(), frame_tx.clone(), reply_tx.clone(), sent_tx.clone());
+                            tokio::spawn(async move {
+                                let progress = {
+                                    let st = st.clone();
+                                    move |n| st.transfer_progress(tid, n)
+                                };
+                                let result =
+                                    files::send(fid, &file, frames, replies.clone(), answers, progress)
+                                        .await;
+                                if let Err(e) = &result {
+                                    warn!("sending \"{}\" failed: {e}", file.name);
+                                    let _ = replies.send(ServerMsg::FileCancel { fid, msg: Some(e.clone()) });
+                                }
+                                st.transfer_end(tid, result.map(|_| None));
+                                let _ = done.send(fid);
+                            });
+                        }
+                    }
+                    continue;
+                }
+                Some(fid) = sent_rx.recv() => {
+                    outgoing.remove(&fid);
+                    continue;
+                }
                 _ = revocations.changed() => {
                     if state.is_paired(&who.id) { continue; }
                     let _ = send(&mut sink, &ServerMsg::Error {
@@ -285,12 +329,24 @@ async fn serve(
                 Message::Text(t) => t,
                 Message::Close(_) => break,
                 Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
-                Message::Binary(_) => {
-                    send(
-                        &mut sink,
-                        &error(ErrorCode::BadMessage, "binary frames not supported"),
-                    )
-                    .await?;
+                Message::Binary(b) => {
+                    let Some((fid, offset, data)) = files::parse_chunk(&b) else {
+                        send(&mut sink, &error(ErrorCode::BadMessage, "unknown binary message")).await?;
+                        continue;
+                    };
+                    let Some(inc) = incoming.get_mut(&fid) else { continue };
+                    match inc.write(offset, data) {
+                        Ok(Some(received)) => {
+                            state.transfer_progress(inc.transfer, received);
+                            send(&mut sink, &ServerMsg::FileProgress { fid, received }).await?;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            let inc = incoming.remove(&fid).expect("present");
+                            state.transfer_end(inc.transfer, Err(e.clone()));
+                            send(&mut sink, &ServerMsg::FileCancel { fid, msg: Some(e) }).await?;
+                        }
+                    }
                     continue;
                 }
             };
@@ -411,6 +467,114 @@ async fn serve(
                         input.send(InputCmd::MoveTo { x: dx, y: dy });
                     }
                 }
+                ClientMsg::ClipGet { id } => {
+                    if !state.prefs().get().allow_clipboard {
+                        send(&mut sink, &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into())))).await?;
+                        continue;
+                    }
+                    let replies = reply_tx.clone();
+                    tokio::spawn(async move {
+                        let got = tokio::task::spawn_blocking(crate::clipboard::get)
+                            .await
+                            .map_err(|e| e.to_string())
+                            .and_then(|r| r);
+                        let _ = replies.send(match got {
+                            Ok(text) => ServerMsg::Clip { id, text },
+                            Err(e) => ack(id, Err((AckCode::Failed, format!("Can't read the clipboard: {e}")))),
+                        });
+                    });
+                }
+                ClientMsg::ClipSet { id, text, paste } => {
+                    if !state.prefs().get().allow_clipboard {
+                        send(&mut sink, &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into())))).await?;
+                        continue;
+                    }
+                    let (replies, input) = (reply_tx.clone(), input.clone());
+                    tokio::spawn(async move {
+                        let set = tokio::task::spawn_blocking(move || crate::clipboard::set(&text))
+                            .await
+                            .map_err(|e| e.to_string())
+                            .and_then(|r| r);
+                        if set.is_ok() && paste {
+                            // Let the clipboard settle before pasting.
+                            tokio::time::sleep(Duration::from_millis(150)).await;
+                            input.send(InputCmd::Combo {
+                                mods: vec![crate::protocol::Modifier::Ctrl],
+                                key: None,
+                                ch: Some('v'),
+                            });
+                        }
+                        let _ = replies.send(ack(
+                            id,
+                            set.map_err(|e| (AckCode::Failed, format!("Can't set the clipboard: {e}"))),
+                        ));
+                    });
+                }
+                ClientMsg::FileOffer { fid, name, size } => {
+                    let refuse = if fid >= files::AGENT_FIDS || incoming.contains_key(&fid) {
+                        Some("Bad file id.".to_string())
+                    } else if !state.prefs().get().allow_files {
+                        Some(NOT_ALLOWED.to_string())
+                    } else if incoming.len() >= files::MAX_INCOMING {
+                        Some("Too many files at once; try again in a moment.".to_string())
+                    } else {
+                        None
+                    };
+                    if let Some(msg) = refuse {
+                        send(&mut sink, &ServerMsg::FileCancel { fid, msg: Some(msg) }).await?;
+                        continue;
+                    }
+                    let tid = state.transfer_start(&who.name, true, &files::safe_name(&name), size);
+                    match files::Incoming::begin(&files::downloads_dir(), &name, size, tid) {
+                        Ok(inc) => {
+                            info!("{peer}: receiving \"{}\" ({size} bytes) from \"{}\"", inc.name, who.name);
+                            incoming.insert(fid, inc);
+                            send(&mut sink, &ServerMsg::FileAccept { fid }).await?;
+                        }
+                        Err(e) => {
+                            state.transfer_end(tid, Err(e.clone()));
+                            send(&mut sink, &ServerMsg::FileCancel { fid, msg: Some(e) }).await?;
+                        }
+                    }
+                }
+                ClientMsg::FileEnd { fid, sha256 } => {
+                    let Some(inc) = incoming.remove(&fid) else { continue };
+                    let tid = inc.transfer;
+                    match inc.finish(&sha256) {
+                        Ok(path) => {
+                            info!("{peer}: saved {}", path.display());
+                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+                            state.transfer_end(tid, Ok(Some(path)));
+                            send(&mut sink, &ServerMsg::FileDone { fid, ok: true, name, msg: None }).await?;
+                        }
+                        Err(e) => {
+                            state.transfer_end(tid, Err(e.clone()));
+                            send(&mut sink, &ServerMsg::FileDone { fid, ok: false, name: None, msg: Some(e) }).await?;
+                        }
+                    }
+                }
+                ClientMsg::FileAccept { fid } => {
+                    if let Some(a) = outgoing.get(&fid) {
+                        let _ = a.send(files::Reply::Accepted);
+                    }
+                }
+                ClientMsg::FileProgress { fid, received } => {
+                    if let Some(a) = outgoing.get(&fid) {
+                        let _ = a.send(files::Reply::Progress(received));
+                    }
+                }
+                ClientMsg::FileDone { fid, ok, msg } => {
+                    if let Some(a) = outgoing.get(&fid) {
+                        let _ = a.send(files::Reply::Done { ok, msg });
+                    }
+                }
+                ClientMsg::FileCancel { fid, msg } => {
+                    if let Some(a) = outgoing.get(&fid) {
+                        let _ = a.send(files::Reply::Cancelled(msg));
+                    } else if let Some(inc) = incoming.remove(&fid) {
+                        state.transfer_end(inc.transfer, Err("Cancelled on the phone.".into()));
+                    }
+                }
                 ClientMsg::Hello { .. } | ClientMsg::Pair { .. } | ClientMsg::Auth { .. } => {
                     send(
                         &mut sink,
@@ -425,6 +589,9 @@ async fn serve(
     .await;
 
     stop_viewer(&mut viewer, state, session);
+    for (_, inc) in incoming.drain() {
+        state.transfer_end(inc.transfer, Err("The phone disconnected.".into()));
+    }
     for b in held {
         input.send(InputCmd::Up(b));
     }
