@@ -151,7 +151,7 @@ pub fn launch(app: &App) -> Result<(), String> {
 /// Starts a program without a shell and without tying it to the agent.
 fn spawn_detached(argv: &[String]) -> Result<(), String> {
     let (program, args) = argv.split_first().ok_or("nothing to run")?;
-    let mut cmd = std::process::Command::new(program);
+    let mut cmd = crate::install::host_command(program);
     cmd.args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -372,6 +372,11 @@ fn desktop_dirs() -> Vec<PathBuf> {
         dirs.push(PathBuf::from(d).join("applications"));
     }
     dirs.push(PathBuf::from("/var/lib/flatpak/exports/share/applications"));
+    // Inside the Flatpak sandbox the computer's own apps are under /run/host.
+    if std::env::var_os("FLATPAK_ID").is_some() {
+        dirs.push(PathBuf::from("/run/host/usr/share/applications"));
+        dirs.push(PathBuf::from("/run/host/usr/local/share/applications"));
+    }
     dirs.push(PathBuf::from("/var/lib/snapd/desktop/applications"));
     dirs.dedup();
     dirs

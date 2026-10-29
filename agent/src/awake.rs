@@ -91,7 +91,7 @@ mod platform {
 
 #[cfg(not(windows))]
 mod platform {
-    use std::process::{Child, Command, Stdio};
+    use std::process::{Child, Stdio};
 
     pub struct Hold {
         child: Child,
@@ -99,7 +99,7 @@ mod platform {
 
     impl Hold {
         pub fn start() -> Result<Self, String> {
-            let mut child = Command::new("systemd-inhibit")
+            let mut child = crate::install::host_command("systemd-inhibit")
                 .args([
                     "--what=sleep:idle",
                     "--who=PairDesk",

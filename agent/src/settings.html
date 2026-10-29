@@ -234,13 +234,29 @@
     </form>
   </section>
 
+  <section aria-labelledby="up-title" id="updates" hidden>
+    <h2 id="up-title">Updates</h2>
+    <p id="up-text" style="margin:0 0 8px"></p>
+    <progress id="up-progress" max="1" value="0" hidden style="width:100%;height:6px;accent-color:var(--accent)"></progress>
+    <div class="row" id="up-actions" style="margin:8px 0 10px; align-items:center">
+      <button class="primary" id="btn-up-install" hidden>Install update</button>
+      <a id="up-download" hidden target="_blank" rel="noopener">Download</a>
+      <a id="up-notes" hidden target="_blank" rel="noopener">What's new</a>
+      <button id="btn-up-check">Check now</button>
+    </div>
+    <label class="switch" id="up-auto-row">
+      <input type="checkbox" id="up-auto">
+      Check for updates once a day
+    </label>
+  </section>
+
   <section aria-labelledby="settings-title">
     <h2 id="settings-title">Settings</h2>
     <label class="switch">
       <input type="checkbox" id="autostart">
       Start PairDesk when I sign in
     </label>
-    <p class="muted" style="margin:8px 0 0">Keeps this computer reachable after a restart. If you move the PairDesk program to another folder, switch this off and on again.</p>
+    <p class="muted" style="margin:8px 0 0" id="autostart-note"></p>
   </section>
 
   <div class="row">
@@ -455,6 +471,11 @@ function render(s) {
 
   const auto = $("autostart");
   if (document.activeElement !== auto) auto.checked = s.autostart;
+  auto.disabled = !!s.autostart_managed;
+  $("autostart-note").textContent = s.autostart_managed
+    ? "Windows manages this for the Microsoft Store version: Settings → Apps → Startup → PairDesk."
+    : "Keeps this computer reachable after a restart. If you move the PairDesk program to another folder, switch this off and on again.";
+  renderUpdate(s.update);
   $("version").textContent = "PairDesk " + s.version + " · " + s.os + " · port " + s.port;
   $("addresses").textContent = s.addresses.join(", ") || "none (is Wi-Fi connected?)";
   $("fp").textContent = s.fingerprint;
@@ -494,6 +515,52 @@ function size(n) {
 }
 
 let connectedPhones = [];
+function renderUpdate(u) {
+  $("updates").hidden = !u;
+  if (!u) return;
+  const st = u.state || { status: "idle" };
+  const text = $("up-text");
+  const install = $("btn-up-install");
+  const download = $("up-download");
+  const notes = $("up-notes");
+  const bar = $("up-progress");
+  install.hidden = download.hidden = notes.hidden = bar.hidden = true;
+  $("btn-up-check").hidden = $("up-auto-row").hidden = u.store;
+  notes.href = download.href = u.notes_url;
+  if (u.store) {
+    text.textContent = "PairDesk " + u.current + ". " +
+      (u.kind === "flatpak" ? "Flathub" : "The Microsoft Store") + " keeps it up to date.";
+    return;
+  }
+  const auto = $("up-auto");
+  if (document.activeElement !== auto) auto.checked = u.auto;
+  if (st.status === "downloading") {
+    text.textContent = "Downloading PairDesk " + u.latest + "…";
+    bar.hidden = false;
+    bar.value = st.total ? st.done / st.total : 0;
+  } else if (st.status === "installing") {
+    text.textContent = "Installing PairDesk " + u.latest + ". PairDesk restarts in a moment; " +
+      "open it again from the Start menu or the tray icon to come back here.";
+  } else if (u.latest) {
+    text.textContent = "PairDesk " + u.latest + " is available (you have " + u.current + ").";
+    notes.hidden = false;
+    if (u.can_install) install.hidden = false;
+    else {
+      download.hidden = false;
+      text.textContent += " Download it and open it to install it with your package manager.";
+    }
+    if (st.status === "failed") text.textContent += " Last try failed: " + st.message;
+  } else if (st.status === "checking") {
+    text.textContent = "Checking for updates…";
+  } else if (st.status === "failed") {
+    text.textContent = "PairDesk " + u.current + ". Couldn't check for updates: " + st.message;
+  } else if (st.status === "up_to_date") {
+    text.textContent = "PairDesk " + u.current + " is up to date (checked " + ago(u.checked_at) + ").";
+  } else {
+    text.textContent = "PairDesk " + u.current + ".";
+  }
+}
+
 function renderFiles(s) {
   connectedPhones = s.phones.filter((p) => p.connected);
   const drop = $("drop");
@@ -621,6 +688,18 @@ $("btn-wl-allow").onclick = async () => {
 $("btn-recheck").onclick = async () => {
   $("remote-text").textContent = "Checking for Tailscale…";
   try { render(await post("refresh-remote")); } catch (err) { showBanner(err.message, true); }
+};
+
+$("btn-up-check").onclick = async () => {
+  $("up-text").textContent = "Checking for updates…";
+  try { render(await post("update-check")); } catch (err) { showBanner(err.message, true); }
+};
+$("btn-up-install").onclick = async () => {
+  try { render(await post("update-install")); } catch (err) { showBanner(err.message, true); }
+};
+$("up-auto").onchange = async (e) => {
+  try { render(await post("check-updates", { enabled: e.target.checked })); }
+  catch (err) { showBanner(err.message, true); refresh(); }
 };
 
 $("autostart").onchange = async (e) => {

@@ -299,6 +299,35 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/update-check") => {
+            if let Some(u) = crate::update::global() {
+                // The answer is in the state either way.
+                let _ = u.check();
+            }
+            send_state(request, state)
+        }
+        (Method::Post, "/api/update-install") => {
+            let Some(u) = crate::update::global() else {
+                return status(request, 404, "not found");
+            };
+            match u.install(on_quit.clone()) {
+                Ok(()) => send_state(request, state),
+                Err(e) => status(request, 409, &e),
+            }
+        }
+        (Method::Post, "/api/check-updates") => {
+            #[derive(Deserialize)]
+            struct Body {
+                enabled: bool,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => match state.prefs().set_check_updates(b.enabled) {
+                    Ok(()) => send_state(request, state),
+                    Err(e) => status(request, 500, &format!("could not save: {e}")),
+                },
+                None => status(request, 400, "bad request"),
+            }
+        }
         (Method::Post, "/api/wayland-allow") => {
             #[cfg(target_os = "linux")]
             if let Some(remote) = crate::wayland::global() {
@@ -493,6 +522,12 @@ fn send_state(request: Request, state: &AppState) {
         "transfers": state.transfers(),
         "downloads": crate::files::downloads_dir().display().to_string(),
         "wayland": wayland_state(),
+        "update": crate::update::global().map(|u| {
+            let mut v = u.snapshot();
+            v["auto"] = json!(prefs.check_updates);
+            v
+        }),
+        "autostart_managed": crate::autostart::managed_by(),
     });
     respond(
         request,
@@ -597,7 +632,7 @@ fn reveal(path: &std::path::Path) {
     #[cfg(not(windows))]
     {
         let uri = format!("file://{}", path.display());
-        let shown = std::process::Command::new("dbus-send")
+        let shown = crate::install::host_command("dbus-send")
             .args([
                 "--session",
                 "--dest=org.freedesktop.FileManager1",

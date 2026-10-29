@@ -4,6 +4,10 @@
 //! Windows: a value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 //! Linux: `~/.config/autostart/PairDesk.desktop`.
 //! Neither needs administrator rights.
+//!
+//! Microsoft Store copy: a startup task in the package manifest, which the
+//! owner turns on and off in Windows (Settings → Apps → Startup).
+//! Flatpak: the Background portal, which writes the autostart entry for us.
 
 use std::path::Path;
 
@@ -14,7 +18,7 @@ use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 const INITIALIZED: &str = "autostart-initialized";
 
 fn launcher() -> Result<AutoLaunch, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = crate::install::program_path().map_err(|e| e.to_string())?;
     let exe = exe.to_str().ok_or("the program path isn't valid text")?;
     AutoLaunchBuilder::new()
         .set_app_name("PairDesk")
@@ -46,13 +50,33 @@ fn quoted(exe: &str) -> String {
     }
 }
 
+/// Who manages start at sign-in when it isn't PairDesk: "windows" for the
+/// Microsoft Store copy.
+pub fn managed_by() -> Option<&'static str> {
+    (crate::install::current() == crate::install::Kind::Store).then_some("windows")
+}
+
 pub fn is_enabled() -> bool {
+    if managed_by().is_some() {
+        return true;
+    }
+    #[cfg(target_os = "linux")]
+    if crate::install::current() == crate::install::Kind::Flatpak {
+        return flatpak::is_enabled();
+    }
     launcher()
         .and_then(|l| l.is_enabled().map_err(|e| e.to_string()))
         .unwrap_or(false)
 }
 
 pub fn set_enabled(enabled: bool) -> Result<(), String> {
+    if managed_by().is_some() {
+        return Err("Windows manages this: Settings → Apps → Startup → PairDesk.".into());
+    }
+    #[cfg(target_os = "linux")]
+    if crate::install::current() == crate::install::Kind::Flatpak {
+        return flatpak::set_enabled(enabled);
+    }
     let l = launcher()?;
     // The library creates only the last folder of ~/.config/autostart.
     #[cfg(target_os = "linux")]
@@ -69,6 +93,9 @@ pub fn set_enabled(enabled: bool) -> Result<(), String> {
 /// If start-at-sign-in is on, makes it start this program file. After a
 /// download of a new release it would otherwise keep starting the old one.
 pub fn refresh() {
+    if managed_by().is_some() {
+        return;
+    }
     if is_enabled()
         && let Err(e) = set_enabled(true)
     {
@@ -80,7 +107,7 @@ pub fn refresh() {
 /// reachable after every restart without the user doing anything.
 pub fn enable_on_first_run(data_dir: &Path) {
     let marker = data_dir.join(INITIALIZED);
-    if marker.exists() {
+    if marker.exists() || managed_by().is_some() {
         return;
     }
     match set_enabled(true) {
@@ -89,6 +116,52 @@ pub fn enable_on_first_run(data_dir: &Path) {
             let _ = std::fs::write(&marker, b"1");
         }
         Err(e) => log::warn!("could not turn on start at sign-in: {e}"),
+    }
+}
+
+/// Flatpak: the sandbox can't write ~/.config/autostart; the Background
+/// portal does it (and may ask the owner). The portal can't be asked what
+/// it did, so the last choice is remembered in the data folder.
+#[cfg(target_os = "linux")]
+mod flatpak {
+    use std::collections::HashMap;
+
+    use zbus::zvariant::Value;
+
+    const MARKER: &str = "autostart-flatpak";
+
+    pub fn is_enabled() -> bool {
+        crate::config::data_dir()
+            .ok()
+            .and_then(|d| std::fs::read_to_string(d.join(MARKER)).ok())
+            .is_some_and(|v| v.trim() == "1")
+    }
+
+    pub fn set_enabled(enabled: bool) -> Result<(), String> {
+        let conn = zbus::blocking::Connection::session().map_err(|e| e.to_string())?;
+        let mut options: HashMap<&str, Value> = HashMap::new();
+        options.insert(
+            "reason",
+            Value::from("Start PairDesk when you sign in, so your phone can reach this computer"),
+        );
+        options.insert("autostart", Value::from(enabled));
+        options.insert(
+            "commandline",
+            Value::from(vec![
+                "pairdesk-agent".to_string(),
+                "--background".to_string(),
+            ]),
+        );
+        conn.call_method(
+            Some("org.freedesktop.portal.Desktop"),
+            "/org/freedesktop/portal/desktop",
+            Some("org.freedesktop.portal.Background"),
+            "RequestBackground",
+            &("", options),
+        )
+        .map_err(|e| format!("the Background portal refused: {e}"))?;
+        let dir = crate::config::data_dir().map_err(|e| e.to_string())?;
+        std::fs::write(dir.join(MARKER), if enabled { "1" } else { "0" }).map_err(|e| e.to_string())
     }
 }
 

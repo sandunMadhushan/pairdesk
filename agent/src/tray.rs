@@ -303,7 +303,10 @@ mod platform {
             };
             let state = state.clone();
             rt.spawn(async move {
-                match tray.spawn().await {
+                // In the Flatpak sandbox the tray can't own a well-known
+                // D-Bus name; it registers by its connection instead.
+                let sandboxed = std::env::var_os("FLATPAK_ID").is_some();
+                match tray.disable_dbus_name(sandboxed).spawn().await {
                     Ok(handle) => {
                         // Lives until the agent stops; shows screen viewers.
                         let mut rx = state.subscribe_viewers();

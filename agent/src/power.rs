@@ -21,7 +21,7 @@ pub fn run(action: PowerAction) -> Result<(), String> {
 /// Runs a program and waits for it; Ok if it exits successfully.
 #[allow(dead_code)]
 fn command(program: &str, args: &[&str]) -> Result<(), String> {
-    let mut cmd = std::process::Command::new(program);
+    let mut cmd = crate::install::host_command(program);
     cmd.args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
