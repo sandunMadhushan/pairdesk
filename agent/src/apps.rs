@@ -684,6 +684,12 @@ mod tests {
         assert!(parse_start_apps("").unwrap().is_empty());
     }
 
+    /// A program that exists on the test machine.
+    #[cfg(windows)]
+    const SHELL: &str = r"C:\Windows\System32\cmd.exe";
+    #[cfg(not(windows))]
+    const SHELL: &str = "/bin/sh";
+
     #[test]
     fn shortcuts_become_apps() {
         let dir = tempfile::tempdir().unwrap();
@@ -692,7 +698,7 @@ mod tests {
             .add_shortcut("Mail", ShortcutKind::Url, "https://mail.example.com", "")
             .unwrap();
         store
-            .add_shortcut("Shell", ShortcutKind::Program, "/bin/sh", r#"-c "echo hi""#)
+            .add_shortcut("Shell", ShortcutKind::Program, SHELL, r#"-c "echo hi""#)
             .unwrap();
         let list = shortcuts(store.get());
         assert_eq!(
@@ -702,7 +708,7 @@ mod tests {
         assert_eq!(list[0].kind, "url");
         assert_eq!(
             list[1].target,
-            Target::Program(vec!["/bin/sh".into(), "-c".into(), "echo hi".into()])
+            Target::Program(vec![SHELL.into(), "-c".into(), "echo hi".into()])
         );
         let cat = Catalogue::default();
         assert_eq!(cat.find(&list[1].id, store.get()).unwrap().name, "Shell");

@@ -254,7 +254,7 @@ mod platform {
         }
         fn icon_pixmap(&self) -> Vec<ksni::Icon> {
             let (mut data, n) = icon_rgba(self.viewing);
-            for p in data.chunks_exact_mut(4) {
+            for p in data.as_chunks_mut::<4>().0 {
                 p.rotate_right(1); // RGBA → ARGB
             }
             vec![ksni::Icon {
