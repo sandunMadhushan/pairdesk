@@ -5,12 +5,13 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.8 (Phase 7).** Pair once with a QR code; after that the phone
+> **Status: 0.9.** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls, a live view of the screen, clipboard and files, on your
-> Wi-Fi or from anywhere with Tailscale. Installers for Windows and Linux, and
-> automatic updates.
+> Wi-Fi or from anywhere with Tailscale. Installers for Windows and Linux,
+> automatic updates, smooth H.264 screen view, and on Windows the lock screen,
+> sign-in screen and admin prompts.
 
 ## What works now
 
@@ -81,8 +82,10 @@ if it tends to sleep.
 
 ### Known limits
 
-- Windows doesn't let a normal app control windows running as administrator, or the
-  lock/login screen.
+- Windows: the lock screen, the sign-in screen and administrator (UAC) prompts need
+  **Sign-in screen and admin prompts** turned on in PairDesk's settings (Windows asks
+  for administrator permission once). Windows that run as administrator can't be
+  controlled without it either. Not available in the Microsoft Store version.
 - Linux Wayland works through the desktop's remote desktop permission (tested on
   GNOME; KDE Plasma offers the same permission). While a phone is connected the desktop shows that it's being
   shared. Desktops without that permission (Sway, Hyprland and other wlroots
@@ -97,7 +100,8 @@ if it tends to sleep.
   the file manager; drop files on PairDesk's page instead.
 - Windows reserves a few shortcuts that no app can send, such as Ctrl+Alt+Delete and
   Win+L. Use the Power tab to lock.
-- Screen view can't show the Windows lock screen or UAC prompts.
+- With the helper on, the lock screen and UAC prompts are shown at a lower frame
+  rate (they're read through the helper).
 - Linux power actions use `loginctl`/`systemctl`, which most desktops allow for the
   signed-in user; screen off uses GNOME's display settings, `kscreen-doctor` (KDE)
   or `xset` (X11).

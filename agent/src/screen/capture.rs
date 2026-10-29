@@ -43,6 +43,8 @@ pub fn unsupported_reason() -> Option<String> {
 }
 
 pub use platform::{Capturer, monitors};
+#[cfg(windows)]
+pub use platform::{cursor_position, grab};
 
 // ---------------------------------------------------------------- Windows
 
@@ -105,11 +107,28 @@ mod platform {
         (unsafe { GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
     }
 
+    /// One capture of a screen area, on this thread's desktop (the helper
+    /// moves its threads to the secure desktop first).
+    pub fn grab(x: i32, y: i32, width: u32, height: u32) -> Result<Frame, String> {
+        let monitor = Monitor {
+            index: 0,
+            name: String::new(),
+            x,
+            y,
+            width,
+            height,
+            primary: true,
+        };
+        Capturer::new_local(monitor)?.capture_local()
+    }
+
     pub struct Capturer {
         monitor: Monitor,
         screen: HDC,
         mem: HDC,
         bitmap: HBITMAP,
+        /// The last picture came from the SYSTEM helper (secure desktop).
+        via_helper: bool,
     }
 
     // The handles are only used from the capture thread that owns this.
@@ -117,6 +136,13 @@ mod platform {
 
     impl Capturer {
         pub fn new(monitor: Monitor) -> Result<Self, String> {
+            if crate::winsys::is_system_mode() {
+                let _ = crate::winsys::desktop::follow_input_desktop();
+            }
+            Self::new_local(monitor)
+        }
+
+        fn new_local(monitor: Monitor) -> Result<Self, String> {
             unsafe {
                 let screen = GetDC(std::ptr::null_mut());
                 if screen.is_null() {
@@ -135,6 +161,7 @@ mod platform {
                     screen,
                     mem,
                     bitmap,
+                    via_helper: false,
                 })
             }
         }
@@ -143,7 +170,36 @@ mod platform {
             &self.monitor
         }
 
+        /// The picture of the monitor. In the helper's processes this
+        /// follows the input desktop; for the signed-in user, the secure
+        /// desktop is read through the helper when it's turned on.
         pub fn capture(&mut self) -> Result<Frame, String> {
+            if crate::winsys::is_system_mode()
+                && crate::winsys::desktop::follow_input_desktop() == Ok(true)
+            {
+                // A new desktop: the screen handles must be made again.
+                *self = Self::new_local(self.monitor.clone())?;
+            }
+            // The secure desktop can't be read from here (at best it reads
+            // as black): ask the helper while it's up.
+            if !crate::winsys::is_system_mode()
+                && let Some(helper) = crate::winsys::bridge()
+                && !crate::winsys::desktop::user_can_reach_input_desktop()
+            {
+                let m = &self.monitor;
+                let f = helper.capture(m.x, m.y, m.width, m.height)?;
+                self.via_helper = true;
+                return Ok(f);
+            }
+            self.via_helper = false;
+            self.capture_local()
+        }
+
+        pub fn via_helper(&self) -> bool {
+            self.via_helper
+        }
+
+        fn capture_local(&mut self) -> Result<Frame, String> {
             let (w, h) = (self.monitor.width as i32, self.monitor.height as i32);
             unsafe {
                 if BitBlt(
@@ -430,6 +486,11 @@ mod platform {
 #[cfg(windows)]
 impl Capturer {
     pub fn cursor(&self) -> Option<(i32, i32)> {
+        if self.via_helper()
+            && let Some(helper) = crate::winsys::bridge()
+        {
+            return helper.desktop().ok().and_then(|(_, c)| c);
+        }
         platform::cursor_position()
     }
 }

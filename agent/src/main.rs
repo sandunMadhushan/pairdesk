@@ -12,6 +12,7 @@ mod apps;
 mod auth;
 mod autostart;
 mod awake;
+mod bridge;
 mod clipboard;
 mod config;
 mod discovery;
@@ -36,6 +37,7 @@ mod update;
 #[cfg(target_os = "linux")]
 mod wayland;
 mod web;
+mod winsys;
 
 use std::io::ErrorKind;
 use std::path::Path;
@@ -62,6 +64,23 @@ struct Args {
     quit: bool,
     /// Started by an update: like --background, and noted in the log.
     updated: bool,
+    /// Windows helper modes (see `winsys`).
+    mode: Mode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Normal,
+    /// The phone server at the sign-in screen (SYSTEM, started by the helper).
+    System,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    InstallService,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    UninstallService,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Service,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    SessionHelper,
 }
 
 fn usage() -> String {
@@ -95,6 +114,7 @@ fn parse_args() -> Result<Args, String> {
         send: Vec::new(),
         quit: false,
         updated: false,
+        mode: Mode::Normal,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -108,6 +128,20 @@ fn parse_args() -> Result<Args, String> {
             "--pair" => a.pair = true,
             "--no-tray" => a.no_tray = true,
             "--quit" => a.quit = true,
+            #[cfg(windows)]
+            "--install-service" => a.mode = Mode::InstallService,
+            #[cfg(windows)]
+            "--uninstall-service" => a.mode = Mode::UninstallService,
+            #[cfg(windows)]
+            "--service" => a.mode = Mode::Service,
+            #[cfg(windows)]
+            "--session-helper" => a.mode = Mode::SessionHelper,
+            #[cfg(windows)]
+            "--system-mode" => {
+                a.mode = Mode::System;
+                a.background = true;
+                a.no_tray = true;
+            }
             "--updated" => {
                 a.updated = true;
                 a.background = true;
@@ -155,6 +189,8 @@ fn main() {
             std::process::exit(2);
         }
     };
+    #[cfg(windows)]
+    windows_modes(&args);
     let data_dir = match config::data_dir() {
         Ok(d) => d,
         Err(e) => fatal(&format!("cannot create the PairDesk data folder: {e}")),
@@ -167,6 +203,21 @@ fn main() {
     }
     init_logging(&data_dir);
     let install_kind = install::current();
+    let system_mode = args.mode == Mode::System;
+    #[cfg(windows)]
+    if !system_mode {
+        // The helper of this session (if the owner turned it on) handles the
+        // secure desktop for us. Its address is read when needed, so turning
+        // it on later works without a restart.
+        let base = winsys::service::program_data();
+        let session = winsys::session::current_session();
+        winsys::set_bridge(bridge::Client::new(move || {
+            winsys::read_endpoint(&winsys::endpoint_file(&base, session?))
+        }));
+        if winsys::helper_available() {
+            info!("the PairDesk helper is on: sign-in screen and admin prompts work");
+        }
+    }
     if args.updated {
         info!("updated to {}", env!("CARGO_PKG_VERSION"));
     }
@@ -285,7 +336,7 @@ fn main() {
         data_dir.clone(),
     );
     update::set_global(updater.clone());
-    {
+    if !system_mode {
         let state = state.clone();
         updater.run_checks(move || state.prefs().get().check_updates);
     }
@@ -307,10 +358,14 @@ fn main() {
                 None
             }
         };
-    autostart::enable_on_first_run(&data_dir);
-    // Point start-at-sign-in at this copy, in case it's a new download.
-    autostart::refresh();
-    if install_kind.store_updates() {
+    if !system_mode {
+        autostart::enable_on_first_run(&data_dir);
+        // Point start-at-sign-in at this copy, in case it's a new download.
+        autostart::refresh();
+    }
+    if system_mode {
+        info!("serving phones at the sign-in screen");
+    } else if install_kind.store_updates() {
         // Store and Flathub copies can't add to the file manager's menu
         // (their files live in a sandbox); the settings page's drop zone
         // sends files instead.
@@ -359,6 +414,20 @@ fn main() {
 fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
     const OURS: &str = env!("CARGO_PKG_VERSION");
     let Some(running) = instance::find(&data_dir.join(SETTINGS_URL_FILE)) else {
+        // Right after signing in, the sign-in screen's server (Windows
+        // helper) may still hold the port for a moment.
+        #[cfg(windows)]
+        if args.mode == Mode::Normal && winsys::service::state() == winsys::service::State::Running
+        {
+            info!("waiting for the sign-in screen server to make way");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                if let Ok(l) = std::net::TcpListener::bind((args.bind.as_str(), args.port)) {
+                    return l;
+                }
+            }
+        }
         fatal(&format!(
             "port {} is used by another program; start PairDesk with --port <another port>",
             args.port
@@ -397,6 +466,68 @@ fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
                 "an older PairDesk ({old}) is still running. Stop it from its tray icon \
                  (Stop PairDesk), then open PairDesk {OURS} again."
             )),
+        }
+    }
+}
+
+/// Windows helper modes that don't run the normal agent, and the data
+/// folder of the sign-in screen server.
+#[cfg(windows)]
+fn windows_modes(args: &Args) {
+    let base = winsys::service::program_data();
+    let log_to = |name: &str| {
+        let _ = std::fs::create_dir_all(&base);
+        if let Ok(f) = std::fs::File::create(base.join(name)) {
+            let _ =
+                env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+                    .target(env_logger::Target::Pipe(Box::new(f)))
+                    .try_init();
+        }
+    };
+    match args.mode {
+        Mode::Normal => {}
+        Mode::InstallService | Mode::UninstallService => {
+            if args.mode == Mode::InstallService {
+                log_to("service-setup.log");
+            } else if let Ok(f) =
+                std::fs::File::create(std::env::temp_dir().join("pairdesk-uninstall.log"))
+            {
+                // Not in ProgramData\PairDesk, which is being deleted.
+                let _ = env_logger::Builder::from_env(
+                    env_logger::Env::default().default_filter_or("info"),
+                )
+                .target(env_logger::Target::Pipe(Box::new(f)))
+                .try_init();
+            }
+            let result = if args.mode == Mode::InstallService {
+                winsys::service::install()
+            } else {
+                winsys::service::uninstall()
+            };
+            // No dialog: the settings page that asked shows the outcome.
+            match result {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    error!("{e}");
+                    eprintln!("PairDesk: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Mode::Service => {
+            log_to("service.log");
+            winsys::service::run();
+        }
+        Mode::SessionHelper => {
+            let session = winsys::session::current_session().unwrap_or(0);
+            log_to(&format!("helper-{session}.log"));
+            winsys::helper::run(base);
+        }
+        Mode::System => {
+            winsys::set_system_mode();
+            let dir = winsys::system_data_dir(&base);
+            // SAFETY: still single-threaded at this point.
+            unsafe { std::env::set_var("PAIRDESK_HOME", &dir) };
         }
     }
 }

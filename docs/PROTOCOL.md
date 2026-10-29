@@ -373,3 +373,29 @@ it. How it installs depends on how it was installed:
 
 `--updated` always takes over from the running copy, whatever its version.
 Leftover `.old` files and downloaded setups are deleted at the next start.
+
+## Windows helper service (since 0.9)
+
+Optional, turned on from the settings page ("Sign-in screen and admin
+prompts"); Windows asks for administrator permission. See `agent/src/winsys`.
+
+- `pairdesk-agent --install-service` (elevated) copies the program to
+  `%ProgramFiles%\PairDesk` and registers the `PairDesk` service (LocalSystem,
+  automatic start, restarted on failure). `%ProgramData%\PairDesk` is limited
+  to SYSTEM and administrators. `--uninstall-service` removes both.
+- The service keeps `--session-helper` running as SYSTEM in the session at
+  the screen (all its children end with the service through a job object),
+  copies the signed-in user's `identity-*.der`, `paired-phones.json` and
+  `settings.json` to `%ProgramData%\PairDesk\system`, and updates itself
+  from the signed manifest (asset `windows-x64`).
+- The helper listens on 127.0.0.1 (random port) with a random token, written
+  to `%ProgramData%\PairDesk\bridge\session-<n>.json`, readable by SYSTEM,
+  administrators and that session's user only. The agent connects when the
+  input desktop isn't reachable (lock screen, sign-in, UAC) and sends input
+  and asks for screen pictures through it. Messages: `u32 json length | JSON |
+  u32 data length | data`; requests `hello {token, version}`, `input {cmd}`,
+  `capture {x, y, width, height}` (answered with `frame` + BGRA), `desktop`.
+- While nobody is signed in, the helper runs `--system-mode`: the phone
+  server with the copied pairing (same identity, so paired phones connect as
+  usual), input and capture following the input desktop. It is stopped as
+  soon as someone signs in; their PairDesk waits up to 30 s for the port.

@@ -328,6 +328,19 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/secure-desktop") => {
+            #[derive(Deserialize)]
+            struct Body {
+                enabled: bool,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => {
+                    crate::winsys::set_enabled(b.enabled);
+                    send_state(request, state)
+                }
+                None => status(request, 400, "bad request"),
+            }
+        }
         (Method::Post, "/api/wayland-allow") => {
             #[cfg(target_os = "linux")]
             if let Some(remote) = crate::wayland::global() {
@@ -528,6 +541,7 @@ fn send_state(request: Request, state: &AppState) {
             v
         }),
         "autostart_managed": crate::autostart::managed_by(),
+        "secure_desktop": crate::winsys::settings_state(),
     });
     respond(
         request,

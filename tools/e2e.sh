@@ -53,6 +53,25 @@ if [ -n "${WINE:-}" ]; then
   E2E_APP=""
   export WINEDEBUG=-all WINEPREFIX="$DATA/wine" WINEDLLOVERRIDES="mscoree,mshtml="
   WINEBIN=$(command -v wine || command -v wine64 || echo /usr/lib/wine/wine64)
+  if [ -n "${HELPER:-}" ]; then
+    # Windows helper service (sign-in screen and UAC): installed first; the
+    # agent then acts as if the secure desktop were up, so every pointer and
+    # key press and every screen picture goes through the SYSTEM helper.
+    "$WINEBIN" wineboot -i >/dev/null 2>&1
+    # Wine has no secure desktop: let the helper act on the normal one
+    # (a marker only administrators can create; see winsys/helper.rs).
+    mkdir -p "$WINEPREFIX/drive_c/ProgramData/PairDesk"
+    touch "$WINEPREFIX/drive_c/ProgramData/PairDesk/allow-normal-desktop"
+    "$WINEBIN" "$AGENT" --install-service >"$DATA/install.txt" 2>&1 ||
+      { echo "installing the helper service failed:"; cat "$DATA/install.txt"; exit 1; }
+    for _ in $(seq 300); do
+      ls "$WINEPREFIX/drive_c/ProgramData/PairDesk/bridge/"session-*.json >/dev/null 2>&1 && break
+      sleep 0.2
+    done
+    ls "$WINEPREFIX/drive_c/ProgramData/PairDesk/bridge/"session-*.json >/dev/null 2>&1 ||
+      { echo "the helper didn't start"; cat "$WINEPREFIX/drive_c/ProgramData/PairDesk/"*.log; exit 1; }
+    export PAIRDESK_TEST_SECURE_DESKTOP=1
+  fi
   PAIRDESK_DOWNLOADS="Z:${DATA//\//\\}\\downloads" PAIRDESK_HOME="Z:${DATA//\//\\}" "$WINEBIN" "$AGENT" --background --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=600
   # "Send to phone" as Explorer runs it, with the file as a Windows path.
@@ -132,4 +151,8 @@ if kill -0 $APID 2>/dev/null; then echo "agent did not stop after quit"; exit 1;
 
 echo "--- agent log ---"
 { cat "$DATA/out.txt" "$DATA/agent.log" 2>/dev/null || true; } | tail -12
-echo "E2E PASSED${WINE:+ (Windows build under Wine)}"
+if [ -n "${HELPER:-}" ]; then
+  grep -q "sign-in screen and admin prompts work" "$DATA/agent.log" "$DATA/out.txt" 2>/dev/null ||
+    { echo "the agent didn't use the helper"; exit 1; }
+fi
+echo "E2E PASSED${WINE:+ (Windows build under Wine)}${HELPER:+, through the SYSTEM helper}"

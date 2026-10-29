@@ -24,6 +24,10 @@ pub enum Kind {
     SystemPackage,
     /// Flatpak (Flathub). Flathub updates it.
     Flatpak,
+    /// The Windows helper service's own copy in Program Files. Updates by
+    /// swapping the file and letting the service manager restart it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Service,
 }
 
 impl Kind {
@@ -36,6 +40,7 @@ impl Kind {
             Kind::AppImage(_) => "appimage",
             Kind::SystemPackage => "package",
             Kind::Flatpak => "flatpak",
+            Kind::Service => "service",
         }
     }
 
@@ -48,10 +53,10 @@ impl Kind {
     pub fn asset_key(&self) -> Option<&'static str> {
         match self {
             Kind::WindowsSetup => Some("windows-x64-setup"),
-            Kind::Portable if cfg!(windows) => Some("windows-x64"),
+            Kind::Portable | Kind::Service if cfg!(windows) => Some("windows-x64"),
             Kind::Portable => Some("linux-x64"),
             Kind::AppImage(_) => Some("linux-x64-appimage"),
-            Kind::SystemPackage | Kind::Store | Kind::Flatpak => None,
+            Kind::SystemPackage | Kind::Store | Kind::Flatpak | Kind::Service => None,
         }
     }
 }
