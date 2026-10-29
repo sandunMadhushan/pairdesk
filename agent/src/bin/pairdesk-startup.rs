@@ -13,5 +13,7 @@ fn main() {
     } else {
         "pairdesk-agent"
     });
-    let _ = std::process::Command::new(agent).arg("--background").spawn();
+    let _ = std::process::Command::new(agent)
+        .arg("--background")
+        .spawn();
 }

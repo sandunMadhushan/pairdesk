@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak build of the PairDesk agent, for Flathub.
+#
+# Local test build (from the repository root):
+#   flatpak-builder --user --install --force-clean build-dir packaging/flatpak/me.madhushan.pairdesk.yml
+#
+# For Flathub the source below points at the release tag; update `tag` and
+# `commit` for each release, and regenerate cargo-sources.json when
+# dependencies change (packaging/flatpak/cargo-sources.py).
+id: me.madhushan.pairdesk
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: pairdesk-agent
+finish-args:
+  # Phones connect over the network; the settings page is on 127.0.0.1.
+  - --share=network
+  # X11 shared memory (screen view on X11 desktops).
+  - --share=ipc
+  # Pointer, keyboard and screen: the RemoteDesktop/ScreenCast portals on
+  # Wayland, the X server (XTEST, XShm) on X11 desktops.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Tray icon.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Launching the computer's apps and power actions (lock, sleep, restart,
+  # shut down) run on the host through flatpak-spawn --host: PairDesk is a
+  # remote control for the whole computer.
+  - --talk-name=org.freedesktop.Flatpak
+  # The list of installed apps the phone can open (read only).
+  - --filesystem=host-os:ro
+  - --filesystem=/var/lib/flatpak/exports/share/applications:ro
+  - --filesystem=xdg-data/flatpak/exports/share/applications:ro
+  # Files sent from the phone are saved in Downloads/PairDesk.
+  - --filesystem=xdg-download/PairDesk:create
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: pairdesk
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/pairdesk/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo build --release --locked --offline --manifest-path agent/Cargo.toml --bin pairdesk-agent
+      - install -Dm755 agent/target/release/pairdesk-agent /app/bin/pairdesk-agent
+      - install -Dm644 packaging/linux/me.madhushan.pairdesk.desktop /app/share/applications/me.madhushan.pairdesk.desktop
+      - install -Dm644 packaging/linux/me.madhushan.pairdesk.metainfo.xml /app/share/metainfo/me.madhushan.pairdesk.metainfo.xml
+      - install -Dm644 packaging/icons/pairdesk.svg /app/share/icons/hicolor/scalable/apps/me.madhushan.pairdesk.svg
+      - |
+        for s in 16 24 32 48 64 128 256 512; do
+          install -Dm644 packaging/icons/hicolor/${s}x${s}/apps/me.madhushan.pairdesk.png \
+            /app/share/icons/hicolor/${s}x${s}/apps/me.madhushan.pairdesk.png
+        done
+    sources:
+      - type: git
+        url: https://github.com/sandunMadhushan/pairdesk.git
+        tag: v0.8.0
+      - cargo-sources.json
