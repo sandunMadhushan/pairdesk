@@ -5,7 +5,6 @@
 //   PAIRDESK_SCREENSHOTS=../fastlane/metadata/android/en-US/images/phoneScreenshots \
 //     flutter test test/store_screenshots_test.dart
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';

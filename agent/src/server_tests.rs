@@ -489,11 +489,12 @@ async fn lists_and_launches_shortcuts_by_id_only() {
 
     send(&mut ws, json!({"t":"launch","id":9,"app":shortcut["id"]})).await;
     assert_eq!(recv(&mut ws).await, json!({"t":"ack","id":9,"ok":true}));
-    for _ in 0..50 {
+    // A new console window can take a few seconds on a busy Windows machine.
+    for _ in 0..300 {
         if marker.exists() {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(marker.exists(), "the shortcut ran");
 
