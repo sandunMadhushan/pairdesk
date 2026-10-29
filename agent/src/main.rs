@@ -279,6 +279,16 @@ fn main() {
         });
     }
 
+    let updater = update::Updater::new(
+        install_kind.clone(),
+        update::Source::github(),
+        data_dir.clone(),
+    );
+    update::set_global(updater.clone());
+    {
+        let state = state.clone();
+        updater.run_checks(move || state.prefs().get().check_updates);
+    }
     let settings = match web::start(state.clone(), Arc::new(tray::request_quit)) {
         Ok(s) => s,
         Err(e) => fatal(&format!("cannot start the settings page: {e}")),
@@ -309,12 +319,6 @@ fn main() {
         shell_menu::install(&data_dir);
     }
 
-    let updater = update::Updater::new(install_kind, update::Source::github(), data_dir.clone());
-    update::set_global(updater.clone());
-    {
-        let state = state.clone();
-        updater.run_checks(move || state.prefs().get().check_updates);
-    }
     {
         // What a previous update left behind; the old copy may take a
         // moment to exit and free its file.
