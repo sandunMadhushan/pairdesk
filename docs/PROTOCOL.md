@@ -129,8 +129,8 @@ the connection.
 
 | Direction | `t` | Fields | Meaning |
 | --- | --- | --- | --- |
-| phone → agent | `screen_start` | `id`, `monitor` (optional), `quality`: `low` \| `medium` \| `high` | Start (or restart) screen view. Answered with `screen`, or `ack` with `not_allowed` / `failed` |
-| agent → phone | `screen` | `id`, `monitors` (`[{index,name,width,height,primary}]`), `monitor`, `width`, `height` | Started; binary frames of `width`×`height` follow |
+| phone → agent | `screen_start` | `id`, `monitor` (optional), `quality`: `low` \| `medium` \| `high`, `codecs` (optional, since 0.9: e.g. `["h264"]`) | Start (or restart) screen view. Answered with `screen`, or `ack` with `not_allowed` / `failed` |
+| agent → phone | `screen` | `id`, `monitors` (`[{index,name,width,height,primary}]`), `monitor`, `width`, `height`, `codec` (`jpeg` \| `h264`, since 0.9) | Started; binary frames of `width`×`height` follow |
 | phone → agent | `screen_ack` | `seq` | Frame `seq` is shown |
 | phone → agent | `screen_refresh` | — | Send the whole screen again |
 | phone → agent | `screen_stop` | — | Stop |
@@ -143,6 +143,28 @@ Frames are WebSocket **binary** messages (little-endian):
 "PDS1" | seq u32 | width u16 | height u16 | cursor_x i16 | cursor_y i16 | count u16
 then `count` times: x u16 | y u16 | w u16 | h u16 | len u32 | JPEG bytes
 ```
+
+### Video (since 0.9, feature `video`)
+
+A phone with an H.264 decoder sends `codecs: ["h264"]`; the agent answers
+`codec: "h264"` and sends video frames instead of JPEG rectangles:
+
+```text
+"PDV1" | seq u32 | width u16 | height u16 | cursor_x i16 | cursor_y i16 | flags u8 | len u32 | H.264
+```
+
+- The H.264 data is one access unit in Annex B form (OpenH264, constrained
+  baseline, no B-frames). `flags` bit 0: key frame (IDR with SPS and PPS). The
+  first frame, and the first after `screen_refresh`, is a key frame.
+- `len` 0: only the cursor moved. A picture is encoded only when the screen
+  changed; one tiny repeat follows each change, because some phone decoders show
+  a picture only when the next one arrives.
+- Low / medium / high: 960 / 1280 / 1920 pixels wide, 1 / 2.5 / 5 Mbit/s,
+  up to 15 / 24 / 30 frames a second. Same acks and flow control as JPEG.
+- The phone (Android MediaCodec onto a Flutter texture) falls back to JPEG for
+  good if its decoder fails, and asks for JPEG when it has no H.264 decoder.
+
+### JPEG rectangles
 
 - The agent scales the monitor to at most 960 / 1280 / 1920 pixels wide (low /
   medium / high; JPEG quality 50 / 65 / 80; up to 8 / 12 / 15 frames a second).

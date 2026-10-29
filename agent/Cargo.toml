@@ -25,6 +25,8 @@ local-ip-address = "0.6.13"
 open = "5"
 log = "0.4.34"
 mdns-sd = "0.13"
+# Screen view as H.264 video (BSD-2-Clause, compiled from source).
+openh264 = "0.9"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }

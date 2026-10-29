@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../screen/video.dart';
 
 import '../settings/app_lock.dart';
 import 'remote_help_screen.dart';
@@ -103,6 +106,7 @@ class SettingsScreen extends StatelessWidget {
               value: settings.naturalScroll,
               onChanged: settings.setNaturalScroll,
             ),
+            const SmoothVideoTile(),
             header('About'),
             FutureBuilder<PackageInfo>(
               future: PackageInfo.fromPlatform(),
@@ -119,6 +123,45 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Screen view as video (H.264) or pictures. Video turns itself off when
+/// this phone can't show it; this switch turns it back on.
+class SmoothVideoTile extends StatefulWidget {
+  const SmoothVideoTile({super.key});
+
+  @override
+  State<SmoothVideoTile> createState() => _SmoothVideoTileState();
+}
+
+class _SmoothVideoTileState extends State<SmoothVideoTile> {
+  bool? _on;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => _on = !(p.getBool(VideoSupport.brokenKey) ?? false));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.slow_motion_video_outlined),
+      title: const Text('Smooth screen view'),
+      subtitle: const Text(
+        'Video instead of pictures: smoother and uses less data. Turns itself off if this phone can\'t show it',
+      ),
+      value: _on ?? true,
+      onChanged: _on == null
+          ? null
+          : (on) async {
+              setState(() => _on = on);
+              on ? await VideoSupport.reset() : await VideoSupport.markBroken();
+            },
     );
   }
 }

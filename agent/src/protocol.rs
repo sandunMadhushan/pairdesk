@@ -202,6 +202,10 @@ pub enum ClientMsg {
         /// `low`, `medium` (default) or `high`.
         #[serde(default)]
         quality: Option<String>,
+        /// Video formats the phone can decode, e.g. `["h264"]` (since 0.9).
+        /// Without it, JPEG rectangles.
+        #[serde(default)]
+        codecs: Vec<String>,
     },
     /// The phone has shown frame `seq`; the agent may send more.
     ScreenAck {
@@ -310,6 +314,8 @@ pub enum ServerMsg {
         /// Size of the frames that will arrive.
         width: u32,
         height: u32,
+        /// `jpeg` ("PDS1" frames) or `h264` ("PDV1" frames).
+        codec: &'static str,
     },
     /// Screen view ended on the computer's side.
     ScreenStopped {
@@ -700,7 +706,8 @@ mod tests {
             ClientMsg::ScreenStart {
                 id: Some(1),
                 monitor: Some(1),
-                quality: Some("low".into())
+                quality: Some("low".into()),
+                codecs: vec![],
             }
         );
         assert_eq!(

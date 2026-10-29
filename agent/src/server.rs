@@ -26,7 +26,15 @@ use crate::protocol::{
 use crate::state::{AppState, Session, SessionCmd};
 
 /// Optional features announced in `welcome`.
-const FEATURES: &[&str] = &["combo", "power", "apps", "screen", "clipboard", "files"];
+const FEATURES: &[&str] = &[
+    "combo",
+    "power",
+    "apps",
+    "screen",
+    "clipboard",
+    "files",
+    "video",
+];
 /// Largest WebSocket message accepted from a phone (a file chunk is 128 KiB,
 /// clipboard text up to 200 KB).
 const MAX_FRAME_BYTES: usize = 512 * 1024;
@@ -389,6 +397,7 @@ async fn serve(
                     id,
                     monitor,
                     quality,
+                    codecs,
                 } => {
                     stop_viewer(&mut viewer, state, session);
                     if !state.prefs().get().allow_screen {
@@ -404,7 +413,7 @@ async fn serve(
                     );
                     let (frames, notes) = (frame_tx.clone(), reply_tx.clone());
                     let started = tokio::task::spawn_blocking(move || {
-                        crate::screen::Viewer::start(monitor, quality, move |out| match out {
+                        crate::screen::Viewer::start(monitor, quality, &codecs, move |out| match out {
                             crate::screen::Out::Frame(f) => frames.send(f).is_ok(),
                             crate::screen::Out::Stopped(msg) => {
                                 notes.send(ServerMsg::ScreenStopped { msg }).is_ok()
@@ -442,6 +451,7 @@ async fn serve(
                                     monitor: v.monitor.index,
                                     width: v.size.0,
                                     height: v.size.1,
+                                    codec: v.codec.name(),
                                 },
                             )
                             .await?;
