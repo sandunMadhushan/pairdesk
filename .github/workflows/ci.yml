@@ -61,7 +61,7 @@ jobs:
           java-version: "21"
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version-file: mobile/pubspec.yaml
           cache: true
       - run: flutter pub get
       - run: dart format -l 110 --output=none --set-exit-if-changed lib test
@@ -88,11 +88,12 @@ jobs:
         working-directory: agent
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version-file: mobile/pubspec.yaml
           cache: true
       - run: flutter pub get
         working-directory: mobile
       - run: tools/e2e.sh
+      - run: AGENT=agent/target/release/pairdesk-agent tools/e2e-update.sh
 
   e2e-wayland:
     name: End to end on GNOME Wayland (portal + PipeWire)
@@ -111,7 +112,7 @@ jobs:
         working-directory: agent
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version-file: mobile/pubspec.yaml
           cache: true
       - run: flutter pub get
         working-directory: mobile

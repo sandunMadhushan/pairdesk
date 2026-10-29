@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
@@ -36,16 +36,20 @@ tiny_http = "0.12"
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time", "fs", "io-util"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
 tokio-tungstenite = "0.30.0"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 webbrowser = "1"
+
+[build-dependencies]
+embed-resource = "3"
 
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_Packaging_Appx", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"
 # Wayland: the remote desktop portal (D-Bus) and PipeWire (loaded at run time).
-zbus = { version = "5", default-features = false, features = ["tokio"] }
+zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
 libloading = "0.8"
 x11rb = { version = "0.13", features = ["randr"] }
 
@@ -56,3 +60,12 @@ tempfile = "3"
 lto = true
 codegen-units = 1
 strip = true
+
+[[bin]]
+name = "pairdesk-agent"
+path = "src/main.rs"
+
+# Store (MSIX) build only: started at sign-in, starts the agent quietly.
+[[bin]]
+name = "pairdesk-startup"
+path = "src/bin/pairdesk-startup.rs"

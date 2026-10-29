@@ -12,7 +12,7 @@
 use std::path::Path;
 
 pub fn install(data_dir: &Path) {
-    let Ok(exe) = std::env::current_exe() else {
+    let Ok(exe) = crate::install::program_path() else {
         return;
     };
     let marker = data_dir.join("send-to-menu");

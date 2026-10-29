@@ -3,20 +3,25 @@
 // connects by itself when it opens.
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../agent_connection.dart';
 import '../files/share_inbox.dart';
 import '../app_model.dart';
 import '../pairing/laptop.dart';
 import '../pairing/pairing_link.dart';
+import '../update_check.dart';
 import 'control_screen.dart';
 import 'scan_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.model});
+  const HomeScreen({super.key, required this.model, this.updates});
 
   final AppModel model;
+
+  /// New releases on GitHub (only in GitHub builds).
+  final UpdateChecker? updates;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -243,9 +248,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _model,
+      listenable: Listenable.merge([_model, ?widget.updates]),
       builder: (context, _) {
         final laptops = _model.laptops;
+        final update = widget.updates?.available;
         return Scaffold(
           appBar: AppBar(
             title: const Text('PairDesk'),
@@ -268,10 +274,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Scan pairing code'),
                 ),
           body: laptops.isEmpty
-              ? _EmptyState(onAdd: _busy ? null : _addComputer)
+              ? Column(
+                  children: [
+                    if (update != null) _UpdateCard(update: update, onDismiss: widget.updates!.dismiss),
+                    Expanded(child: _EmptyState(onAdd: _busy ? null : _addComputer)),
+                  ],
+                )
               : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
                   children: [
+                    if (update != null) _UpdateCard(update: update, onDismiss: widget.updates!.dismiss),
                     if (ShareInbox.instance.pending case final shared?)
                       Card(
                         child: ListTile(
@@ -302,6 +314,58 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
         );
       },
+    );
+  }
+}
+
+class _UpdateCard extends StatelessWidget {
+  const _UpdateCard({required this.update, required this.onDismiss});
+
+  final AvailableUpdate update;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.system_update_outlined),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'PairDesk ${update.version} is available',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 36, top: 4),
+              child: Text('Download it, then open the file to install it over this version.'),
+            ),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: onDismiss, child: const Text('Not now')),
+                TextButton(
+                  onPressed: () => launchUrl(update.notes, mode: LaunchMode.externalApplication),
+                  child: const Text('What\'s new'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => launchUrl(update.download, mode: LaunchMode.externalApplication),
+                  child: const Text('Download'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

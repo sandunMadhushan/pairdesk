@@ -1,0 +1,315 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Builds every download and publishes the GitHub release.
+#
+# Publish: push a tag (git tag v0.8.0 && git push origin v0.8.0), or run this
+# workflow from the Actions tab with "dry run" unticked.
+# Dry run (the default from the Actions tab): builds and tests everything and
+# keeps the files as a workflow artifact, without publishing.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   UPDATE_SIGNING_KEY          Ed25519 private key (PEM) that signs latest.json
+#   ANDROID_KEYSTORE_BASE64     the release keystore (.jks), base64
+#   ANDROID_KEYSTORE_PASSWORD   its password (also the key's password)
+#   SIGNPATH_API_TOKEN          optional: Windows code signing (SignPath Foundation)
+# Variables:
+#   MSIX_IDENTITY_NAME, MSIX_PUBLISHER, MSIX_PUBLISHER_NAME   from Partner Center
+#   SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build and test, don't publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+jobs:
+  version:
+    name: Check versions
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        run: |
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' agent/Cargo.toml | head -1)
+          app=$(sed -n 's/^version: \([^+]*\)+.*/\1/p' mobile/pubspec.yaml)
+          echo "agent $cargo, app $app"
+          [ "$cargo" = "$app" ] || { echo "::error::agent/Cargo.toml ($cargo) and mobile/pubspec.yaml ($app) differ"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            [ "${GITHUB_REF_NAME}" = "v$cargo" ] || { echo "::error::tag ${GITHUB_REF_NAME} isn't v$cargo"; exit 1; }
+          fi
+          grep -q "<release version=\"$cargo\"" packaging/linux/me.madhushan.pairdesk.metainfo.xml ||
+            { echo "::error::add a <release version=\"$cargo\"> to packaging/linux/me.madhushan.pairdesk.metainfo.xml"; exit 1; }
+          echo "version=$cargo" >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows agent and Store package
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: cargo build --release --locked
+        working-directory: agent
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out/bin
+          cp agent/target/release/pairdesk-agent.exe agent/target/release/pairdesk-startup.exe out/bin/
+      # Free code signing for open-source projects; skipped until SignPath is set up.
+      - if: env.HAS_SIGNPATH == 'true'
+        id: unsigned
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-unsigned
+          path: out/bin
+      - if: env.HAS_SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: agent
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: out/bin
+      - name: Store package (MSIX)
+        shell: pwsh
+        run: |
+          $id = if ("${{ vars.MSIX_IDENTITY_NAME }}") { "${{ vars.MSIX_IDENTITY_NAME }}" } else { "SandunMadhushan.PairDesk" }
+          $pub = if ("${{ vars.MSIX_PUBLISHER }}") { "${{ vars.MSIX_PUBLISHER }}" } else { "CN=Sandun Madhushan" }
+          $name = if ("${{ vars.MSIX_PUBLISHER_NAME }}") { "${{ vars.MSIX_PUBLISHER_NAME }}" } else { "Sandun Madhushan" }
+          packaging/windows/build-msix.ps1 -Version $env:VERSION -Agent out/bin -Out "out/PairDesk-$env:VERSION.msix" `
+            -IdentityName $id -Publisher $pub -PublisherName $name
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows
+          path: out
+          if-no-files-found: error
+
+  linux:
+    name: Linux agent and packages
+    needs: version
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y rpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      # glibc 2.31: runs on Ubuntu 20.04, Debian 11 and newer.
+      - run: |
+          pip install ziglang
+          cargo install cargo-zigbuild --locked
+          cargo zigbuild --release --locked --target x86_64-unknown-linux-gnu.2.31
+        working-directory: agent
+      - run: |
+          mkdir -p out
+          cp agent/target/x86_64-unknown-linux-gnu/release/pairdesk-agent out/pairdesk-agent-$VERSION-linux-x64
+          packaging/linux/build-packages.sh "$VERSION" out/pairdesk-agent-$VERSION-linux-x64 out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux
+          path: out
+          if-no-files-found: error
+
+  android:
+    name: Android app
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: mobile/pubspec.yaml
+          cache: true
+      - name: Release key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            if [ "$DRY_RUN" = true ]; then echo "::warning::no release key; the dry-run APKs use a debug key"; exit 0; fi
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set"; exit 1
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "PAIRDESK_KEYSTORE=$RUNNER_TEMP/release.jks"
+            echo "PAIRDESK_KEYSTORE_PASSWORD=$PASSWORD"
+            echo "PAIRDESK_KEY_ALIAS=pairdesk"
+            echo "PAIRDESK_KEY_PASSWORD=$PASSWORD"
+          } >> "$GITHUB_ENV"
+      - run: flutter pub get
+        working-directory: mobile
+      - run: >
+          flutter build apk --release --split-per-abi
+          --target-platform android-arm,android-arm64,android-x64
+          --dart-define=PAIRDESK_UPDATES=github
+        working-directory: mobile
+      - run: |
+          mkdir -p out
+          d=mobile/build/app/outputs/flutter-apk
+          cp $d/app-arm64-v8a-release.apk out/pairdesk-$VERSION-android-arm64.apk
+          cp $d/app-armeabi-v7a-release.apk out/pairdesk-$VERSION-android-armv7.apk
+          cp $d/app-x86_64-release.apk out/pairdesk-$VERSION-android-x86_64.apk
+          rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: android
+          path: out
+          if-no-files-found: error
+
+  publish:
+    name: Setup, checksums, signed manifest, release
+    needs: [version, windows, linux, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update && sudo apt-get install -y nsis wine64 xvfb
+      - uses: actions/download-artifact@v5
+        with:
+          path: art
+      - name: Windows setup
+        run: |
+          mkdir -p dist
+          cp art/windows/bin/pairdesk-agent.exe dist/pairdesk-agent-$VERSION-windows-x64.exe
+          cd packaging/windows
+          makensis -V2 -DVERSION=$VERSION -DAGENT=../../art/windows/bin/pairdesk-agent.exe \
+            -DOUTFILE=../../dist/PairDesk-Setup-$VERSION-x64.exe installer.nsi
+      - name: Test the setup under Wine (install, self-update, uninstall)
+        run: SETUP=dist/PairDesk-Setup-$VERSION-x64.exe PATH=$PATH:/usr/lib/wine tools/e2e-windows-setup.sh
+      - name: Collect
+        run: |
+          cp art/linux/* art/android/* dist/
+          # The Store package is uploaded to Partner Center, not offered for download.
+          mkdir -p store && cp art/windows/*.msix store/
+          ls -la dist store
+      - name: Update manifest
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, datetime
+          v = os.environ["VERSION"]; repo = os.environ["REPO"]
+          base = f"https://github.com/{repo}/releases/download/v{v}/"
+          files = {
+              "windows-x64-setup": f"PairDesk-Setup-{v}-x64.exe",
+              "windows-x64": f"pairdesk-agent-{v}-windows-x64.exe",
+              "linux-x64": f"pairdesk-agent-{v}-linux-x64",
+              "linux-x64-appimage": f"PairDesk-{v}-x86_64.AppImage",
+              "linux-x64-deb": f"pairdesk_{v}_amd64.deb",
+              "linux-x64-rpm": f"pairdesk-{v}-1.x86_64.rpm",
+              "android-arm64": f"pairdesk-{v}-android-arm64.apk",
+              "android-armv7": f"pairdesk-{v}-android-armv7.apk",
+              "android-x86_64": f"pairdesk-{v}-android-x86_64.apk",
+          }
+          assets = {}
+          for key, name in files.items():
+              data = open(f"dist/{name}", "rb").read()
+              assets[key] = {"url": base + name, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+          manifest = {
+              "version": v,
+              "date": datetime.date.today().isoformat(),
+              "notes_url": f"https://github.com/{repo}/releases/tag/v{v}",
+              "assets": assets,
+          }
+          open("dist/latest.json", "w").write(json.dumps(manifest, indent=2) + "\n")
+          with open("dist/SHA256SUMS.txt", "w") as f:
+              for name in sorted(os.listdir("dist")):
+                  if name.endswith((".sig", "SHA256SUMS.txt")):
+                      continue
+                  f.write(f"{hashlib.sha256(open('dist/'+name,'rb').read()).hexdigest()}  {name}\n")
+          PY
+          cat dist/latest.json
+      - name: Sign the manifest
+        env:
+          KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            if [ "$DRY_RUN" = true ]; then echo "::warning::UPDATE_SIGNING_KEY not set; manifest left unsigned"; exit 0; fi
+            echo "::error::UPDATE_SIGNING_KEY is not set"; exit 1
+          fi
+          umask 077
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.pem"
+          # The key must match the public key built into PairDesk.
+          pub=$(openssl pkey -in "$RUNNER_TEMP/key.pem" -pubout -outform DER | tail -c 32 | base64)
+          grep -q "\"$pub\"" agent/src/update.rs ||
+            { echo "::error::UPDATE_SIGNING_KEY doesn't match PUBLIC_KEY in agent/src/update.rs"; exit 1; }
+          openssl pkeyutl -sign -inkey "$RUNNER_TEMP/key.pem" -rawin -in dist/latest.json | base64 -w0 > dist/latest.json.sig
+          rm -f "$RUNNER_TEMP/key.pem"
+      - name: Release notes
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          dl="https://github.com/$REPO/releases/download/v$VERSION"
+          notes=docs/releases/v$VERSION.md
+          if [ -f "$notes" ]; then cp "$notes" notes.md; else
+            printf 'PairDesk %s.\n\nSee the [download guide](https://pairdesk.madhushan.me/#download).\n' "$VERSION" > notes.md
+          fi
+          cat >> notes.md <<EOF
+
+          ### Downloads
+
+          | | |
+          |---|---|
+          | **Windows** | [PairDesk-Setup-$VERSION-x64.exe]($dl/PairDesk-Setup-$VERSION-x64.exe) (recommended), or the [program file]($dl/pairdesk-agent-$VERSION-windows-x64.exe) |
+          | **Linux** | [.deb]($dl/pairdesk_${VERSION}_amd64.deb) (Ubuntu, Debian), [.rpm]($dl/pairdesk-$VERSION-1.x86_64.rpm) (Fedora, openSUSE), [AppImage]($dl/PairDesk-$VERSION-x86_64.AppImage) (any distribution) |
+          | **Android** | [arm64]($dl/pairdesk-$VERSION-android-arm64.apk) (most phones), [armv7]($dl/pairdesk-$VERSION-android-armv7.apk) (older phones) |
+
+          Check downloads against \`SHA256SUMS.txt\`. PairDesk checks its own updates against \`latest.json.sig\`.
+          EOF
+      - if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-dry-run-${{ env.VERSION }}
+          path: |
+            dist
+            store
+            notes.md
+      - if: env.DRY_RUN != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: store-package-${{ env.VERSION }}
+          path: store
+      - if: env.DRY_RUN != 'true'
+        name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" \
+            --title "PairDesk $VERSION" --notes-file notes.md --latest

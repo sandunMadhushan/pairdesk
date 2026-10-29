@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<component type="desktop-application">
+  <id>me.madhushan.pairdesk</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>PairDesk</name>
+  <summary>Control this computer from your phone</summary>
+  <developer id="me.madhushan">
+    <name>Sandun Madhushan</name>
+  </developer>
+  <description>
+    <p>
+      PairDesk turns your Android phone into a remote for this computer. Pair once by
+      scanning a code; after that your phone connects by itself whenever you open the app.
+    </p>
+    <ul>
+      <li>Touchpad and keyboard: move, click, scroll, drag and type</li>
+      <li>See the screen and control it with touch, like a touchpad</li>
+      <li>Shortcuts and key combinations, media and volume keys</li>
+      <li>Open apps, lock, sleep, restart or shut down</li>
+      <li>Copy and paste between phone and computer, send files both ways</li>
+      <li>Works on the same Wi-Fi, or from anywhere with Tailscale</li>
+    </ul>
+    <p>
+      Connections are encrypted and only phones you paired can connect. Nothing goes
+      through a PairDesk server: there isn't one.
+    </p>
+  </description>
+  <launchable type="desktop-id">me.madhushan.pairdesk.desktop</launchable>
+  <icon type="stock">me.madhushan.pairdesk</icon>
+  <url type="homepage">https://pairdesk.madhushan.me</url>
+  <url type="bugtracker">https://github.com/sandunMadhushan/pairdesk/issues</url>
+  <url type="vcs-browser">https://github.com/sandunMadhushan/pairdesk</url>
+  <url type="contribute">https://github.com/sandunMadhushan/pairdesk/blob/main/CONTRIBUTING.md</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Pair your phone by scanning the code</caption>
+      <image>https://pairdesk.madhushan.me/screenshots/settings.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <categories>
+    <category>Network</category>
+    <category>RemoteAccess</category>
+  </categories>
+  <keywords>
+    <keyword>remote</keyword>
+    <keyword>phone</keyword>
+    <keyword>touchpad</keyword>
+    <keyword>android</keyword>
+  </keywords>
+  <releases>
+    <release version="0.8.0" date="2026-10-29">
+      <description>
+        <p>Installers for Windows and Linux, automatic updates, and a proper icon.</p>
+      </description>
+    </release>
+    <release version="0.7.0" date="2026-10-29">
+      <description><p>Clipboard and file transfer between phone and computer.</p></description>
+    </release>
+    <release version="0.6.0" date="2026-10-15">
+      <description><p>Linux Wayland support (GNOME, KDE Plasma).</p></description>
+    </release>
+    <release version="0.5.0" date="2026-10-15">
+      <description><p>See and control the screen from the phone.</p></description>
+    </release>
+  </releases>
+</component>

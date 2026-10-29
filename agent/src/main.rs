@@ -18,6 +18,7 @@ mod discovery;
 mod files;
 mod identity;
 mod input;
+mod install;
 mod instance;
 mod net;
 mod pairing;
@@ -31,6 +32,7 @@ mod state;
 mod store;
 mod tailscale;
 mod tray;
+mod update;
 #[cfg(target_os = "linux")]
 mod wayland;
 mod web;
@@ -56,6 +58,10 @@ struct Args {
     no_tray: bool,
     /// `--send FILE…`: hand files to the running PairDesk for the phone.
     send: Vec<std::path::PathBuf>,
+    /// `--quit`: stop the running PairDesk (used by the setup and uninstaller).
+    quit: bool,
+    /// Started by an update: like --background, and noted in the log.
+    updated: bool,
 }
 
 fn usage() -> String {
@@ -67,6 +73,7 @@ fn usage() -> String {
            --background    start quietly (used when starting at sign-in)\n  \
            --no-tray       don't show a tray icon\n  \
            --send FILE...  send files to the connected phone (PairDesk must be running)\n  \
+           --quit          stop the running PairDesk\n  \
            --port <PORT>   port for phones (default {DEFAULT_PORT})\n  \
            --bind <ADDR>   address to listen on (default 0.0.0.0)\n  \
            --version       print the version\n\n\
@@ -86,6 +93,8 @@ fn parse_args() -> Result<Args, String> {
         pair: false,
         no_tray: false,
         send: Vec::new(),
+        quit: false,
+        updated: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -98,6 +107,11 @@ fn parse_args() -> Result<Args, String> {
             "--background" => a.background = true,
             "--pair" => a.pair = true,
             "--no-tray" => a.no_tray = true,
+            "--quit" => a.quit = true,
+            "--updated" => {
+                a.updated = true;
+                a.background = true;
+            }
             "--send" => {
                 a.send.extend(it.by_ref().map(std::path::PathBuf::from));
                 if a.send.is_empty() {
@@ -148,7 +162,14 @@ fn main() {
     if !args.send.is_empty() {
         send_files(&data_dir, &args.send);
     }
+    if args.quit {
+        quit_running(&data_dir);
+    }
     init_logging(&data_dir);
+    let install_kind = install::current();
+    if args.updated {
+        info!("updated to {}", env!("CARGO_PKG_VERSION"));
+    }
 
     // Only one agent per computer. If the port is taken it's most likely
     // PairDesk already running: an older release gives way to this one,
@@ -279,7 +300,30 @@ fn main() {
     autostart::enable_on_first_run(&data_dir);
     // Point start-at-sign-in at this copy, in case it's a new download.
     autostart::refresh();
-    shell_menu::install(&data_dir);
+    if install_kind.store_updates() {
+        // Store and Flathub copies can't add to the file manager's menu
+        // (their files live in a sandbox); the settings page's drop zone
+        // sends files instead.
+        info!("installed from a store ({})", install_kind.label());
+    } else {
+        shell_menu::install(&data_dir);
+    }
+
+    let updater = update::Updater::new(install_kind, update::Source::github(), data_dir.clone());
+    update::set_global(updater.clone());
+    {
+        let state = state.clone();
+        updater.run_checks(move || state.prefs().get().check_updates);
+    }
+    {
+        // What a previous update left behind; the old copy may take a
+        // moment to exit and free its file.
+        let data_dir = data_dir.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            update::cleanup(&data_dir);
+        });
+    }
 
     print_banner(&state, &settings.url);
     if args.pair {
@@ -298,7 +342,11 @@ fn main() {
     if let Some(a) = announcer {
         a.stop();
     }
-    let _ = std::fs::remove_file(data_dir.join(SETTINGS_URL_FILE));
+    // Only our own address: after a takeover the file is the new copy's.
+    let url_file = data_dir.join(SETTINGS_URL_FILE);
+    if std::fs::read_to_string(&url_file).is_ok_and(|u| u.trim() == settings.url) {
+        let _ = std::fs::remove_file(url_file);
+    }
     runtime.shutdown_timeout(std::time::Duration::from_millis(500));
 }
 
@@ -312,10 +360,12 @@ fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
             args.port
         ));
     };
+    // An update hands over to its replacement even if the numbers say
+    // otherwise (a re-release, or a manual downgrade).
     let older = running
         .version
         .as_deref()
-        .filter(|v| instance::is_older(v, OURS));
+        .filter(|v| args.updated || instance::is_older(v, OURS));
     let Some(old) = older else {
         if !args.background {
             info!("PairDesk is already running; opening its settings");
@@ -345,6 +395,34 @@ fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
             )),
         }
     }
+}
+
+/// `--quit`: asks the running PairDesk to stop and waits until it has.
+/// Exits 0 when none is running (any more).
+fn quit_running(data_dir: &Path) -> ! {
+    let file = data_dir.join(SETTINGS_URL_FILE);
+    let Some(running) = instance::find(&file) else {
+        std::process::exit(0);
+    };
+    if running.version.is_none() {
+        // A leftover address: nothing answers there.
+        std::process::exit(0);
+    }
+    if let Err(e) = instance::ask_to_quit(&running.url) {
+        eprintln!("PairDesk: could not ask PairDesk to stop: {e}");
+        std::process::exit(1);
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        if instance::find(&file).and_then(|r| r.version).is_none() {
+            // Give the process a moment to exit and release its files.
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            std::process::exit(0);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    eprintln!("PairDesk: it didn't stop within 20 seconds");
+    std::process::exit(1);
 }
 
 /// `--send`: from the file manager's "Send to" menu. Errors are shown in a

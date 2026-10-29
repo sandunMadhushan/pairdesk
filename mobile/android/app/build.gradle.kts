@@ -15,7 +15,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "me.madhushan.pairdesk"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -29,12 +28,37 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release signing. The release workflow sets these from GitHub secrets:
+    //   PAIRDESK_KEYSTORE (path to the .jks), PAIRDESK_KEYSTORE_PASSWORD,
+    //   PAIRDESK_KEY_ALIAS, PAIRDESK_KEY_PASSWORD.
+    // PAIRDESK_UNSIGNED=1 builds an unsigned APK (F-Droid signs its own).
+    // Otherwise release builds use the debug key, so `flutter run --release` works.
+    val keystore = System.getenv("PAIRDESK_KEYSTORE")
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("PAIRDESK_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PAIRDESK_KEY_ALIAS")
+                keyPassword = System.getenv("PAIRDESK_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = when {
+                System.getenv("PAIRDESK_UNSIGNED") == "1" -> null
+                keystore != null -> signingConfigs.getByName("release")
+                else -> signingConfigs.getByName("debug")
+            }
         }
+    }
+
+    // No Google-encrypted dependency list in the APK (F-Droid rejects it).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 }
 

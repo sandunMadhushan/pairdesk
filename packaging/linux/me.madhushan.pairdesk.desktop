@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PairDesk
+GenericName=Phone remote control
+Comment=Control this computer from your phone
+Exec=pairdesk-agent
+Icon=me.madhushan.pairdesk
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=remote;phone;touchpad;mouse;keyboard;android;control;
+StartupNotify=false

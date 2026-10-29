@@ -42,6 +42,9 @@ pub struct Prefs {
     /// Keep the computer from sleeping so phones can always reach it.
     #[serde(default)]
     pub keep_awake: bool,
+    /// Look for new releases once a day.
+    #[serde(default = "yes")]
+    pub check_updates: bool,
 }
 
 impl Default for Prefs {
@@ -55,6 +58,7 @@ impl Default for Prefs {
             allow_files: true,
             shortcuts: Vec::new(),
             keep_awake: false,
+            check_updates: true,
         }
     }
 }
@@ -166,6 +170,11 @@ impl PrefsStore {
 
     pub fn set_keep_awake(&mut self, on: bool) -> io::Result<()> {
         self.prefs.keep_awake = on;
+        self.save()
+    }
+
+    pub fn set_check_updates(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.check_updates = on;
         self.save()
     }
 
