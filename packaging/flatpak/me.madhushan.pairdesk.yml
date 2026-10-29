@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Flatpak build of the PairDesk agent, for Flathub.
+# Flatpak build of the PairDesk agent, for testing PairDesk in a Flatpak
+# sandbox. Written with AI assistance, so it is NOT for submission to
+# Flathub (Flathub doesn't accept AI-assisted manifests; see docs/STORES.md).
 #
-# Local test build (from the repository root):
+# Test build (from the repository root; uses the release tag below):
 #   flatpak-builder --user --install --force-clean build-dir packaging/flatpak/me.madhushan.pairdesk.yml
 #
-# For Flathub the source below points at the release tag; update `tag` and
-# `commit` for each release, and regenerate cargo-sources.json when
-# dependencies change (packaging/flatpak/cargo-sources.py).
+# Regenerate cargo-sources.json when dependencies change
+# (packaging/flatpak/cargo-sources.py agent/Cargo.lock).
 id: me.madhushan.pairdesk
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'

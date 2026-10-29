@@ -24,11 +24,7 @@
   }
   main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-  .logo {
-    width: 40px; height: 40px; border-radius: 10px; background: var(--accent);
-    display: grid; place-items: center; flex: none;
-  }
-  .logo span { width: 14px; height: 22px; border: 2.5px solid var(--accent-text); border-radius: 4px; }
+  .logo { width: 40px; height: 40px; flex: none; display: block; }
   h1 { font-size: 20px; margin: 0; }
   .sub { color: var(--muted); font-size: 14px; }
   section {
@@ -108,7 +104,7 @@
 <body>
 <main>
   <header>
-    <div class="logo" aria-hidden="true"><span></span></div>
+    <svg class="logo" aria-hidden="true" viewBox="0 0 256 256"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a74f0"/><stop offset="1" stop-color="#1f4fc4"/></linearGradient></defs><rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/><rect x="40" y="62" width="150" height="100" rx="12" fill="none" stroke="#fff" stroke-width="14"/><rect x="22" y="178" width="186" height="16" rx="8" fill="#fff"/><rect x="150" y="102" width="78" height="128" rx="16" fill="#1f4fc4"/><rect x="158" y="110" width="62" height="112" rx="10" fill="#fff"/><rect x="166" y="122" width="46" height="72" rx="4" fill="#3a74f0"/><circle cx="189" cy="208" r="6" fill="#3a74f0"/></svg>
     <div>
       <h1 id="name">PairDesk</h1>
       <div class="sub" id="status">Connecting to PairDesk…</div>

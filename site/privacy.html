@@ -1,0 +1,64 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PairDesk privacy policy</title>
+<meta name="description" content="PairDesk collects no personal data. Your phone talks to your computer directly.">
+<link rel="icon" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="icon.svg" alt="">PairDesk</a>
+    <nav class="top"><a href="./#download">Download</a></nav>
+  </header>
+  <main class="doc">
+    <h1>Privacy policy</h1>
+    <p class="small">Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 29 October 2026.</p>
+
+    <h2>In short</h2>
+    <p>PairDesk doesn't collect, store or share any personal data. There is no PairDesk account and no PairDesk server: your phone and your computer talk to each other directly.</p>
+
+    <h2>What stays on your devices</h2>
+    <ul>
+      <li><b>Pairing keys.</b> When you pair, the phone and the computer each keep the other's public key and their own private key, so they can recognise each other later. They never leave the devices.</li>
+      <li><b>Names and addresses.</b> The phone remembers each paired computer's name and network addresses; the computer remembers each paired phone's name. Both are shown only to you.</li>
+      <li><b>Settings.</b> Your buttons, shortcuts and choices are saved on the device you made them on.</li>
+    </ul>
+
+    <h2>What travels between your phone and computer</h2>
+    <p>Touches, key presses, the screen picture when you view it, clipboard text and files you choose to send. All of it goes directly between your two devices over an encrypted connection, and none of it is recorded. Received files are saved in the Downloads/PairDesk folder of the receiving device.</p>
+
+    <h2>Network connections PairDesk makes</h2>
+    <ul>
+      <li><b>Between your devices</b>, on your local network, or through <a href="https://tailscale.com">Tailscale</a> if you installed it yourself. PairDesk doesn't send anything to Tailscale; Tailscale's own privacy policy covers Tailscale.</li>
+      <li><b>Update checks.</b> Once a day the computer program (and the Android app downloaded from GitHub) reads a small file from GitHub Releases to see whether a newer version exists. Like any web request, this shows GitHub your IP address. You can turn it off in PairDesk's settings on the computer. Copies from the Microsoft Store, Flathub or F-Droid don't do this; the store updates them.</li>
+    </ul>
+    <p>PairDesk contains no analytics, advertising or crash-reporting code.</p>
+
+    <h2>Permissions</h2>
+    <ul>
+      <li><b>Camera</b> (phone): only to scan the pairing code. Nothing is recorded.</li>
+      <li><b>Local network</b> (phone): to find and reach your computer.</li>
+      <li><b>Fingerprint or screen lock</b> (phone, optional): to lock the app. Android handles it; PairDesk never sees your fingerprint.</li>
+      <li><b>Screen and input</b> (computer): to show the screen to your phone and carry out its touches and key presses. On Wayland desktops you approve this in the desktop's own dialog.</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>PairDesk is a general-purpose tool and doesn't knowingly collect anything from anyone, including children.</p>
+
+    <h2>Changes and contact</h2>
+    <p>If this policy changes, the new version will be published on this page with a new date. Questions: <a href="mailto:dilshansoftlab@gmail.com">dilshansoftlab@gmail.com</a> or <a href="https://github.com/sandunMadhushan/pairdesk/issues">GitHub issues</a>.</p>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>PairDesk is free software under the GPL-3.0-or-later licence.</span>
+    <span><a href="./">Home</a> · <a href="https://github.com/sandunMadhushan/pairdesk">Source code</a></span>
+  </div>
+</footer>
+</body>
+</html>

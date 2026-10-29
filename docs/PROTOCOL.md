@@ -310,3 +310,44 @@ random secret path (stored in `settings-url.txt` in the data folder while the
 agent runs). It refuses requests with any other `Host` header, and changes need
 an `X-PairDesk: 1` header, which other websites can't send without a CORS
 preflight that the agent never approves. It isn't reachable from the network.
+
+## Updates (since 0.8.0)
+
+Not part of the phone protocol: how PairDesk finds and checks new releases.
+
+Each GitHub release carries `latest.json` and `latest.json.sig`, read from
+`https://github.com/sandunMadhushan/pairdesk/releases/latest/download/`:
+
+```json
+{
+  "version": "0.8.0",
+  "date": "2026-10-29",
+  "notes_url": "https://github.com/sandunMadhushan/pairdesk/releases/tag/v0.8.0",
+  "assets": {
+    "windows-x64-setup": {"url": "https://…/PairDesk-Setup-0.8.0-x64.exe", "sha256": "…", "size": 2509594},
+    "windows-x64": {…}, "linux-x64": {…}, "linux-x64-appimage": {…},
+    "linux-x64-deb": {…}, "linux-x64-rpm": {…},
+    "android-arm64": {…}, "android-armv7": {…}, "android-x86_64": {…}
+  }
+}
+```
+
+`latest.json.sig` is the base64 Ed25519 signature of the exact bytes of
+`latest.json` (`openssl pkeyutl -sign -rawin`), made by the release workflow
+with the `UPDATE_SIGNING_KEY` secret. The public key is built into the agent
+(`agent/src/update.rs`) and the app (`mobile/lib/update_check.dart`).
+
+The agent ignores manifests whose signature doesn't verify and downloads
+that aren't HTTPS, and checks each download's size and SHA-256 before using
+it. How it installs depends on how it was installed:
+
+| Install | Asset | Update |
+|---|---|---|
+| Windows setup (uninstaller next to the program) | `windows-x64-setup` | runs the setup with `/S /UPDATE`; the setup stops PairDesk (`--quit`), replaces it and starts it with `--background --updated` |
+| Program file (Windows, Linux) | `windows-x64`, `linux-x64` | downloads next to the program, renames the running file to `.<name>.old`, moves the new one in and starts it with `--background --updated` (plus the old `--port`, `--bind`, `--no-tray`); it takes over the port |
+| AppImage | `linux-x64-appimage` | the same, on the AppImage file |
+| .deb / .rpm | – | the settings page links to the release |
+| Microsoft Store, Flatpak | – | the store updates it; no checks |
+
+`--updated` always takes over from the running copy, whatever its version.
+Leftover `.old` files and downloaded setups are deleted at the next start.
