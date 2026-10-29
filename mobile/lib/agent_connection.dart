@@ -867,9 +867,20 @@ class AgentConnection extends ChangeNotifier {
   }
 
   /// Starts screen view; frames then arrive on [screenFrames].
-  Future<ScreenInfo> startScreen({int? monitor, String quality = 'medium'}) async {
+  /// [codecs]: video formats this phone can decode (`h264`); the computer
+  /// picks one, or JPEG (see [ScreenInfo.codec]).
+  Future<ScreenInfo> startScreen({
+    int? monitor,
+    String quality = 'medium',
+    List<String> codecs = const [],
+  }) async {
     _requireFeature('screen');
-    final reply = await _request({'t': 'screen_start', 'monitor': ?monitor, 'quality': quality});
+    final reply = await _request({
+      't': 'screen_start',
+      'monitor': ?monitor,
+      'quality': quality,
+      if (codecs.isNotEmpty && features.contains('video')) 'codecs': codecs,
+    });
     return ScreenInfo.fromJson(reply);
   }
 

@@ -18,6 +18,7 @@ import 'package:pairdesk/files/transfers.dart';
 import 'package:pairdesk/pairing/identity.dart';
 import 'package:pairdesk/pairing/pairing_link.dart';
 import 'package:pairdesk/screen/compositor.dart';
+import 'package:pairdesk/screen/video.dart';
 
 void main() {
   final link = Platform.environment['PAIRDESK_E2E_LINK'];
@@ -137,6 +138,26 @@ void main() {
       }
       conn.moveTo(100 / 1279, 100 / 799);
       await Future<void>.delayed(const Duration(milliseconds: 300));
+      conn.stopScreen();
+
+      // ---- 0.9: the same screen as H.264 video ----
+      debugPrint('e2e: screen view as H.264 video');
+      expect(conn.features, contains('video'));
+      final video = await conn.startScreen(quality: 'medium', codecs: const ['h264']);
+      expect(video.codec, 'h264');
+      expect((video.width, video.height), (1280, 800), reason: 'medium is up to 1280 wide');
+      while (true) {
+        expect(await frames.moveNext().timeout(const Duration(seconds: 10)), isTrue);
+        final f = frames.current;
+        conn.ackScreen(f.seq);
+        if (!f.isVideo || f.video!.isEmpty) continue; // JPEG left over, or the cursor
+        expect(f.keyframe, isTrue, reason: 'video starts with a key frame');
+        expect((f.width, f.height), (1280, 800));
+        final parts = splitParameterSets(f.video!);
+        expect(parts.config, isNotNull, reason: 'the key frame carries SPS and PPS');
+        expect(parts.frame[0] == 0 && parts.frame[1] == 0, isTrue, reason: 'Annex B');
+        break;
+      }
       conn.stopScreen();
       await frames.cancel();
       compositor.dispose();

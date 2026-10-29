@@ -385,7 +385,15 @@ async fn welcome_lists_features_and_permissions() {
     let (_ws, welcome) = signed_in(&agent, 20).await;
     assert_eq!(
         welcome["features"],
-        json!(["combo", "power", "apps", "screen", "clipboard", "files"])
+        json!([
+            "combo",
+            "power",
+            "apps",
+            "screen",
+            "clipboard",
+            "files",
+            "video"
+        ])
     );
     assert_eq!(
         welcome["allow"],
@@ -573,6 +581,79 @@ async fn screen_view_follows_the_permission() {
     assert_eq!(welcome["allow"]["screen"], false);
     send(&mut ws, json!({"t":"screen_start","id":1})).await;
     assert_eq!(recv(&mut ws).await["code"], "not_allowed");
+}
+
+/// Needs an X display (run under Xvfb); skipped otherwise.
+#[tokio::test(flavor = "multi_thread")]
+async fn streams_h264_video_to_phones_that_ask_for_it() {
+    if std::env::var_os("DISPLAY").is_none() {
+        eprintln!("no DISPLAY; skipped");
+        return;
+    }
+    let agent = start_agent().await;
+    let (mut ws, welcome) = signed_in(&agent, 33).await;
+    assert!(
+        welcome["features"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("video"))
+    );
+    send(
+        &mut ws,
+        json!({"t":"screen_start","id":6,"quality":"low","codecs":["vp9","h264"]}),
+    )
+    .await;
+    let info = recv(&mut ws).await;
+    assert_eq!(info["codec"], "h264", "{info}");
+    let (w, h) = (
+        info["width"].as_u64().unwrap() as usize,
+        info["height"].as_u64().unwrap() as usize,
+    );
+
+    // A key frame first; it decodes to a picture of the announced size.
+    let mut decoder = openh264::decoder::Decoder::new().unwrap();
+    let first = recv_frame(&mut ws).await;
+    assert_eq!(&first[..4], b"PDV1");
+    assert_eq!(first[16] & 1, 1, "key frame");
+    let len = u32::from_le_bytes(first[17..21].try_into().unwrap()) as usize;
+    assert_eq!(first.len(), 21 + len);
+    {
+        use openh264::formats::YUVSource;
+        let pic = decoder.decode(&first[21..]).unwrap().expect("a picture");
+        assert_eq!(pic.dimensions(), (w, h));
+    }
+    let seq = u32::from_le_bytes(first[4..8].try_into().unwrap());
+
+    // After a refresh the next picture is a key frame again.
+    send(&mut ws, json!({"t":"screen_ack","seq":seq})).await;
+    send(&mut ws, json!({"t":"screen_refresh"})).await;
+    loop {
+        let f = recv_frame(&mut ws).await;
+        let seq = u32::from_le_bytes(f[4..8].try_into().unwrap());
+        send(&mut ws, json!({"t":"screen_ack","seq":seq})).await;
+        let len = u32::from_le_bytes(f[17..21].try_into().unwrap());
+        if len > 0 {
+            assert_eq!(f[16] & 1, 1, "a refresh starts with a key frame");
+            assert!(decoder.decode(&f[21..]).unwrap().is_some());
+            break;
+        }
+    }
+
+    // Phones that don't ask get JPEG, as before.
+    send(&mut ws, json!({"t":"screen_start","id":7,"quality":"low"})).await;
+    loop {
+        let msg = recv(&mut ws).await;
+        if msg["t"] == "screen" {
+            assert_eq!(msg["codec"], "jpeg");
+            break;
+        }
+    }
+    loop {
+        let f = recv_frame(&mut ws).await;
+        if &f[..4] == b"PDS1" {
+            break;
+        }
+    }
 }
 
 /// Needs an X display (run under Xvfb); skipped otherwise.

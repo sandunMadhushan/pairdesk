@@ -26,6 +26,9 @@ pub struct Quality {
     pub max_width: u32,
     pub jpeg: u8,
     pub fps: u32,
+    /// H.264 (video mode): target bits per second and frames per second.
+    pub bitrate: u32,
+    pub video_fps: u32,
 }
 
 impl Quality {
@@ -35,16 +38,22 @@ impl Quality {
                 max_width: 960,
                 jpeg: 50,
                 fps: 8,
+                bitrate: 1_000_000,
+                video_fps: 15,
             },
             "high" => Self {
                 max_width: 1920,
                 jpeg: 80,
                 fps: 15,
+                bitrate: 5_000_000,
+                video_fps: 30,
             },
             _ => Self {
                 max_width: 1280,
                 jpeg: 65,
                 fps: 12,
+                bitrate: 2_500_000,
+                video_fps: 24,
             },
         }
     }

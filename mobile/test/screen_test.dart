@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pairdesk/agent_connection.dart';
 import 'package:pairdesk/screen/compositor.dart';
 import 'package:pairdesk/screen/frame.dart';
+import 'package:pairdesk/screen/video.dart';
 import 'package:pairdesk/screens/tabs/screen_tab.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Builds a frame exactly as the agent does (see agent/src/screen/encode.rs).
 Uint8List buildFrame(int seq, int w, int h, (int, int)? cursor, List<(int, int, int, int, Uint8List)> rects) {
@@ -38,6 +40,63 @@ Uint8List buildFrame(int seq, int w, int h, (int, int)? cursor, List<(int, int, 
   return b.toBytes();
 }
 
+/// A video frame exactly as the agent builds it (agent/src/screen/video.rs).
+Uint8List buildVideoFrame(
+  int seq,
+  int w,
+  int h,
+  (int, int)? cursor, {
+  bool key = false,
+  List<int> data = const [],
+}) {
+  final head = ByteData(21)
+    ..setUint8(0, 0x50)
+    ..setUint8(1, 0x44)
+    ..setUint8(2, 0x56)
+    ..setUint8(3, 0x31)
+    ..setUint32(4, seq, Endian.little)
+    ..setUint16(8, w, Endian.little)
+    ..setUint16(10, h, Endian.little)
+    ..setInt16(12, cursor?.$1 ?? -1, Endian.little)
+    ..setInt16(14, cursor?.$2 ?? -1, Endian.little)
+    ..setUint8(16, key ? 1 : 0)
+    ..setUint32(17, data.length, Endian.little);
+  return (BytesBuilder()
+        ..add(head.buffer.asUint8List())
+        ..add(data))
+      .toBytes();
+}
+
+class FakeDecoder implements VideoDecoder {
+  FakeDecoder({this.startDelay = Duration.zero, this.texture = 7});
+  final Duration startDelay;
+  final int? texture;
+  final log = <String>[];
+  void Function(String)? errorHandler;
+
+  void Function()? lostHandler;
+
+  @override
+  set onError(void Function(String message)? handler) => errorHandler = handler;
+
+  @override
+  set onLost(void Function()? handler) => lostHandler = handler;
+
+  @override
+  Future<int?> start(int width, int height) async {
+    log.add('start ${width}x$height');
+    await Future<void>.delayed(startDelay);
+    return texture;
+  }
+
+  @override
+  Future<void> decode(Uint8List data, {required bool keyframe}) async =>
+      log.add('decode ${data.length}${keyframe ? ' key' : ''}');
+
+  @override
+  Future<void> stop() async => log.add('stop');
+}
+
 /// A solid-colour PNG (the compositor decodes any image format).
 Future<Uint8List> solidPng(int w, int h, Color c) async {
   final rec = ui.PictureRecorder();
@@ -55,8 +114,11 @@ Future<Color> pixel(ui.Image img, int x, int y) async {
 }
 
 class FakeScreenConnection extends AgentConnection {
-  FakeScreenConnection({this.refuse});
+  FakeScreenConnection({this.refuse, this.video = false});
   final String? refuse;
+
+  /// Answer `h264` when the phone asks for it.
+  final bool video;
   final frames = StreamController<ScreenFrame>.broadcast();
   final stopped = StreamController<String>.broadcast();
   final calls = <String>[];
@@ -68,14 +130,21 @@ class FakeScreenConnection extends AgentConnection {
   @override
   Stream<String> get screenStopped => stopped.stream;
   @override
-  Future<ScreenInfo> startScreen({int? monitor, String quality = 'medium'}) async {
-    calls.add('start $quality');
+  Future<ScreenInfo> startScreen({
+    int? monitor,
+    String quality = 'medium',
+    List<String> codecs = const [],
+  }) async {
+    calls.add(codecs.isEmpty ? 'start $quality' : 'start $quality ${codecs.join(',')}');
     if (refuse != null) throw RequestException('not_allowed', refuse!);
-    return const ScreenInfo(
-      monitors: [MonitorInfo(index: 0, name: 'Display 1 (main)', width: 1280, height: 800, primary: true)],
+    return ScreenInfo(
+      monitors: const [
+        MonitorInfo(index: 0, name: 'Display 1 (main)', width: 1280, height: 800, primary: true),
+      ],
       monitor: 0,
       width: 64,
       height: 40,
+      codec: video && codecs.contains('h264') ? 'h264' : 'jpeg',
     );
   }
 
@@ -98,6 +167,35 @@ class FakeScreenConnection extends AgentConnection {
 }
 
 void main() {
+  group('video', () {
+    // SPS, PPS and an IDR slice, with 4- and 3-byte start codes.
+    final sps = [0, 0, 0, 1, 0x67, 0x42, 0xC0, 0x1F];
+    final pps = [0, 0, 0, 1, 0x68, 0xCE, 0x3C, 0x80];
+    final idr = [0, 0, 1, 0x65, 0x88, 0x84, 0x00, 0x33];
+
+    test('key frames are split into parameter sets and picture', () {
+      final parts = splitParameterSets(Uint8List.fromList([...sps, ...pps, ...idr]));
+      expect(parts.config, [...sps, ...pps]);
+      expect(parts.frame, idr);
+      final p = [0, 0, 0, 1, 0x41, 0x9A, 0x02];
+      final plain = splitParameterSets(Uint8List.fromList(p));
+      expect(plain.config, isNull);
+      expect(plain.frame, p);
+    });
+
+    test('video frames parse', () {
+      final f = ScreenFrame.parse(buildVideoFrame(4, 1280, 720, (5, 6), key: true, data: [...sps, ...idr]));
+      expect(f.isVideo, isTrue);
+      expect((f.seq, f.width, f.height, f.cursorX, f.cursorY, f.keyframe), (4, 1280, 720, 5, 6, true));
+      expect(f.video, [...sps, ...idr]);
+      final cursorOnly = ScreenFrame.parse(buildVideoFrame(5, 1280, 720, null));
+      expect(cursorOnly.video, isEmpty);
+      expect(cursorOnly.cursorX, isNull);
+      final cut = buildVideoFrame(6, 10, 10, null, data: [1, 2, 3]);
+      expect(() => ScreenFrame.parse(Uint8List.sublistView(cut, 0, cut.length - 1)), throwsFormatException);
+    });
+  });
+
   group('frame parsing', () {
     test('reads header, cursor and rectangles', () {
       final jpeg = Uint8List.fromList([0xFF, 0xD8, 1, 2, 3]);
@@ -143,19 +241,93 @@ void main() {
   });
 
   group('screen tab', () {
-    Future<FakeScreenConnection> showTab(WidgetTester tester, {String? refuse}) async {
+    Future<FakeScreenConnection> showTab(
+      WidgetTester tester, {
+      String? refuse,
+      bool video = false,
+      FakeDecoder? decoder,
+    }) async {
       tester.view.physicalSize = const Size(1080, 2340);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
-      final conn = FakeScreenConnection(refuse: refuse);
+      SharedPreferences.setMockInitialValues({});
+      final conn = FakeScreenConnection(refuse: refuse, video: video);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ScreenTab(connection: conn, active: true)),
+          home: Scaffold(
+            body: ScreenTab(
+              connection: conn,
+              active: true,
+              videoAvailable: () async => video,
+              videoDecoder: decoder == null ? null : () => decoder,
+            ),
+          ),
         ),
       );
       await tester.pump();
       return conn;
     }
+
+    // Real time for platform-like work, fake time for the tab's timers.
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 6; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+    }
+
+    testWidgets('video: decodes on a texture, keeps frames that come during start-up', (tester) async {
+      final decoder = FakeDecoder(startDelay: const Duration(milliseconds: 60));
+      final conn = await showTab(tester, video: true, decoder: decoder);
+      // The key frame arrives while the decoder is still starting.
+      conn.frames.add(
+        ScreenFrame.parse(buildVideoFrame(1, 64, 40, (10, 10), key: true, data: [0, 0, 1, 0x65, 1])),
+      );
+      await settle(tester);
+      expect(conn.calls.first, 'start medium h264');
+      expect(decoder.log, ['start 64x40', 'decode 5 key']);
+      expect(conn.calls, contains('ack 1'));
+      expect(find.byType(Texture), findsOneWidget);
+      expect(tester.widget<Texture>(find.byType(Texture)).textureId, 7);
+
+      // Cursor-only frames don't reach the decoder; they're still acked.
+      conn.frames.add(ScreenFrame.parse(buildVideoFrame(2, 64, 40, (20, 20))));
+      conn.frames.add(ScreenFrame.parse(buildVideoFrame(3, 64, 40, (20, 20), data: [0, 0, 1, 0x41, 2, 3])));
+      await settle(tester);
+      expect(decoder.log.last, 'decode 6');
+      expect(conn.calls, containsAll(['ack 2', 'ack 3']));
+    });
+
+    testWidgets('video: a decoder failure switches to JPEG for good', (tester) async {
+      final decoder = FakeDecoder();
+      final conn = await showTab(tester, video: true, decoder: decoder);
+      await settle(tester);
+      expect(conn.calls.first, 'start medium h264');
+      decoder.errorHandler!('codec error');
+      await settle(tester);
+      expect(conn.calls.last, 'start medium', reason: 'restarted without video');
+      expect(decoder.log.last, 'stop');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('screen.videoBroken'), isTrue);
+      expect(find.byType(Texture), findsNothing);
+    });
+
+    testWidgets('video: a lost surface restarts the video, without giving up on it', (tester) async {
+      final decoder = FakeDecoder();
+      final conn = await showTab(tester, video: true, decoder: decoder);
+      await settle(tester);
+      decoder.lostHandler!();
+      await settle(tester);
+      expect(conn.calls.where((c) => c.startsWith('start')), ['start medium h264', 'start medium h264']);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('screen.videoBroken'), isNull);
+    });
+
+    testWidgets('video: no decoder on this phone means JPEG', (tester) async {
+      final conn = await showTab(tester, video: true, decoder: FakeDecoder(texture: null));
+      await settle(tester);
+      expect(conn.calls.where((c) => c.startsWith('start')), ['start medium h264', 'start medium']);
+    });
 
     testWidgets('shows frames, acks them, and taps click at that spot', (tester) async {
       final conn = await showTab(tester);

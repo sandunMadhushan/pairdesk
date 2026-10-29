@@ -4,6 +4,9 @@
 //   "PDS1" | seq u32 | width u16 | height u16 | cursor_x i16 | cursor_y i16 | count u16
 //   then count × (x u16 | y u16 | w u16 | h u16 | len u32 | JPEG bytes)
 //
+//   "PDV1" | seq u32 | width u16 | height u16 | cursor_x i16 | cursor_y i16 | flags u8 | len u32 | H.264
+//   (flags bit 0: key frame; len 0: only the cursor moved)
+//
 // All little-endian. Cursor -1 means the pointer is on another monitor.
 
 import 'dart:typed_data';
@@ -23,6 +26,8 @@ class ScreenFrame {
     required this.cursorY,
     required this.rects,
     required this.bytes,
+    this.video,
+    this.keyframe = false,
   });
 
   final int seq;
@@ -37,13 +42,21 @@ class ScreenFrame {
   /// Size on the wire, for the data-rate display.
   final int bytes;
 
-  static const _magic = [0x50, 0x44, 0x53, 0x31]; // "PDS1"
+  /// H.264 frames: the access unit (null for JPEG frames; empty when only
+  /// the cursor moved).
+  final Uint8List? video;
+  final bool keyframe;
+
+  bool get isVideo => video != null;
 
   static ScreenFrame parse(Uint8List data) {
     if (data.length < 18) throw const FormatException('screen frame too short');
-    for (var i = 0; i < 4; i++) {
-      if (data[i] != _magic[i]) throw const FormatException('not a screen frame');
+    // "PDS1": JPEG rectangles; "PDV1": H.264.
+    if (data[0] != 0x50 || data[1] != 0x44 || data[3] != 0x31) {
+      throw const FormatException('not a screen frame');
     }
+    if (data[2] == 0x56) return _parseVideo(data);
+    if (data[2] != 0x53) throw const FormatException('not a screen frame');
     final b = ByteData.sublistView(data);
     final seq = b.getUint32(4, Endian.little);
     final width = b.getUint16(8, Endian.little);
@@ -81,6 +94,27 @@ class ScreenFrame {
   }
 }
 
+ScreenFrame _parseVideo(Uint8List data) {
+  if (data.length < 21) throw const FormatException('video frame too short');
+  final b = ByteData.sublistView(data);
+  final len = b.getUint32(17, Endian.little);
+  if (21 + len != data.length) throw const FormatException('video frame cut short');
+  final cx = b.getInt16(12, Endian.little);
+  final cy = b.getInt16(14, Endian.little);
+  final onScreen = cx >= 0 && cy >= 0;
+  return ScreenFrame(
+    seq: b.getUint32(4, Endian.little),
+    width: b.getUint16(8, Endian.little),
+    height: b.getUint16(10, Endian.little),
+    cursorX: onScreen ? cx : null,
+    cursorY: onScreen ? cy : null,
+    rects: const [],
+    bytes: data.length,
+    video: Uint8List.sublistView(data, 21),
+    keyframe: data[16] & 1 == 1,
+  );
+}
+
 class MonitorInfo {
   const MonitorInfo({
     required this.index,
@@ -101,10 +135,14 @@ class ScreenInfo {
     required this.monitor,
     required this.width,
     required this.height,
+    this.codec = 'jpeg',
   });
   final List<MonitorInfo> monitors;
   final int monitor;
   final int width, height;
+
+  /// `jpeg` or `h264` (computers before 0.9 always send JPEG).
+  final String codec;
 
   static ScreenInfo fromJson(Map<String, dynamic> j) => ScreenInfo(
     monitors: [
@@ -121,5 +159,6 @@ class ScreenInfo {
     monitor: j['monitor'] as int? ?? 0,
     width: j['width'] as int? ?? 0,
     height: j['height'] as int? ?? 0,
+    codec: j['codec'] as String? ?? 'jpeg',
   );
 }

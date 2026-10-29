@@ -1,0 +1,12 @@
+# Cross builds for Windows with MinGW (local tests under Wine, Debian/Ubuntu
+# g++-mingw-w64-x86-64-posix): link OpenH264's C++ runtime statically, so
+# the .exe needs no extra DLLs. Release builds use MSVC on Windows (GitHub
+# Actions) and aren't affected.
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+  "-C", "link-args=-static -static-libgcc -static-libstdc++",
+  "-L", "native=/usr/lib/gcc/x86_64-w64-mingw32/13-posix",
+]
+
+[env]
+CXXSTDLIB_x86_64_pc_windows_gnu = "static=stdc++"
