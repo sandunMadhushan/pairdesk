@@ -91,6 +91,18 @@
   footer { color: var(--muted); font-size: 13px; margin-top: 24px; overflow-wrap: anywhere; }
   code { font-size: 12px; }
   [hidden] { display: none !important; }
+  .drop { display: grid; gap: 4px; padding: 22px 16px; border: 2px dashed var(--line); border-radius: 12px;
+    text-align: center; cursor: pointer; }
+  .drop.over, .drop:hover { border-color: var(--accent); }
+  .drop.off { opacity: .55; cursor: not-allowed; }
+  .transfers { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+  .transfers li { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+  .transfers .name { overflow-wrap: anywhere; }
+  .transfers .meta { font-size: 13px; color: var(--muted); grid-column: 1; }
+  .transfers progress { grid-column: 1 / -1; width: 100%; height: 6px; accent-color: var(--accent); }
+  .transfers .failed { color: var(--danger); }
+  button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
+  select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 </style>
 </head>
 <body>
@@ -135,7 +147,7 @@
     <h2 id="wl-title">Control on this desktop</h2>
     <div class="status-line" role="status"><span class="dot" id="wl-dot"></span><div id="wl-text"></div></div>
     <p class="hint" id="wl-how">This desktop (Wayland) asks before an app may move the pointer, type or see the
-      screen. Choose <b>Allow control</b>, then in the window that opens tick <b>Allow Remote Interaction</b>,
+      screen. Choose <b>Allow control</b>, then in the window that opens tick <b>Allow Remote Interaction</b> (keep <b>Allow Clipboard Access</b> on),
       pick your screen, keep <b>Remember This Selection</b> on and press <b>Share</b>. While a phone is
       connected, your desktop shows that it's being shared.</p>
     <div class="row" style="margin-top:12px"><button id="btn-wl-allow" class="primary">Allow control</button></div>
@@ -174,7 +186,28 @@
         <span>Open apps and shortcuts<small>Installed apps and the shortcuts below.</small></span></label>
       <label class="switch"><input type="checkbox" id="perm-screen">
         <span>See the screen<small>The PairDesk tray icon shows a red dot while a phone is watching.</small></span></label>
+      <label class="switch"><input type="checkbox" id="perm-clipboard">
+        <span>Use the clipboard<small>Copy text from this computer, and paste text from the phone.</small></span></label>
+      <label class="switch"><input type="checkbox" id="perm-files">
+        <span>Send files to this computer<small>Saved in your Downloads, in a PairDesk folder.</small></span></label>
     </div>
+  </section>
+
+  <section aria-labelledby="files-title">
+    <h2 id="files-title">Files</h2>
+    <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
+      <b>Send files to your phone</b>
+      <span id="drop-hint" class="hint">Drop files here, or click to choose. They go to the phone's Download/PairDesk folder.</span>
+      <input type="file" id="file-input" multiple hidden>
+    </div>
+    <div class="row" id="send-to-row" hidden style="margin-top:10px">
+      <label for="send-to">Send to</label>
+      <select id="send-to"></select>
+    </div>
+    <p class="hint" id="sendto-hint"></p>
+    <ul class="transfers" id="transfers"></ul>
+    <p class="hint">Files from phones are saved in <code id="downloads"></code>.
+      <button id="btn-open-downloads" class="link">Open folder</button></p>
   </section>
 
   <section aria-labelledby="sc-title">
@@ -225,6 +258,7 @@
 const api = (path) => location.pathname.replace(/\/$/, "") + "/api/" + path;
 const $ = (id) => document.getElementById(id);
 let lastPhoneIds = null;
+const PERMS = ["power", "session", "apps", "screen", "clipboard", "files"];
 let wasPairing = false;
 let stopped = false;
 
@@ -384,10 +418,13 @@ function render(s) {
     ? viewers.map((p) => p.name).join(", ") + (viewers.length > 1 ? " are" : " is") + " viewing your screen."
     : "";
 
-  for (const k of ["power", "session", "apps", "screen"]) {
+  for (const k of PERMS) {
     const box = $("perm-" + k);
     if (document.activeElement !== box) box.checked = s.permissions[k];
   }
+
+  // Files
+  renderFiles(s);
 
   // Shortcuts
   const sc = $("shortcuts");
@@ -437,16 +474,105 @@ async function refresh() {
 $("btn-pair").onclick = async () => render(await post("pair"));
 $("btn-new").onclick = async () => render(await post("pair"));
 $("btn-cancel").onclick = async () => render(await post("cancel-pair"));
-for (const k of ["power", "session", "apps", "screen"]) {
+for (const k of PERMS) {
   $("perm-" + k).onchange = async () => {
     try {
-      render(await post("permissions", {
-        power: $("perm-power").checked, session: $("perm-session").checked, apps: $("perm-apps").checked,
-        screen: $("perm-screen").checked,
-      }));
+      const body = {};
+      for (const p of PERMS) body[p] = $("perm-" + p).checked;
+      render(await post("permissions", body));
     } catch (e) { showBanner(e.message, true); refresh(); }
   };
 }
+
+// ---- Files ----
+function size(n) {
+  if (n < 1024) return n + " B";
+  const u = ["KB", "MB", "GB", "TB"];
+  let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return n.toFixed(n < 10 ? 1 : 0) + " " + u[i];
+}
+
+let connectedPhones = [];
+function renderFiles(s) {
+  connectedPhones = s.phones.filter((p) => p.connected);
+  const drop = $("drop");
+  drop.classList.toggle("off", connectedPhones.length === 0);
+  $("drop-hint").textContent = connectedPhones.length
+    ? "Drop files here, or click to choose. They go to the phone's Download/PairDesk folder."
+    : "Open PairDesk on your phone to send it files.";
+  const sel = $("send-to");
+  $("send-to-row").hidden = connectedPhones.length < 2;
+  const want = connectedPhones.map((p) => p.id).join();
+  if (sel.dataset.ids !== want) {
+    sel.replaceChildren();
+    sel.append(new Option("All connected phones", ""));
+    for (const p of connectedPhones) sel.append(new Option(p.name, p.id));
+    sel.dataset.ids = want;
+  }
+  $("downloads").textContent = s.downloads;
+  $("sendto-hint").textContent = s.os === "windows"
+    ? "Or right-click files in File Explorer \u2192 Send to \u2192 PairDesk phone (on Windows 11, Show more options first)."
+    : "Or in your file manager, right-click files \u2192 Scripts \u2192 Send to phone (PairDesk) (GNOME Files), or Send to phone (PairDesk) (Dolphin).";
+
+  const list = $("transfers");
+  list.replaceChildren();
+  for (const t of s.transfers) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = (t.incoming ? "\u2193 " : "\u2191 ") + t.name;
+    const meta = document.createElement("span");
+    meta.className = "meta" + (t.state === "failed" ? " failed" : "");
+    const way = t.incoming ? "from " + t.phone : "to " + t.phone;
+    meta.textContent = t.state === "failed" ? way + " \u00b7 " + (t.msg || "failed")
+      : t.state === "done" ? way + " \u00b7 " + size(t.size)
+      : t.state === "waiting" ? way + " \u00b7 waiting\u2026"
+      : way + " \u00b7 " + size(t.done) + " of " + size(t.size);
+    li.append(name);
+    if (t.incoming && t.state === "done") {
+      const b = document.createElement("button");
+      b.className = "link";
+      b.textContent = "Show";
+      b.onclick = () => post("reveal", { id: t.id }).catch((e) => showBanner(e.message, true));
+      li.append(b);
+    } else {
+      li.append(document.createElement("span"));
+    }
+    li.append(meta);
+    if (t.state === "active" || t.state === "waiting") {
+      const bar = document.createElement("progress");
+      bar.max = t.size || 1;
+      bar.value = t.done;
+      li.append(bar);
+    }
+    list.append(li);
+  }
+}
+
+async function sendFiles(fileList) {
+  if (!connectedPhones.length) { showBanner("Open PairDesk on your phone first.", true); return; }
+  const phone = $("send-to").value;
+  for (const f of fileList) {
+    const q = "upload?name=" + encodeURIComponent(f.name) + (phone ? "&phone=" + encodeURIComponent(phone) : "");
+    try {
+      const res = await fetch(api(q), { method: "POST", headers: { "X-PairDesk": "1" }, body: f });
+      if (!res.ok) throw new Error(await res.text());
+      refresh();
+    } catch (e) { showBanner(f.name + ": " + e.message, true); }
+  }
+}
+const drop = $("drop");
+drop.onclick = () => connectedPhones.length && $("file-input").click();
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drop.onclick(); } };
+$("file-input").onchange = (e) => { sendFiles([...e.target.files]); e.target.value = ""; };
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); sendFiles([...e.dataTransfer.files]); };
+// A file dropped anywhere else shouldn't make the browser leave the page.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+$("btn-open-downloads").onclick = () => post("open-downloads").catch((e) => showBanner(e.message, true));
 
 const kindHelp = {
   url: ["Address", "https://", "Opens in your default browser."],

@@ -31,6 +31,12 @@ pub struct Prefs {
     /// See the screen.
     #[serde(default = "yes")]
     pub allow_screen: bool,
+    /// Read and set the clipboard.
+    #[serde(default = "yes")]
+    pub allow_clipboard: bool,
+    /// Receive files from phones.
+    #[serde(default = "yes")]
+    pub allow_files: bool,
     #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
     /// Keep the computer from sleeping so phones can always reach it.
@@ -45,6 +51,8 @@ impl Default for Prefs {
             allow_session: true,
             allow_apps: true,
             allow_screen: true,
+            allow_clipboard: true,
+            allow_files: true,
             shortcuts: Vec::new(),
             keep_awake: false,
         }
@@ -92,6 +100,8 @@ impl Prefs {
             session: self.allow_session,
             apps: self.allow_apps,
             screen: self.allow_screen,
+            clipboard: self.allow_clipboard,
+            files: self.allow_files,
         }
     }
 
@@ -141,6 +151,16 @@ impl PrefsStore {
 
     pub fn set_allow_screen(&mut self, on: bool) -> io::Result<()> {
         self.prefs.allow_screen = on;
+        self.save()
+    }
+
+    pub fn set_allow_clipboard(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.allow_clipboard = on;
+        self.save()
+    }
+
+    pub fn set_allow_files(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.allow_files = on;
         self.save()
     }
 

@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../agent_connection.dart';
+import '../files/share_inbox.dart';
 import '../app_model.dart';
 import '../pairing/laptop.dart';
 import '../pairing/pairing_link.dart';
@@ -29,12 +30,34 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    ShareInbox.instance.addListener(_onShared);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_model.autoConnectDone && _model.laptops.length == 1) {
         _model.autoConnectDone = true;
         _connect(_model.laptops.first);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    ShareInbox.instance.removeListener(_onShared);
+    super.dispose();
+  }
+
+  /// Something was shared with PairDesk while no computer is open: with
+  /// one computer, go straight to it (the control screen sends it).
+  void _onShared() {
+    if (!mounted) return;
+    setState(() {});
+    final route = ModalRoute.of(context);
+    if (ShareInbox.instance.pending != null &&
+        route != null &&
+        route.isCurrent &&
+        !_busy &&
+        _model.laptops.length == 1) {
+      _connect(_model.laptops.first);
+    }
   }
 
   // ---- Actions --------------------------------------------------------
@@ -249,6 +272,25 @@ class _HomeScreenState extends State<HomeScreen> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
                   children: [
+                    if (ShareInbox.instance.pending case final shared?)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.ios_share),
+                          title: Text(
+                            shared.files.isEmpty
+                                ? 'Text to send to a computer\'s clipboard'
+                                : shared.files.length == 1
+                                ? '${shared.files.single.name} to send'
+                                : '${shared.files.length} files to send',
+                          ),
+                          subtitle: const Text('Choose a computer below.'),
+                          trailing: IconButton(
+                            tooltip: 'Discard',
+                            icon: const Icon(Icons.close),
+                            onPressed: () => ShareInbox.instance.take(),
+                          ),
+                        ),
+                      ),
                     for (final l in laptops)
                       _LaptopTile(
                         laptop: l,

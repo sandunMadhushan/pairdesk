@@ -85,6 +85,9 @@ Input commands sent before `welcome` are refused and the connection is closed.
 | `power` | `a`: `lock` \| `sleep` \| `screen_off` \| `sign_out` \| `restart` \| `shut_down`; `id` | Power and session actions. Answered with `ack` |
 | `apps` | `id` | Asks for the apps and shortcuts that can be opened. Answered with `apps` |
 | `launch` | `app` (an ID from `apps`), `id` | Opens an app or shortcut. Answered with `ack` |
+| `clip_get` | `id` | Asks for the computer's clipboard text. Answered with `clip` |
+| `clip_set` | `id`, `text` (≤ 200 KB UTF-8), `paste` (optional bool) | Puts text on the computer's clipboard; with `paste`, then presses Ctrl+V there. Answered with `ack` |
+| `file_*` | see [Files](#files) | Files both ways |
 
 Named keys: `enter`, `backspace`, `escape`, `tab`, `space`, `delete`, `up`, `down`,
 `left`, `right`, `home`, `end`, `page_up`, `page_down`, `volume_up`, `volume_down`,
@@ -104,6 +107,8 @@ installed apps plus shortcuts the owner set up on the settings page.
 | `welcome` | `name`, `os` (`windows`, `linux`, …), `v`, `version` (the agent's release, since 0.5.1; phones use it to explain what to update), `paired` (true right after pairing), `features` (e.g. `["combo","power","apps"]`), `allow` (`{"power":bool,"session":bool,"apps":bool}`), `addrs` (see below) | Signed in; input is accepted |
 | `ack` | `id`, `ok`, and when not ok: `code` (`not_allowed`, `not_found`, `failed`) and `msg` | Answer to `power` or `launch` |
 | `apps` | `id`, `shortcuts`, `apps`: lists of `{"id","name","kind"}`, kind `app`, `url`, `folder`, `file` or `program` | Answer to `apps` |
+| `clip` | `id`, `text` | Answer to `clip_get` (`""` when the clipboard holds no text) |
+| `file_*` | see [Files](#files) | Files both ways |
 | `pong` | — | Reply to `ping` |
 | `notice` | `msg` | Something for the person to read, e.g. "approve PairDesk on the computer" (since 0.6; older phones ignore it) |
 | `error` | `code`, `msg` | See below |
@@ -170,6 +175,8 @@ The settings page on the computer has three switches, all on by default:
 | `session` | `sign_out`, `restart`, `shut_down` |
 | `apps` | `apps`, `launch` |
 | `screen` | `screen_start` (turning it off also stops current viewers) |
+| `clipboard` | `clip_get`, `clip_set` |
+| `files` | `file_offer` from a phone (files sent from the computer need no permission: the owner sends them) |
 
 Each request is checked against the current switches when it arrives, so a
 change applies at once. The phone also asks for confirmation before
@@ -186,7 +193,50 @@ they keep working. Phones check `features` before offering the new tabs.
 - The agent merges bursts of `move` messages, so the phone can send one per touch event.
 - If a phone disconnects while holding a button (`down` without `up`), the agent releases it.
 - The phone pings every 3 s and treats 10 s of silence as a lost connection.
-- Frames larger than 64 KiB are refused.
+- Messages larger than 512 KiB are refused.
+
+## Clipboard
+
+Text only. Windows and X11 use the system clipboard directly. In a Wayland
+session the agent asks the remote desktop portal for clipboard access
+(`Clipboard.RequestClipboard` before `Start`; the desktop's dialog shows "Allow
+Clipboard Access") and then uses `SetSelection` / `SelectionWrite` /
+`SelectionRead`. Where the portal has no clipboard, the Xwayland clipboard is
+used instead.
+
+## Files
+
+Files go both ways over the same connection, with the same messages in each
+direction. File ids (`fid`) are chosen by the sender: below 2³¹ for phones, from
+2³¹ for the computer.
+
+```text
+sender   → file_offer    {fid, name, size}
+receiver → file_accept   {fid}                    or file_cancel {fid, msg}
+sender   → binary chunks "PDF1" | fid u32 | offset u64 | bytes   (little-endian, ≤ 128 KiB each)
+receiver → file_progress {fid, received}          every MiB, and when it has every byte
+sender   → file_end      {fid, sha256}            only after "received" equals size
+receiver → file_done     {fid, ok, name?, msg?}   name: what it was saved as
+either   → file_cancel   {fid, msg?}              stops it; the receiver deletes the part file
+```
+
+- **Flow control:** the sender keeps at most 4 MiB unacknowledged, so a slow link
+  doesn't fill memory or delay the touchpad.
+- **Integrity:** the receiver checks the size and the SHA-256 before the file gets
+  its name; until then it's a hidden part file, removed if anything goes wrong or
+  the connection drops.
+- **On the computer:** files from phones go to `Downloads/PairDesk`
+  (`PAIRDESK_DOWNLOADS` overrides it). Names are cleaned (no folders, no
+  characters Windows forbids, no device names like `CON`) and never overwrite an
+  existing file (`photo (2).jpg`).
+- **On the phone:** files from the computer go to `Download/PairDesk` (Android 10+,
+  through MediaStore; older Android: the app's own Download/PairDesk folder).
+- **Sending from the computer:** the settings page's drop zone (`POST
+  api/upload?name=…&phone=…` with the file as the body), or `pairdesk-agent --send
+  FILE…`, which hands the paths to the running agent (`POST api/send-paths`). On
+  start the agent adds that command to the file manager: a "PairDesk phone"
+  shortcut in Windows' Send To folder, a GNOME Files script and a Dolphin service
+  menu. Files go to every connected phone, or the one chosen.
 
 ## Reaching the computer from anywhere (Tailscale)
 

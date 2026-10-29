@@ -2,12 +2,14 @@
 import 'package:flutter/material.dart';
 
 import 'app_model.dart';
+import 'files/share_inbox.dart';
 import 'screens/home_screen.dart';
 import 'settings/app_lock.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final model = await AppModel.load();
+  ShareInbox.instance.start();
   runApp(PairDeskApp(model: model));
 }
 

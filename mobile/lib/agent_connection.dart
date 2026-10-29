@@ -14,6 +14,8 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 
+import 'files/native_files.dart';
+import 'files/transfers.dart';
 import 'pairing/codec.dart';
 import 'pairing/discovery.dart';
 import 'pairing/identity.dart';
@@ -176,11 +178,22 @@ enum PowerAction {
 
 /// What the computer's owner allows (from `welcome`).
 class Allowed {
-  const Allowed({this.power = false, this.session = false, this.apps = false, this.screen = false});
+  const Allowed({
+    this.power = false,
+    this.session = false,
+    this.apps = false,
+    this.screen = false,
+    this.clipboard = false,
+    this.files = false,
+  });
   final bool power;
   final bool session;
   final bool apps;
   final bool screen;
+  final bool clipboard;
+
+  /// Sending files to the computer.
+  final bool files;
 
   bool action(PowerAction a) => a.endsSession ? session : power;
 
@@ -190,6 +203,8 @@ class Allowed {
           session: j['session'] == true,
           apps: j['apps'] == true,
           screen: j['screen'] == true,
+          clipboard: j['clipboard'] == true,
+          files: j['files'] == true,
         )
       : const Allowed();
 }
@@ -237,7 +252,18 @@ class AgentConnection extends ChangeNotifier {
     this.replyTimeout = const Duration(seconds: 8),
     this.pingInterval = const Duration(seconds: 3),
     this.deadAfter = const Duration(seconds: 10),
-  });
+    Future<SavedFile> Function(File temp, String name)? saveFile,
+    Directory? tempDir,
+  }) {
+    transfers = FileTransfers(
+      _Link(this),
+      save: saveFile ?? (f, name) => NativeFiles.instance.saveToDownloads(f, name),
+      tempDir: tempDir,
+    );
+  }
+
+  /// Files going to and coming from the computer.
+  late final FileTransfers transfers;
 
   /// Finds a computer whose address changed. Null disables discovery.
   final LaptopFinder? finder;
@@ -543,12 +569,18 @@ class AgentConnection extends ChangeNotifier {
       _screenEvents.add(decoded['msg'] as String? ?? 'Screen view stopped.');
       return;
     }
+    final type = decoded['t'];
+    if (type is String && type.startsWith('file_') && transfers.handleMessage(decoded)) return;
     if (decoded['t'] == 'notice') {
       final msg = decoded['msg'];
       if (msg is String && msg.isNotEmpty) _notices.add(msg);
       return;
     }
-    if (id is int && (decoded['t'] == 'ack' || decoded['t'] == 'apps' || decoded['t'] == 'screen')) {
+    if (id is int &&
+        (decoded['t'] == 'ack' ||
+            decoded['t'] == 'apps' ||
+            decoded['t'] == 'screen' ||
+            decoded['t'] == 'clip')) {
       _requests.remove(id)?.complete(decoded);
       return;
     }
@@ -588,6 +620,7 @@ class AgentConnection extends ChangeNotifier {
   }
 
   Future<void> disconnect({bool notify = true}) async {
+    transfers.connectionLost();
     for (final r in _requests.values) {
       if (!r.isCompleted) {
         r.completeError(RequestException('disconnected', 'Disconnected from the computer.'));
@@ -645,6 +678,16 @@ class AgentConnection extends ChangeNotifier {
     _lastError = e;
     _status = ConnectionStatus.disconnected;
     notifyListeners();
+  }
+
+  void _sendBinary(Uint8List data) {
+    final ch = _channel;
+    if (ch == null) return;
+    try {
+      ch.sink.add(data);
+    } catch (e) {
+      _lost(AgentException(FailureKind.unreachable, 'Send failed: $e'));
+    }
   }
 
   void _send(Map<String, Object?> msg) {
@@ -776,11 +819,50 @@ class AgentConnection extends ChangeNotifier {
   Stream<String> get screenStopped => _screenEvents.stream;
 
   void _onBinary(Uint8List data) {
+    if (isFileChunk(data)) {
+      transfers.handleChunk(data);
+      return;
+    }
     try {
       _frames.add(ScreenFrame.parse(data));
     } on FormatException catch (e) {
       debugPrint('bad screen frame: $e');
       _send({'t': 'screen_refresh'});
+    }
+  }
+
+  // ---- Clipboard and files --------------------------------------------
+
+  /// Largest clipboard text exchanged (bytes of UTF-8), as on the computer.
+  static const maxClipboardBytes = 200000;
+
+  /// The computer's clipboard text ("" when it holds no text).
+  Future<String> clipboardGet() async {
+    _requireFeature('clipboard');
+    final reply = await _request({'t': 'clip_get'});
+    return reply['text'] as String? ?? '';
+  }
+
+  /// Puts [text] on the computer's clipboard; with [paste], also pastes it
+  /// into the computer's active window.
+  Future<void> clipboardSet(String text, {bool paste = false}) async {
+    _requireFeature('clipboard');
+    if (utf8.encode(text).length > maxClipboardBytes) {
+      throw RequestException('too_big', 'That text is too long for the clipboard (200 KB at most).');
+    }
+    await _request({'t': 'clip_set', 'text': text, 'paste': paste});
+  }
+
+  /// Sends a file to the computer's Downloads/PairDesk folder.
+  Future<Transfer> sendFile(File file, {String? name}) async {
+    _requireFeature('files');
+    if (_status != ConnectionStatus.connected) {
+      throw RequestException('disconnected', 'Not connected to the computer.');
+    }
+    try {
+      return await transfers.send(file, name: name);
+    } on TransferException catch (e) {
+      throw RequestException('failed', e.message);
     }
   }
 
@@ -809,6 +891,7 @@ class AgentConnection extends ChangeNotifier {
 
   @override
   void dispose() {
+    transfers.dispose();
     _frames.close();
     _screenEvents.close();
     _notices.close();
@@ -821,4 +904,13 @@ class AgentConnection extends ChangeNotifier {
 String fingerprintDisplay(Uint8List fp) {
   final h = hex(fp).toUpperCase();
   return [for (var i = 0; i < h.length; i += 4) h.substring(i, i + 4)].join(':');
+}
+
+class _Link implements TransferLink {
+  _Link(this.c);
+  final AgentConnection c;
+  @override
+  void sendJson(Map<String, Object?> msg) => c._send(msg);
+  @override
+  void sendBinary(Uint8List data) => c._sendBinary(data);
 }

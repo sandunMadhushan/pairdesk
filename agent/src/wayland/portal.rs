@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::os::fd::OwnedFd;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -20,6 +21,15 @@ const DEST: &str = "org.freedesktop.portal.Desktop";
 const PATH: &str = "/org/freedesktop/portal/desktop";
 const REMOTE: &str = "org.freedesktop.portal.RemoteDesktop";
 const SCREEN: &str = "org.freedesktop.portal.ScreenCast";
+const CLIPBOARD: &str = "org.freedesktop.portal.Clipboard";
+/// Text types offered when PairDesk owns the clipboard.
+const TEXT_TYPES: [&str; 5] = [
+    "text/plain;charset=utf-8",
+    "text/plain",
+    "UTF8_STRING",
+    "STRING",
+    "TEXT",
+];
 
 pub const DEVICE_KEYBOARD: u32 = 1;
 pub const DEVICE_POINTER: u32 = 2;
@@ -67,6 +77,20 @@ pub struct Session {
     /// For the next start without a dialog; `None` if the desktop doesn't
     /// remember permissions.
     pub restore_token: Option<String>,
+    /// The desktop shares its clipboard with this session.
+    pub clipboard: bool,
+    /// Text PairDesk put on the clipboard, handed out on request.
+    offered: Arc<Mutex<Option<String>>>,
+    /// Answers the desktop's requests for that text.
+    serving: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        if let Some(t) = self.serving.take() {
+            t.abort();
+        }
+    }
 }
 
 type Options<'a> = HashMap<&'a str, Value<'a>>;
@@ -186,15 +210,43 @@ pub async fn start(restore_token: Option<&str>) -> Result<Session, StartError> {
         .ok_or_else(|| failed("no session handle"))?;
     let handle = OwnedObjectPath::try_from(handle).map_err(failed)?;
 
+    // The clipboard has to be asked for before Start; older portals don't
+    // have it, and PairDesk works without it.
+    let clip_proxy = zbus::Proxy::new(&conn, DEST, PATH, CLIPBOARD).await;
+    let asked_clipboard = match &clip_proxy {
+        Ok(p) => p
+            .call_method("RequestClipboard", &(handle.as_ref(), Options::new()))
+            .await
+            .map_err(|e| log::info!("no clipboard through the portal: {e}"))
+            .is_ok(),
+        Err(_) => false,
+    };
+
     let result = select_and_start(&conn, &handle, restore_token).await;
     match result {
-        Ok((devices, streams, restore_token)) => Ok(Session {
-            conn,
-            handle,
-            devices,
-            streams,
-            restore_token,
-        }),
+        Ok((devices, streams, restore_token, clipboard)) => {
+            let clipboard = asked_clipboard && clipboard;
+            let offered = Arc::new(Mutex::new(None));
+            let serving = if clipboard {
+                Some(tokio::spawn(serve_clipboard(
+                    conn.clone(),
+                    handle.clone(),
+                    offered.clone(),
+                )))
+            } else {
+                None
+            };
+            Ok(Session {
+                conn,
+                handle,
+                devices,
+                streams,
+                restore_token,
+                clipboard,
+                offered,
+                serving,
+            })
+        }
         Err(e) => {
             close_path(&conn, &handle).await;
             Err(e)
@@ -206,7 +258,7 @@ async fn select_and_start(
     conn: &Connection,
     handle: &OwnedObjectPath,
     restore_token: Option<&str>,
-) -> Result<(u32, Vec<StreamInfo>, Option<String>), StartError> {
+) -> Result<(u32, Vec<StreamInfo>, Option<String>, bool), StartError> {
     let s = handle.as_ref();
     request(conn, REMOTE, "SelectDevices", |t| {
         let mut opts: Options = HashMap::from([
@@ -254,7 +306,89 @@ async fn select_and_start(
         .and_then(|v| v.try_clone().ok())
         .map(parse_streams)
         .unwrap_or_default();
-    Ok((devices, streams, restore))
+    let clipboard = started
+        .get("clipboard_enabled")
+        .and_then(|v| v.try_clone().ok())
+        .and_then(|v| bool::try_from(v).ok())
+        .unwrap_or(false);
+    Ok((devices, streams, restore, clipboard))
+}
+
+/// While PairDesk owns the clipboard, the desktop asks for the text with
+/// `SelectionTransfer`; it's written to a pipe the portal gives out. When
+/// another app copies something, PairDesk's text is forgotten.
+async fn serve_clipboard(
+    conn: Connection,
+    handle: OwnedObjectPath,
+    offered: Arc<Mutex<Option<String>>>,
+) {
+    let Ok(proxy) = zbus::Proxy::new(&conn, DEST, PATH, CLIPBOARD).await else {
+        return;
+    };
+    let (Ok(mut transfers), Ok(mut owners)) = (
+        proxy.receive_signal("SelectionTransfer").await,
+        proxy.receive_signal("SelectionOwnerChanged").await,
+    ) else {
+        return;
+    };
+    loop {
+        tokio::select! {
+            Some(msg) = transfers.next() => {
+                let Ok((session, _mime, serial)) =
+                    msg.body().deserialize::<(OwnedObjectPath, String, u32)>()
+                else {
+                    continue;
+                };
+                if session != handle {
+                    continue;
+                }
+                let text = offered.lock().unwrap_or_else(|p| p.into_inner()).clone();
+                let ok = match text {
+                    Some(text) => write_selection(&proxy, &handle, serial, text).await.is_ok(),
+                    None => false,
+                };
+                let _ = proxy
+                    .call_method("SelectionWriteDone", &(handle.as_ref(), serial, ok))
+                    .await;
+            }
+            Some(msg) = owners.next() => {
+                let Ok((session, opts)) =
+                    msg.body().deserialize::<(OwnedObjectPath, HashMap<String, OwnedValue>)>()
+                else {
+                    continue;
+                };
+                let ours = opts
+                    .get("session_is_owner")
+                    .and_then(|v| v.try_clone().ok())
+                    .and_then(|v| bool::try_from(v).ok())
+                    .unwrap_or(false);
+                if session == handle && !ours {
+                    *offered.lock().unwrap_or_else(|p| p.into_inner()) = None;
+                }
+            }
+            else => return,
+        }
+    }
+}
+
+async fn write_selection(
+    proxy: &zbus::Proxy<'_>,
+    handle: &OwnedObjectPath,
+    serial: u32,
+    text: String,
+) -> Result<(), String> {
+    let fd: zbus::zvariant::OwnedFd = proxy
+        .call("SelectionWrite", &(handle.as_ref(), serial))
+        .await
+        .map_err(|e| e.to_string())?;
+    let fd: OwnedFd = fd.into();
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        std::fs::File::from(fd).write_all(text.as_bytes())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 /// `a(ua{sv})`: node id, then `position (ii)` and `size (ii)`.
@@ -387,5 +521,62 @@ impl Session {
 
     pub async fn close(&self) {
         close_path(&self.conn, &self.handle).await;
+    }
+
+    /// Puts `text` on the desktop's clipboard.
+    pub async fn set_clipboard(&self, text: String) -> Result<(), String> {
+        if !self.clipboard {
+            return Err("this desktop doesn't share its clipboard".into());
+        }
+        *self.offered.lock().unwrap_or_else(|p| p.into_inner()) = Some(text);
+        let proxy = zbus::Proxy::new(&self.conn, DEST, PATH, CLIPBOARD)
+            .await
+            .map_err(|e| e.to_string())?;
+        let opts: Options = HashMap::from([("mime_types", Value::from(TEXT_TYPES.to_vec()))]);
+        proxy
+            .call_method("SetSelection", &(self.path(), opts))
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// The text on the desktop's clipboard ("" when it holds no text).
+    pub async fn clipboard(&self) -> Result<String, String> {
+        if !self.clipboard {
+            return Err("this desktop doesn't share its clipboard".into());
+        }
+        if let Some(t) = self
+            .offered
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+        {
+            return Ok(t);
+        }
+        let proxy = zbus::Proxy::new(&self.conn, DEST, PATH, CLIPBOARD)
+            .await
+            .map_err(|e| e.to_string())?;
+        for mime in ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING"] {
+            let Ok(fd) = proxy
+                .call::<_, _, zbus::zvariant::OwnedFd>("SelectionRead", &(self.path(), mime))
+                .await
+            else {
+                continue;
+            };
+            let fd: OwnedFd = fd.into();
+            let read = tokio::task::spawn_blocking(move || {
+                use std::io::Read;
+                let mut bytes = Vec::new();
+                std::fs::File::from(fd)
+                    .take(crate::clipboard::MAX_BYTES as u64 + 1)
+                    .read_to_end(&mut bytes)
+                    .map(|_| bytes)
+            });
+            match tokio::time::timeout(Duration::from_secs(3), read).await {
+                Ok(Ok(Ok(bytes))) => return Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                _ => continue,
+            }
+        }
+        Ok(String::new())
     }
 }

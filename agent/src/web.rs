@@ -19,8 +19,8 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use crate::state::AppState;
 
 const PAGE: &str = include_str!("settings.html");
-/// Largest request body read, in bytes.
-const MAX_BODY: u64 = 4096;
+/// Largest request body read, in bytes (file uploads are streamed instead).
+const MAX_BODY: u64 = 64 * 1024;
 
 pub struct Settings {
     /// Full address of the page, including the secret.
@@ -91,13 +91,44 @@ fn header_value<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
         .map(|h| h.value.as_str())
 }
 
+/// Same checks as every change request: our Host, our secret, POST with
+/// the PairDesk header and no foreign Origin.
+fn is_our_post(request: &Request, secret: &str, host: &str, route: &str) -> bool {
+    let url = request.url();
+    let path = url.split('?').next().unwrap_or("");
+    let origin_ok = header_value(request, "Origin").is_none_or(|o| o == format!("http://{host}"));
+    *request.method() == Method::Post
+        && header_value(request, "Host") == Some(host)
+        && path.strip_prefix('/').and_then(|p| p.strip_prefix(secret)) == Some(route)
+        && header_value(request, "X-PairDesk") == Some("1")
+        && origin_ok
+}
+
 fn handle(
     mut request: Request,
-    state: &AppState,
+    state: &Arc<AppState>,
     secret: &str,
     host: &str,
     on_quit: &Arc<dyn Fn() + Send + Sync>,
 ) {
+    // A file for the phone: streamed to disk on its own thread, so the page
+    // keeps answering meanwhile.
+    if request
+        .url()
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .ends_with("/api/upload")
+    {
+        if !is_our_post(&request, secret, host, "/api/upload") {
+            return status(request, 403, "forbidden");
+        }
+        let state = state.clone();
+        let _ = std::thread::Builder::new()
+            .name("upload".into())
+            .spawn(move || upload(request, &state));
+        return;
+    }
     // Read the (small) body first, so even a refusal is a clean reply.
     let mut body = String::new();
     if request
@@ -179,6 +210,10 @@ fn handle(
                 apps: bool,
                 #[serde(default)]
                 screen: Option<bool>,
+                #[serde(default)]
+                clipboard: Option<bool>,
+                #[serde(default)]
+                files: Option<bool>,
             }
             match serde_json::from_str::<Body>(&body).ok() {
                 Some(b) => {
@@ -186,6 +221,12 @@ fn handle(
                     let mut saved = prefs.set_permissions(b.power, b.session, b.apps);
                     if let (Ok(()), Some(screen)) = (&saved, b.screen) {
                         saved = prefs.set_allow_screen(screen);
+                    }
+                    if let (Ok(()), Some(on)) = (&saved, b.clipboard) {
+                        saved = prefs.set_allow_clipboard(on);
+                    }
+                    if let (Ok(()), Some(on)) = (&saved, b.files) {
+                        saved = prefs.set_allow_files(on);
                     }
                     drop(prefs);
                     if b.screen == Some(false) {
@@ -262,6 +303,64 @@ fn handle(
             #[cfg(target_os = "linux")]
             if let Some(remote) = crate::wayland::global() {
                 remote.allow_now();
+            }
+            send_state(request, state)
+        }
+        (Method::Post, "/api/send-paths") => {
+            #[derive(Deserialize)]
+            struct Body {
+                paths: Vec<String>,
+                #[serde(default)]
+                phone: Option<String>,
+            }
+            let Some(b) = serde_json::from_str::<Body>(&body).ok() else {
+                return status(request, 400, "bad request");
+            };
+            if state.sessions().is_empty() {
+                return status(
+                    request,
+                    409,
+                    "No phone is connected. Open PairDesk on your phone first.",
+                );
+            }
+            let mut sent = 0;
+            let mut errors = Vec::new();
+            for p in &b.paths {
+                match crate::files::Outbound::from_path(std::path::Path::new(p)) {
+                    Ok(f) => sent += state.send_file(b.phone.as_deref(), Arc::new(f)).min(1),
+                    Err(e) => errors.push(e),
+                }
+            }
+            if sent == 0 {
+                return status(request, 400, &errors.join("; "));
+            }
+            respond(
+                request,
+                Response::from_string(json!({ "sent": sent, "errors": errors }).to_string()),
+                "application/json",
+            )
+        }
+        (Method::Post, "/api/reveal") => {
+            #[derive(Deserialize)]
+            struct Body {
+                id: u64,
+            }
+            match serde_json::from_str::<Body>(&body)
+                .ok()
+                .and_then(|b| state.transfer_path(b.id))
+            {
+                Some(path) if path.exists() => {
+                    reveal(&path);
+                    send_state(request, state)
+                }
+                _ => status(request, 404, "That file isn't there any more."),
+            }
+        }
+        (Method::Post, "/api/open-downloads") => {
+            let dir = crate::files::downloads_dir();
+            let _ = std::fs::create_dir_all(&dir);
+            if let Err(e) = open::that_detached(&dir) {
+                return status(request, 500, &format!("can't open {}: {e}", dir.display()));
             }
             send_state(request, state)
         }
@@ -385,10 +484,14 @@ fn send_state(request: Request, state: &AppState) {
             "session": prefs.allow_session,
             "apps": prefs.allow_apps,
             "screen": prefs.allow_screen,
+            "clipboard": prefs.allow_clipboard,
+            "files": prefs.allow_files,
         },
         "shortcuts": shortcuts,
         "remote": remote,
         "keep_awake": state.awake.is_on(),
+        "transfers": state.transfers(),
+        "downloads": crate::files::downloads_dir().display().to_string(),
         "wayland": wayland_state(),
     });
     respond(
@@ -396,4 +499,133 @@ fn send_state(request: Request, state: &AppState) {
         Response::from_string(body.to_string()),
         "application/json",
     );
+}
+
+/// `%XX` decoding for query values (encodeURIComponent output).
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Some(v) = std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+        {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn query(url: &str, key: &str) -> Option<String> {
+    url.split_once('?')?
+        .1
+        .split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| percent_decode(v))
+}
+
+/// `POST api/upload?name=…&phone=…` with the file as the body: saved to a
+/// temporary file, sent to the phone(s), deleted when they have it.
+fn upload(mut request: Request, state: &Arc<AppState>) {
+    let url = request.url().to_string();
+    let Some(name) = query(&url, "name").filter(|n| !n.is_empty()) else {
+        return status(request, 400, "missing file name");
+    };
+    let phone = query(&url, "phone").filter(|p| !p.is_empty());
+    let connected = state
+        .sessions()
+        .iter()
+        .any(|s| phone.as_deref().is_none_or(|p| p == s.phone_id));
+    if !connected {
+        return status(
+            request,
+            409,
+            "No phone is connected. Open PairDesk on your phone first.",
+        );
+    }
+    let dir = std::env::temp_dir().join("pairdesk-outgoing");
+    let path = dir.join(crate::config::b64(&crate::config::random_bytes::<9>()));
+    let saved = std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::File::create(&path))
+        .and_then(|mut f| {
+            std::io::copy(
+                &mut request.as_reader().take(crate::files::MAX_SIZE),
+                &mut f,
+            )
+        });
+    let size = match saved {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = std::fs::remove_file(&path);
+            return status(request, 500, &format!("can't read the file: {e}"));
+        }
+    };
+    let file = Arc::new(crate::files::Outbound {
+        path,
+        name: crate::files::safe_name(&name),
+        size,
+        temporary: true,
+    });
+    let sent = state.send_file(phone.as_deref(), file);
+    if sent == 0 {
+        return status(request, 409, "The phone disconnected.");
+    }
+    respond(
+        request,
+        Response::from_string(json!({ "sent": sent }).to_string()),
+        "application/json",
+    )
+}
+
+/// Shows a file in the file manager, selected where that's possible.
+fn reveal(path: &std::path::Path) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("explorer.exe")
+            .raw_arg(format!("/select,\"{}\"", path.display()))
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let uri = format!("file://{}", path.display());
+        let shown = std::process::Command::new("dbus-send")
+            .args([
+                "--session",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+                &format!("array:string:{uri}"),
+                "string:",
+            ])
+            .status()
+            .is_ok_and(|s| s.success());
+        if !shown && let Some(dir) = path.parent() {
+            let _ = open::that_detached(dir);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_query_values() {
+        let url = "/s/api/upload?name=My%20photo%20%E0%B6%85.jpg&phone=abc";
+        assert_eq!(query(url, "name").as_deref(), Some("My photo අ.jpg"));
+        assert_eq!(query(url, "phone").as_deref(), Some("abc"));
+        assert_eq!(query(url, "x"), None);
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%zz"), "%zz");
+    }
 }

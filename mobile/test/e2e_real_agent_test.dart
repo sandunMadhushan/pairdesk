@@ -9,10 +9,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/painting.dart' show Color;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pairdesk/agent_connection.dart';
+import 'package:pairdesk/files/transfers.dart';
 import 'package:pairdesk/pairing/identity.dart';
 import 'package:pairdesk/pairing/pairing_link.dart';
 import 'package:pairdesk/screen/compositor.dart';
@@ -38,11 +40,22 @@ void main() {
   test(
     'pair, reconnect, move the cursor, then get removed',
     () async {
+      final env = Platform.environment;
       final info = parsePairingLink(link!);
       // The agent runs on this machine; use loopback in case the link lists none.
       info.addresses.insert(0, '127.0.0.1');
       final me = await PhoneIdentity.fromSeed(List.filled(32, 42));
-      final conn = AgentConnection(pingInterval: const Duration(seconds: 1));
+      final inbox = Directory.systemTemp.createTempSync('pairdesk-e2e-phone');
+      final saved = <String, List<int>>{};
+      final conn = AgentConnection(
+        pingInterval: const Duration(seconds: 1),
+        tempDir: inbox,
+        saveFile: (temp, name) async {
+          saved[name] = await temp.readAsBytes();
+          await temp.delete();
+          return SavedFile(where: 'Download/PairDesk/$name');
+        },
+      );
 
       final laptop = await conn.pair(info, me, phoneName: 'E2E phone');
       expect(conn.status, ConnectionStatus.connected);
@@ -68,6 +81,7 @@ void main() {
       expect(conn.status, ConnectionStatus.connected);
 
       // ---- Phase 4: screen view, checked pixel by pixel ----
+      debugPrint('e2e: Phase 4: screen view, checked pixel by pixel');
       expect(conn.features, contains('screen'));
       final compositor = ScreenCompositor();
       final frames = StreamIterator(conn.screenFrames);
@@ -130,7 +144,61 @@ void main() {
       conn.move(40, 30);
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
-      // ---- Phase 3: the computer tells the phone all its addresses ----
+      // ---- Phase 6: clipboard ----
+      debugPrint('e2e: Phase 6: clipboard');
+      expect(conn.features, containsAll(['clipboard', 'files']));
+      expect(conn.allowed.clipboard, isTrue);
+      await conn.clipboardSet('PairDesk E2E ✓ clipboard');
+      expect(await conn.clipboardGet(), 'PairDesk E2E ✓ clipboard');
+      final checkClip = env['PAIRDESK_E2E_CLIP_CHECK'];
+      if (checkClip != null && checkClip.isNotEmpty) {
+        // Another program on the computer sees it too.
+        final r = await Process.run('sh', ['-c', checkClip]);
+        expect((r.stdout as String).trim(), 'PairDesk E2E ✓ clipboard');
+        // ... and what another program copies reaches the phone.
+        await Process.run('sh', ['-c', env['PAIRDESK_E2E_CLIP_SET']!]);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        expect(await conn.clipboardGet(), 'copied on the computer');
+      }
+
+      // ---- Phase 6: files, phone → computer ----
+      debugPrint('e2e: Phase 6: files, phone → computer');
+      final out = File('${inbox.path}/holiday photo.jpg');
+      final bytes = List.generate(2500000, (i) => (i * 31) & 0xff);
+      out.writeAsBytesSync(bytes);
+      final sent = await conn.sendFile(out);
+      expect(sent.state, TransferState.done);
+      expect(sent.name, 'holiday photo.jpg');
+      final downloads = env['PAIRDESK_E2E_DOWNLOADS']!;
+      expect(File('$downloads/holiday photo.jpg').readAsBytesSync(), bytes);
+      // The same name again doesn't overwrite.
+      expect((await conn.sendFile(out)).name, 'holiday photo (2).jpg');
+
+      // ---- Phase 6: files, computer → phone (the settings page's drop zone) ----
+      debugPrint('e2e: Phase 6: files, computer → phone (the settings pages drop zone)');
+      final got = conn.transfers.received.first;
+      final upload = await HttpClient().openUrl(
+        'POST',
+        Uri.parse('${settings}api/upload?name=from%20the%20PC.txt'),
+      );
+      upload.headers.set('X-PairDesk', '1');
+      upload.add(utf8.encode('hello from the computer\n' * 50000));
+      final res = await upload.close();
+      expect(res.statusCode, 200, reason: await res.transform(utf8.decoder).join());
+      final t = await got.timeout(const Duration(seconds: 20));
+      expect(t.name, 'from the PC.txt');
+      expect(utf8.decode(saved['from the PC.txt']!), 'hello from the computer\n' * 50000);
+      // ... and "Send to phone" in the file manager.
+      debugPrint('e2e: and "Send to phone" in the file manager');
+      final sendCmd = env['PAIRDESK_E2E_SEND_CMD'];
+      if (sendCmd != null && sendCmd.isNotEmpty) {
+        final got2 = conn.transfers.received.first;
+        final r = await Process.run('sh', ['-c', '$sendCmd "\$1"', 'sh', out.path]);
+        expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
+        await got2.timeout(const Duration(seconds: 20));
+        expect(saved['holiday photo.jpg'], bytes);
+      }
+
       expect(laptop.addresses.first, '127.0.0.1', reason: 'the address that worked comes first');
       expect(
         laptop.addresses.length,
@@ -147,6 +215,7 @@ void main() {
       expect(conn.latency, isNotNull, reason: 'ping round trip measured');
 
       // ---- Phase 2: shortcuts, power, apps ----
+      debugPrint('e2e: Phase 2: shortcuts, power, apps');
       expect(conn.features, containsAll(['combo', 'power', 'apps']));
       conn.combo([Modifier.ctrl], char: 'c');
       conn.combo([Modifier.alt], key: AgentKey.tab);
@@ -168,7 +237,6 @@ void main() {
       );
 
       // A program shortcut added on the settings page can be opened from the phone.
-      final env = Platform.environment;
       (status, body) = await call(
         'POST',
         'api/shortcuts/add',
@@ -237,6 +305,6 @@ void main() {
       );
     },
     skip: skip,
-    timeout: const Timeout(Duration(seconds: 60)),
+    timeout: const Timeout(Duration(seconds: 120)),
   );
 }
