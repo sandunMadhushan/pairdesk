@@ -230,6 +230,18 @@
     </form>
   </section>
 
+  <section aria-labelledby="sd-title" id="secure" hidden>
+    <h2 id="sd-title">Sign-in screen and admin prompts</h2>
+    <p style="margin:0 0 8px">Windows shows the lock screen, the sign-in screen and administrator prompts (UAC) on a protected screen that normal programs can't see or control. Turn this on to use them from your phone too, including at the sign-in screen after a restart.</p>
+    <p class="muted" style="margin:0 0 10px" id="sd-text"></p>
+    <div class="row" style="align-items:center">
+      <button class="primary" id="btn-sd-on" hidden>Turn on</button>
+      <button id="btn-sd-off" hidden>Turn off</button>
+    </div>
+    <p class="muted" style="margin:10px 0 0">Windows asks for administrator permission. PairDesk then installs a small helper service ("PairDesk helper") and keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.</p>
+    <p class="muted" style="margin:8px 0 0">Good to know: like any remote control that can answer administrator prompts, this also means a program already running on your account could answer one. Turn it on if you need it, and keep your phone's app lock on.</p>
+  </section>
+
   <section aria-labelledby="up-title" id="updates" hidden>
     <h2 id="up-title">Updates</h2>
     <p id="up-text" style="margin:0 0 8px"></p>
@@ -472,6 +484,7 @@ function render(s) {
     ? "Windows manages this for the Microsoft Store version: Settings → Apps → Startup → PairDesk."
     : "Keeps this computer reachable after a restart. If you move the PairDesk program to another folder, switch this off and on again.";
   renderUpdate(s.update);
+  renderSecure(s.secure_desktop);
   $("version").textContent = "PairDesk " + s.version + " · " + s.os + " · port " + s.port;
   $("addresses").textContent = s.addresses.join(", ") || "none (is Wi-Fi connected?)";
   $("fp").textContent = s.fingerprint;
@@ -511,6 +524,27 @@ function size(n) {
 }
 
 let connectedPhones = [];
+function renderSecure(sd) {
+  $("secure").hidden = !sd;
+  if (!sd) return;
+  const text = $("sd-text");
+  const on = sd.state === "running" || sd.state === "starting";
+  $("btn-sd-on").hidden = on || !!sd.working;
+  $("btn-sd-off").hidden = !on || !!sd.working;
+  if (sd.working) {
+    text.textContent = "Waiting for you to answer Windows' administrator prompt…";
+  } else if (on) {
+    text.textContent = sd.helper
+      ? "On. Your phone can unlock this computer and answer administrator prompts."
+      : "On. Restart PairDesk (Stop PairDesk, then open it again) to finish.";
+  } else if (sd.state === "stopped") {
+    text.textContent = "The helper is installed but not running. Turn it on again to restart it.";
+  } else {
+    text.textContent = "Off.";
+  }
+  if (sd.error) text.textContent += " " + sd.error;
+}
+
 function renderUpdate(u) {
   $("updates").hidden = !u;
   if (!u) return;
@@ -684,6 +718,13 @@ $("btn-wl-allow").onclick = async () => {
 $("btn-recheck").onclick = async () => {
   $("remote-text").textContent = "Checking for Tailscale…";
   try { render(await post("refresh-remote")); } catch (err) { showBanner(err.message, true); }
+};
+
+$("btn-sd-on").onclick = async () => {
+  try { render(await post("secure-desktop", { enabled: true })); } catch (err) { showBanner(err.message, true); }
+};
+$("btn-sd-off").onclick = async () => {
+  try { render(await post("secure-desktop", { enabled: false })); } catch (err) { showBanner(err.message, true); }
 };
 
 $("btn-up-check").onclick = async () => {

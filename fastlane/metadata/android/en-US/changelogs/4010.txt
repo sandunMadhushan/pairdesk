@@ -1,0 +1,3 @@
+• Smoother screen view: real video instead of pictures (turn it off in Settings if needed)
+• Windows: use the lock screen, sign-in screen and administrator prompts from your phone (turn it on in PairDesk on the computer)
+• New icon, installers and automatic updates

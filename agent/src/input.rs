@@ -14,7 +14,9 @@ use log::{info, warn};
 
 use crate::protocol::{Modifier, MouseButton, NamedKey};
 
-#[derive(Debug, Clone, PartialEq)]
+/// Serializable for the bridge to the Windows helper (`bridge.rs`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum InputCmd {
     Move {
         dx: i32,
@@ -72,7 +74,7 @@ impl InputHandle {
             .spawn(move || match Enigo::new(&Settings::default()) {
                 Ok(mut enigo) => {
                     let _ = ready_tx.send(Ok(()));
-                    run(rx, |cmd| apply(&mut enigo, cmd).map_err(|e| e.to_string()));
+                    run(rx, |cmd| apply_routed(&mut enigo, cmd));
                 }
                 Err(e) => {
                     let _ = ready_tx.send(Err(format!("cannot open input device: {e}")));
@@ -126,14 +128,44 @@ fn run(rx: Receiver<InputCmd>, mut apply: impl FnMut(&InputCmd) -> Result<(), St
                 other => other,
             };
             if let Err(e) = apply(&cmd) {
-                warn!("input command {cmd:?} failed: {e}");
+                // Not the command itself: it may be a typed password.
+                warn!("input failed: {e}");
             }
         }
     }
     info!("input thread stopped");
 }
 
-fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
+/// Windows: while the lock screen, sign-in screen or a UAC prompt is up
+/// (the secure desktop), input goes through the SYSTEM helper, if the owner
+/// turned it on. In the helper's own processes, the input thread follows
+/// the input desktop itself.
+#[cfg(windows)]
+fn apply_routed(enigo: &mut Enigo, cmd: &InputCmd) -> Result<(), String> {
+    use crate::winsys;
+    if winsys::is_system_mode() {
+        winsys::desktop::follow_input_desktop()?;
+        return apply(enigo, cmd).map_err(|e| e.to_string());
+    }
+    if winsys::desktop::user_can_reach_input_desktop() {
+        return apply(enigo, cmd).map_err(|e| e.to_string());
+    }
+    match winsys::bridge() {
+        Some(helper) => helper.input(cmd),
+        None => Err(
+            "the lock screen or an administrator prompt is showing; turn on \
+                     \"Sign-in screen and admin prompts\" in PairDesk's settings to use it"
+                .into(),
+        ),
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_routed(enigo: &mut Enigo, cmd: &InputCmd) -> Result<(), String> {
+    apply(enigo, cmd).map_err(|e| e.to_string())
+}
+
+pub(crate) fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
     match cmd {
         InputCmd::Move { dx, dy } => {
             if *dx != 0 || *dy != 0 {

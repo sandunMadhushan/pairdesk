@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.9.0" date="2026-10-29">
+      <description>
+        <p>Smoother screen view (H.264 video). On Windows: the lock screen, the sign-in screen and administrator prompts can be used from the phone.</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-10-29">
       <description>
         <p>Installers for Windows and Linux, automatic updates, and a proper icon.</p>

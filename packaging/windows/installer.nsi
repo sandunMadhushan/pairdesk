@@ -147,6 +147,14 @@ SectionEnd
 
 Section "Uninstall"
   !insertmacro StopPairDesk "$INSTDIR\${EXE}"
+  ; The optional helper service (sign-in screen and admin prompts) lives in
+  ; Program Files; removing it needs administrator rights, so Windows asks.
+  ClearErrors
+  ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Services\PairDesk" "ImagePath"
+  ${IfNot} ${Errors}
+    DetailPrint "Removing the PairDesk helper service…"
+    ExecShellWait "runas" "$INSTDIR\${EXE}" "--uninstall-service" SW_HIDE
+  ${EndIf}
   ; Start at sign-in and "Send to → PairDesk phone" are added by PairDesk
   ; itself; remove them only if they point at this copy.
   ReadRegStr $0 HKCU "${RUN_KEY}" "PairDesk"

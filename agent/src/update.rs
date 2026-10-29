@@ -367,6 +367,12 @@ impl Updater {
         log::info!("downloaded PairDesk {}; installing", manifest.version);
         match self.kind {
             Kind::WindowsSetup => run_setup(&dest),
+            Kind::Service => {
+                // The service manager starts the new file after `quit`.
+                swap(&target, &dest)?;
+                quit();
+                return Ok(());
+            }
             _ => {
                 swap(&target, &dest)?;
                 start_new(&target, &self.data_dir.join("update.log"))
