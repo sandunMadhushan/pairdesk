@@ -1,0 +1,3 @@
+• New app icon
+• Installers for Windows (setup) and Linux (.deb, .rpm, AppImage)
+• The computer keeps PairDesk up to date by itself

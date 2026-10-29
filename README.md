@@ -5,11 +5,12 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.7 preview (Phase 6).** Pair once with a QR code; after that the phone
+> **Status: 0.8 (Phase 7).** Pair once with a QR code; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
-> launcher, power controls and a live view of the screen, on your Wi-Fi or from
-> anywhere with Tailscale.
+> launcher, power controls, a live view of the screen, clipboard and files, on your
+> Wi-Fi or from anywhere with Tailscale. Installers for Windows and Linux, and
+> automatic updates.
 
 ## What works now
 
@@ -35,18 +36,19 @@ no codes or "accept" prompts every time.
 
 ## Quick start
 
-Download the agent and the app from the
-[latest release](https://github.com/sandunMadhushan/pairdesk/releases/latest).
+Get the downloads from [pairdesk.madhushan.me](https://pairdesk.madhushan.me/#download)
+or the [latest release](https://github.com/sandunMadhushan/pairdesk/releases/latest).
 
-1. **Computer:** run the agent.
-   - Windows: put `pairdesk-agent-…-windows-x64.exe` in a folder you'll keep (for
-     example `Documents\PairDesk`) and double-click it. If SmartScreen warns about
-     an unknown publisher, choose **More info → Run anyway**. When Windows Firewall
-     asks, allow **Private networks**.
-   - Linux: `chmod +x pairdesk-agent-…-linux-x64 && ./pairdesk-agent-…-linux-x64`.
-     In a Wayland session (the default on Ubuntu and Fedora), your desktop asks
-     once whether PairDesk may control it: tick **Allow Remote Interaction** (keep
-     **Allow Clipboard Access** on), pick your screen, keep **Remember This Selection** on and press **Share**.
+1. **Computer:** install PairDesk.
+   - Windows: run `PairDesk-Setup-…-x64.exe` (no administrator rights needed). If
+     SmartScreen warns about an unknown publisher, choose **More info → Run
+     anyway**. When Windows Firewall asks, allow **Private networks**.
+   - Linux: install the `.deb` (Ubuntu, Debian, Mint) or `.rpm` (Fedora,
+     openSUSE), or make the AppImage executable and run it. Then open PairDesk
+     from the app menu. In a Wayland session (the default on Ubuntu and Fedora),
+     your desktop asks once whether PairDesk may control it: tick **Allow Remote
+     Interaction** (keep **Allow Clipboard Access** on), pick your screen, keep
+     **Remember This Selection** on and press **Share**.
 2. A PairDesk page opens in your browser with a QR code.
 3. **Phone:** install the APK, open PairDesk, tap **Scan pairing code** and scan it.
 
@@ -54,10 +56,14 @@ That's it. From now on, open PairDesk on the phone and it connects by itself. Th
 agent starts when you sign in to the computer and lives in the tray; click the tray
 icon to open its page, pair another phone or remove one.
 
-**Updating:** download the new agent and open it. From 0.5.1 on, it replaces the
-running older one by itself and the start-at-sign-in entry follows it to its new
-file. (Updating from 0.5.0 or earlier: right-click the PairDesk tray icon →
-**Stop PairDesk** first, then open the new one.)
+**Updating:** PairDesk checks for new releases once a day and offers **Install
+update** on its page (the Windows setup, the program files and the AppImage
+update themselves; with the `.deb`/`.rpm`, install the new package). Each update
+is signed; PairDesk checks the signature and checksum first. The phone app (from
+GitHub) shows when a new version is out.
+
+Upgrading the phone app from 0.7 or earlier: uninstall the old app first (it was
+signed with a test key), install 0.8 and pair again.
 
 Phone and computer must be on the same Wi-Fi. Some guest or campus networks block
 devices from talking to each other; a phone hotspot or home Wi-Fi works.
@@ -87,6 +93,8 @@ if it tends to sleep.
 - If you move the agent program to another folder, turn **Start PairDesk when I
   sign in** off and on again on its page.
 - On Linux without a desktop, `pairdesk-agent --pair` prints the QR code in the terminal.
+- The Microsoft Store and Flatpak copies can't add **Send to → PairDesk phone** to
+  the file manager; drop files on PairDesk's page instead.
 - Windows reserves a few shortcuts that no app can send, such as Ctrl+Alt+Delete and
   Win+L. Use the Power tab to lock.
 - Screen view can't show the Windows lock screen or UAC prompts.
@@ -108,6 +116,10 @@ cargo run --release            # see --help for options
 tools/e2e.sh
 # The same on a headless GNOME Wayland session (mutter, portals, PipeWire)
 tools/e2e-wayland.sh
+# The updater: signed manifest, download, swap, takeover
+tools/e2e-update.sh
+# The Windows setup under Wine: install, self-update, uninstall
+SETUP=PairDesk-Setup-x.y.z-x64.exe tools/e2e-windows-setup.sh
 
 # Phone app
 cd mobile
@@ -119,13 +131,18 @@ flutter build apk --release
 ## Project layout
 
 ```text
-agent/     Rust desktop agent: TLS server, pairing, settings page, tray, input
-mobile/    Flutter phone app (Android now, iPhone later)
-docs/      Protocol and security design
-tools/     End-to-end test script
+agent/      Rust desktop agent: TLS server, pairing, settings page, tray, input, updater
+mobile/     Flutter phone app (Android now, iPhone later)
+packaging/  Icons, Windows setup and Store package, Linux packages, F-Droid and Flatpak
+fastlane/   F-Droid listing: text, icon, screenshots, changelogs
+site/       pairdesk.madhushan.me
+docs/       Protocol, releasing, stores
+tools/      End-to-end tests
 ```
 
-The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
+The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOCOL.md);
+releases in [docs/RELEASING.md](docs/RELEASING.md); store submissions in
+[docs/STORES.md](docs/STORES.md).
 
 ## Roadmap
 
@@ -137,8 +154,8 @@ The protocol and security design are described in [docs/PROTOCOL.md](docs/PROTOC
 | 3 | Connect from anywhere with Tailscale |
 | 4 | Live screen view on Windows and Linux X11 |
 | 5 | Linux agent on Wayland |
-| **6** | **Clipboard sync and file transfer (this release)** |
-| 7 | Signed installers, Microsoft Store, F-Droid, Flathub |
+| 6 | Clipboard sync and file transfer |
+| **7** | **Installers, automatic updates, website; Microsoft Store and F-Droid packages (this release)** |
 
 ## Contributing
 
