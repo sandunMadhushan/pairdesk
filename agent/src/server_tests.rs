@@ -136,8 +136,12 @@ async fn send(ws: &mut Client, v: Value) {
 }
 
 async fn recv(ws: &mut Client) -> Value {
+    recv_within(ws, 5).await
+}
+
+async fn recv_within(ws: &mut Client, secs: u64) -> Value {
     loop {
-        let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
+        let frame = tokio::time::timeout(Duration::from_secs(secs), ws.next())
             .await
             .expect("timed out waiting for the agent")
             .expect("connection closed")
@@ -465,14 +469,14 @@ async fn lists_and_launches_shortcuts_by_id_only() {
         .add_shortcut(
             "Make marker",
             crate::prefs::ShortcutKind::Program,
-            "/bin/sh",
-            &format!("-c \"touch '{}'\"", marker.display()),
+            MARKER_PROGRAM,
+            &marker_args(&marker),
         )
         .unwrap();
     let (mut ws, _) = signed_in(&agent, 23).await;
 
     send(&mut ws, json!({"t":"apps","id":7})).await;
-    let list = recv(&mut ws).await;
+    let list = recv_within(&mut ws, 60).await;
     assert_eq!(list["t"], "apps");
     assert_eq!(list["id"], 7);
     let shortcut = &list["shortcuts"][0];
@@ -513,7 +517,13 @@ async fn input_keeps_flowing_while_apps_load() {
     send(&mut ws, json!({"t":"ping"})).await;
     let mut got = Vec::new();
     for _ in 0..2 {
-        got.push(recv(&mut ws).await["t"].as_str().unwrap().to_string());
+        // Listing Start menu apps asks PowerShell, which is slow on a cold CI machine.
+        got.push(
+            recv_within(&mut ws, 60).await["t"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
     }
     got.sort();
     assert_eq!(got, vec!["apps", "pong"]);
@@ -521,6 +531,20 @@ async fn input_keeps_flowing_while_apps_load() {
         agent.input.recv_timeout(Duration::from_secs(2)).unwrap(),
         InputCmd::Move { dx: 1, dy: 1 }
     );
+}
+
+#[cfg(windows)]
+const MARKER_PROGRAM: &str = r"C:\Windows\System32\cmd.exe";
+#[cfg(not(windows))]
+const MARKER_PROGRAM: &str = "/bin/sh";
+
+/// Arguments that make MARKER_PROGRAM create `marker`.
+fn marker_args(marker: &std::path::Path) -> String {
+    if cfg!(windows) {
+        format!("/c \"type nul > {}\"", marker.display())
+    } else {
+        format!("-c \"touch '{}'\"", marker.display())
+    }
 }
 
 /// Next binary message (a screen frame), skipping text messages.

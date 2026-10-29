@@ -505,7 +505,7 @@ fn copy_rows(src: &[u8], stride: usize, out: &mut [u8], w: usize, h: usize, form
         let dst = &mut out[y * w * 4..(y + 1) * w * 4];
         dst.copy_from_slice(row);
         if rgb {
-            for px in dst.chunks_exact_mut(4) {
+            for px in dst.as_chunks_mut::<4>().0 {
                 px.swap(0, 2);
             }
         }

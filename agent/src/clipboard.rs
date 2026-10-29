@@ -45,10 +45,11 @@ pub fn clamp(mut text: String) -> String {
 pub static TEST_CLIPBOARD: Mutex<String> = Mutex::new(String::new());
 
 /// The clipboard's text; empty when it holds something else (an image…).
+// Under test the in-memory clipboard returns first.
+#[cfg_attr(test, allow(unreachable_code))]
 pub fn get() -> Result<String, String> {
     #[cfg(test)]
     return Ok(TEST_CLIPBOARD.lock().unwrap().clone());
-    #[allow(unreachable_code)]
     #[cfg(target_os = "linux")]
     if let Some(r) = crate::wayland::global().and_then(|r| r.clipboard_get()) {
         return r.map(clamp);
@@ -61,13 +62,13 @@ pub fn get() -> Result<String, String> {
     }
 }
 
+#[cfg_attr(test, allow(unreachable_code))]
 pub fn set(text: &str) -> Result<(), String> {
     #[cfg(test)]
     {
         *TEST_CLIPBOARD.lock().unwrap() = text.to_string();
         return Ok(());
     }
-    #[allow(unreachable_code)]
     #[cfg(target_os = "linux")]
     if let Some(r) = crate::wayland::global().and_then(|r| r.clipboard_set(text)) {
         return r;
