@@ -6,277 +6,506 @@
 <title>PairDesk</title>
 <style>
   :root {
-    --bg: #f5f6f8; --card: #ffffff; --text: #16181d; --muted: #646a76;
-    --line: #e3e5ea; --accent: #2457d6; --accent-text: #ffffff;
-    --ok: #17803d; --ok-bg: #e5f5ea; --danger: #b42318; --warn-bg: #fff6e0;
+    --bg: #f3f4f7; --side: #eaecf1; --card: #ffffff; --text: #16181d; --muted: #5f6672;
+    --line: #e1e4ea; --accent: #2457d6; --accent-text: #ffffff; --accent-soft: #e4ebfc;
+    --hover: rgba(20, 30, 60, .06); --ok: #17803d; --ok-bg: #e5f5ea; --danger: #b42318;
+    --danger-bg: #fdecec; --warn: #b45309; --warn-bg: #fff6e0;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #121418; --card: #1b1e24; --text: #eceef2; --muted: #9aa1ad;
-      --line: #2c3038; --accent: #6b93ff; --accent-text: #0d1020;
-      --ok: #5fd38a; --ok-bg: #16301f; --danger: #ff8a7a; --warn-bg: #2e2716;
+      --bg: #15171c; --side: #1c1f25; --card: #20232a; --text: #eceef2; --muted: #9aa1ad;
+      --line: #2e323b; --accent: #6b93ff; --accent-text: #0d1020; --accent-soft: #24304f;
+      --hover: rgba(255, 255, 255, .06); --ok: #5fd38a; --ok-bg: #16301f; --danger: #ff8a7a;
+      --danger-bg: #3a1818; --warn: #f0b252; --warn-bg: #2e2716; --shadow: none;
     }
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
   }
-  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-  .logo { width: 40px; height: 40px; flex: none; display: block; }
-  h1 { font-size: 20px; margin: 0; }
-  .sub { color: var(--muted); font-size: 14px; }
-  section {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 20px; margin-bottom: 16px;
+  input, textarea, code, .selectable { -webkit-user-select: text; user-select: text; }
+
+  /* ---- Layout: sidebar + content ---- */
+  .app { display: grid; grid-template-columns: 248px 1fr; height: 100vh; }
+  nav.side {
+    background: var(--side); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; padding: 16px 10px 12px; min-height: 0; overflow-y: auto;
   }
-  h2 { font-size: 16px; margin: 0 0 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; }
+  .logo { width: 36px; height: 36px; flex: none; display: block; }
+  .brand-name { font-weight: 650; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand-sub { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .nav-list { display: grid; gap: 2px; }
+  .nav-item {
+    position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 9px 12px; border: 0; border-radius: 6px; background: none; color: var(--text);
+    font: inherit; text-align: left; cursor: pointer;
+  }
+  .nav-item:hover { background: var(--hover); }
+  .nav-item[aria-current="page"] { background: var(--card); box-shadow: var(--shadow); font-weight: 600; }
+  .nav-item[aria-current="page"]::before {
+    content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px;
+    background: var(--accent);
+  }
+  .nav-item svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+  .nav-item[aria-current="page"] svg { color: var(--accent); }
+  .nav-item .count {
+    margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 99px; font-size: 11px;
+    font-weight: 700; text-align: center; background: var(--accent); color: var(--accent-text);
+  }
+  .nav-item .count.alert { background: #e52b2b; color: #fff; }
+  .side-foot { margin-top: auto; padding: 12px 8px 0; color: var(--muted); font-size: 12px; }
+
+  .content { overflow-y: auto; min-width: 0; }
+  .page { max-width: 820px; padding: 28px 36px 48px; }
+  .page-head { margin-bottom: 20px; }
+  .page-head h1 { font-size: 26px; font-weight: 650; margin: 0 0 4px; letter-spacing: -.01em; }
+  .page-head p { color: var(--muted); margin: 0; }
+
+  /* ---- Cards ---- */
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--shadow);
+  }
+  h2 { font-size: 15px; font-weight: 650; margin: 0 0 4px; }
   p { margin: 0 0 12px; }
   .muted { color: var(--muted); }
   button {
-    font: inherit; border-radius: 8px; padding: 8px 16px; cursor: pointer;
+    font: inherit; border-radius: 6px; padding: 7px 16px; cursor: pointer; min-height: 34px;
     border: 1px solid var(--line); background: var(--card); color: var(--text);
   }
+  button:hover { background: var(--hover); }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
   button.danger { color: var(--danger); }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .pair { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-  .qr { background: #fff; border-radius: 10px; padding: 4px; line-height: 0; flex: none; }
-  .qr svg { width: 260px; height: 260px; max-width: 100%; }
+  button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus-visible, .tile:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+
+  /* Setting rows (label + control on one line) */
+  .setting { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+  .setting:first-of-type { border-top: 0; }
+  .card > .setting:first-child { padding-top: 0; }
+  .card > .setting:last-child { padding-bottom: 0; }
+  .setting .what { flex: 1; min-width: 0; }
+  .setting .what b { display: block; font-weight: 600; }
+  .setting .what small { display: block; color: var(--muted); font-size: 13px; }
+  /* Toggle switch */
+  .toggle { position: relative; width: 44px; height: 24px; flex: none; }
+  .toggle input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .toggle span {
+    position: absolute; inset: 0; border-radius: 99px; border: 1px solid var(--muted);
+    background: transparent; transition: background .15s, border-color .15s;
+  }
+  .toggle span::after {
+    content: ""; position: absolute; top: 4px; left: 4px; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--muted); transition: transform .15s, background .15s;
+  }
+  .toggle input:checked + span { background: var(--accent); border-color: var(--accent); }
+  .toggle input:checked + span::after { transform: translateX(20px); background: var(--accent-text); }
+  .toggle input:disabled + span { opacity: .45; }
+  .toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Home */
+  .hero { display: flex; gap: 18px; align-items: center; padding: 22px 24px; }
+  .hero-icon {
+    width: 56px; height: 56px; border-radius: 14px; flex: none; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .hero-icon.ok { background: var(--ok-bg); color: var(--ok); }
+  .hero-icon svg { width: 28px; height: 28px; }
+  .hero h2 { font-size: 19px; margin-bottom: 2px; }
+  .hero p { margin: 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .tile {
+    display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center; text-align: left;
+    padding: 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+    box-shadow: var(--shadow); cursor: pointer; color: var(--text); font: inherit;
+  }
+  .tile:hover { border-color: var(--accent); background: var(--card); }
+  .tile svg { grid-row: span 2; width: 22px; height: 22px; color: var(--accent); }
+  .tile b { font-weight: 600; }
+  .tile span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Pairing */
+  .pair { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  .qr { background: #fff; border-radius: 10px; padding: 6px; line-height: 0; flex: none; border: 1px solid var(--line); }
+  .qr svg { width: 240px; height: 240px; max-width: 100%; }
   .pair > .grow { flex: 1 1 220px; }
   .pair ol { margin: 0 0 12px; padding-left: 20px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  ul.phones { list-style: none; margin: 8px 0 0; padding: 0; }
-  ul.phones li {
-    display: flex; align-items: center; gap: 12px; padding: 12px 0;
-    border-top: 1px solid var(--line);
+
+  /* Lists */
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  ul.list li:first-child { border-top: 0; padding-top: 4px; }
+  ul.list li:last-child { padding-bottom: 0; }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent);
   }
-  ul.phones li:first-child { border-top: 0; }
+  .avatar svg { width: 18px; height: 18px; }
   .phone-name { font-weight: 600; }
-  .grow { flex: 1; min-width: 0; }
-  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--ok-bg); color: var(--ok); }
-  .banner { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
-  .banner.viewing { display: flex; align-items: center; gap: 12px; justify-content: space-between;
-    background: #fdecec; color: #a11b1b; }
-  @media (prefers-color-scheme: dark) { .banner.viewing { background: #3a1818; color: #ffb4ab; } }
-  .badge.view { background: #fdecec; color: #a11b1b; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--ok-bg); color: var(--ok); white-space: nowrap; }
+  .badge.view { background: var(--danger-bg); color: var(--danger); }
+  .empty { color: var(--muted); padding: 8px 0; margin: 0; }
+
+  .banner { padding: 12px 16px; border-radius: 8px; margin: 0 0 14px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+  .banner.viewing { display: flex; align-items: center; gap: 12px; justify-content: space-between; background: var(--danger-bg); color: var(--danger); }
   .banner.err { background: var(--warn-bg); color: var(--danger); }
-  label.switch { display: flex; gap: 10px; align-items: center; cursor: pointer; }
-  label.switch input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
-  .perms { display: grid; gap: 12px; margin-top: 8px; }
-  .perms small { display: block; color: var(--muted); }
-  form.add { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .banners { position: sticky; top: 0; z-index: 2; padding: 16px 36px 0; max-width: 820px; }
+  .banners:empty, .banners:not(:has(:not([hidden]))) { display: none; }
+
+  form.add { display: grid; gap: 10px; }
   form.add .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  @media (max-width: 520px) { form.add .fields { grid-template-columns: 1fr; } }
-  form.add label { display: grid; gap: 4px; font-size: 14px; }
+  form.add label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
   form.add .wide { grid-column: 1 / -1; }
   input[type=text], select {
-    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--text); min-width: 0; width: 100%;
+    font: inherit; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); min-width: 0; width: 100%; font-weight: 400;
   }
+  select { width: auto; }
   .target { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
   .hint { font-size: 13px; color: var(--muted); }
-  .status-line { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0 12px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 7px; flex: none; background: var(--muted); }
+  .status-line { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--muted); }
+  .brand-sub .dot { width: 8px; height: 8px; margin: 0; }
   .dot.ok { background: var(--ok); }
   .dot.warn { background: #d97706; }
-  ol.steps { margin: 0 0 16px; padding-left: 20px; }
+  ol.steps { margin: 0 0 4px; padding-left: 20px; }
   ol.steps li { margin-bottom: 6px; }
   a { color: var(--accent); }
-  footer { color: var(--muted); font-size: 13px; margin-top: 24px; overflow-wrap: anywhere; }
-  code { font-size: 12px; }
+  code { font-size: 12px; font-family: "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
   [hidden] { display: none !important; }
-  .drop { display: grid; gap: 4px; padding: 22px 16px; border: 2px dashed var(--line); border-radius: 12px;
-    text-align: center; cursor: pointer; }
-  .drop.over, .drop:hover { border-color: var(--accent); }
-  .drop.off { opacity: .55; cursor: not-allowed; }
-  .transfers { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+  .drop {
+    display: grid; gap: 6px; place-items: center; padding: 36px 16px; border: 2px dashed var(--line);
+    border-radius: 10px; text-align: center; cursor: pointer; background: var(--bg);
+  }
+  .drop svg { width: 32px; height: 32px; color: var(--accent); }
+  .drop.over, .drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .drop.off { opacity: .6; cursor: not-allowed; }
+  .drop.off:hover { border-color: var(--line); background: var(--bg); }
+  .transfers { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
   .transfers li { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
   .transfers .name { overflow-wrap: anywhere; }
   .transfers .meta { font-size: 13px; color: var(--muted); grid-column: 1; }
   .transfers progress { grid-column: 1 / -1; width: 100%; height: 6px; accent-color: var(--accent); }
   .transfers .failed { color: var(--danger); }
-  button.link { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
-  select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
+  dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+  dl.about dt { color: var(--muted); }
+  dl.about dd { margin: 0; overflow-wrap: anywhere; }
+  .stopped { display: grid; place-items: center; height: 100vh; text-align: center; padding: 24px; }
+
+  /* Narrow (a small browser window): the sidebar becomes a bar on top. */
+  @media (max-width: 720px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    nav.side { flex-direction: row; align-items: center; padding: 8px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    .brand { padding: 0 8px 0 4px; }
+    .brand > div, .side-foot { display: none; }
+    .nav-list { display: flex; gap: 2px; }
+    .nav-item { flex-direction: column; gap: 2px; padding: 6px 10px; font-size: 11px; white-space: nowrap; }
+    .nav-item[aria-current="page"]::before { left: 10px; right: 10px; top: auto; bottom: 0; width: auto; height: 3px; }
+    .nav-item .count { position: absolute; top: 0; right: 2px; margin: 0; }
+    .page, .banners { padding-left: 16px; padding-right: 16px; }
+    form.add .fields { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <svg class="logo" aria-hidden="true" viewBox="0 0 256 256"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a74f0"/><stop offset="1" stop-color="#1f4fc4"/></linearGradient></defs><rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/><rect x="40" y="62" width="150" height="100" rx="12" fill="none" stroke="#fff" stroke-width="14"/><rect x="22" y="178" width="186" height="16" rx="8" fill="#fff"/><rect x="150" y="102" width="78" height="128" rx="16" fill="#1f4fc4"/><rect x="158" y="110" width="62" height="112" rx="10" fill="#fff"/><rect x="166" y="122" width="46" height="72" rx="4" fill="#3a74f0"/><circle cx="189" cy="208" r="6" fill="#3a74f0"/></svg>
-    <div>
-      <h1 id="name">PairDesk</h1>
-      <div class="sub" id="status">Connecting to PairDesk…</div>
-    </div>
-  </header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-files" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
+    <symbol id="i-shortcut" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M17 14v6M14 17h6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></symbol>
+    <symbol id="i-update" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4h-4"/></symbol>
+  </defs>
+</svg>
 
-  <div id="banner" class="banner" hidden role="status"></div>
-  <div id="viewing" class="banner viewing" hidden role="status">
-    <span id="viewing-text"></span>
-    <button id="btn-stop-view">Stop</button>
-  </div>
-
-  <section id="pairing" aria-labelledby="pair-title">
-    <h2 id="pair-title">Pair a phone</h2>
-    <div id="pair-idle">
-      <p class="muted">Pair once, then your phone connects whenever this computer is on.</p>
-      <button class="primary" id="btn-pair">Show pairing code</button>
-    </div>
-    <div id="pair-active" class="pair" hidden>
-      <div class="qr" id="qr" aria-label="Pairing QR code"></div>
+<div class="app" id="app">
+  <nav class="side" aria-label="PairDesk">
+    <div class="brand">
+      <svg class="logo" aria-hidden="true" viewBox="0 0 256 256"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a74f0"/><stop offset="1" stop-color="#1f4fc4"/></linearGradient></defs><rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/><rect x="40" y="62" width="150" height="100" rx="12" fill="none" stroke="#fff" stroke-width="14"/><rect x="22" y="178" width="186" height="16" rx="8" fill="#fff"/><rect x="150" y="102" width="78" height="128" rx="16" fill="#1f4fc4"/><rect x="158" y="110" width="62" height="112" rx="10" fill="#fff"/><rect x="166" y="122" width="46" height="72" rx="4" fill="#3a74f0"/><circle cx="189" cy="208" r="6" fill="#3a74f0"/></svg>
       <div class="grow">
-        <ol>
-          <li>Open PairDesk on your phone.</li>
-          <li>Tap <b>Scan pairing code</b> and point the camera at this code.</li>
-        </ol>
-        <p class="muted">Phone and computer must be on the same Wi-Fi. The code works once and expires in <span id="expires"></span>.</p>
-        <div class="row">
-          <button id="btn-new">New code</button>
-          <button id="btn-cancel">Cancel</button>
+        <div class="brand-name" id="name">PairDesk</div>
+        <div class="brand-sub"><span class="dot" id="side-dot"></span><span id="side-status">Starting…</span></div>
+      </div>
+    </div>
+    <div class="nav-list" role="tablist" aria-orientation="vertical">
+      <button class="nav-item" data-page="home" role="tab"><svg><use href="#i-home"/></svg>Home</button>
+      <button class="nav-item" data-page="phones" role="tab"><svg><use href="#i-phone"/></svg>Phones<span class="count" id="count-phones" hidden></span></button>
+      <button class="nav-item" data-page="files" role="tab"><svg><use href="#i-files"/></svg>Files<span class="count" id="count-files" hidden></span></button>
+      <button class="nav-item" data-page="shortcuts" role="tab"><svg><use href="#i-shortcut"/></svg>Shortcuts</button>
+      <button class="nav-item" data-page="permissions" role="tab"><svg><use href="#i-shield"/></svg>Permissions</button>
+      <button class="nav-item" data-page="remote" role="tab"><svg><use href="#i-globe"/></svg>Remote access</button>
+      <button class="nav-item" data-page="secure" role="tab" id="nav-secure" hidden><svg><use href="#i-lock"/></svg>Sign-in screen</button>
+      <button class="nav-item" data-page="settings" role="tab"><svg><use href="#i-gear"/></svg>Settings<span class="count alert" id="count-settings" hidden>1</span></button>
+    </div>
+    <div class="side-foot" id="side-version"></div>
+  </nav>
+
+  <div class="content" id="content">
+    <div class="banners">
+      <div id="banner" class="banner" hidden role="status"></div>
+      <div id="viewing" class="banner viewing" hidden role="status">
+        <span id="viewing-text"></span>
+        <button id="btn-stop-view">Stop</button>
+      </div>
+    </div>
+
+    <!-- Home -->
+    <section class="page" data-page="home" aria-labelledby="home-title">
+      <div class="page-head">
+        <h1 id="home-title">Home</h1>
+        <p>Use this computer from your phone: touchpad, keyboard, screen, files and more.</p>
+      </div>
+      <div class="card hero">
+        <div class="hero-icon" id="hero-icon"><svg><use href="#i-phone"/></svg></div>
+        <div class="grow">
+          <h2 id="hero-title">Starting…</h2>
+          <p class="muted" id="status">Connecting to PairDesk…</p>
+        </div>
+        <button class="primary" id="btn-home-pair">Pair a phone</button>
+      </div>
+
+      <div class="card" id="wayland" hidden>
+        <h2>Control on this desktop</h2>
+        <div class="status-line" role="status"><span class="dot" id="wl-dot"></span><div id="wl-text"></div></div>
+        <p class="hint" id="wl-how">This desktop (Wayland) asks before an app may move the pointer, type or see the
+          screen. Choose <b>Allow control</b>, then in the window that opens tick <b>Allow Remote Interaction</b> (keep <b>Allow Clipboard Access</b> on),
+          pick your screen, keep <b>Remember This Selection</b> on and press <b>Share</b>. While a phone is
+          connected, your desktop shows that it's being shared.</p>
+        <div class="row"><button id="btn-wl-allow" class="primary">Allow control</button></div>
+      </div>
+
+      <div class="tiles">
+        <button class="tile" data-go="phones"><svg><use href="#i-phone"/></svg><b>Phones</b><span id="tile-phones">–</span></button>
+        <button class="tile" data-go="files"><svg><use href="#i-upload"/></svg><b>Send files</b><span id="tile-files">–</span></button>
+        <button class="tile" data-go="remote"><svg><use href="#i-globe"/></svg><b>Remote access</b><span id="tile-remote">–</span></button>
+        <button class="tile" data-go="secure" id="tile-secure-wrap" hidden><svg><use href="#i-lock"/></svg><b>Sign-in screen</b><span id="tile-secure">–</span></button>
+        <button class="tile" data-go="settings"><svg><use href="#i-update"/></svg><b>Updates</b><span id="tile-update">–</span></button>
+      </div>
+    </section>
+
+    <!-- Phones -->
+    <section class="page" data-page="phones" aria-labelledby="phones-title" hidden>
+      <div class="page-head">
+        <h1 id="phones-title">Phones</h1>
+        <p>Pair once, then your phone connects whenever this computer is on.</p>
+      </div>
+      <div class="card" id="pairing">
+        <h2>Pair a phone</h2>
+        <div id="pair-idle" class="row" style="justify-content:space-between">
+          <p class="muted" style="margin:0">Show a code on this screen and scan it with the PairDesk app.</p>
+          <button class="primary" id="btn-pair">Show pairing code</button>
+        </div>
+        <div id="pair-active" class="pair" hidden>
+          <div class="qr" id="qr" aria-label="Pairing QR code"></div>
+          <div class="grow">
+            <ol>
+              <li>Open PairDesk on your phone.</li>
+              <li>Tap <b>Scan pairing code</b> and point the camera at this code.</li>
+            </ol>
+            <p class="muted">Phone and computer must be on the same Wi-Fi. The code works once and expires in <span id="expires"></span>.</p>
+            <div class="row">
+              <button id="btn-new">New code</button>
+              <button id="btn-cancel">Cancel</button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
-
-  <section aria-labelledby="wl-title" id="wayland" hidden>
-    <h2 id="wl-title">Control on this desktop</h2>
-    <div class="status-line" role="status"><span class="dot" id="wl-dot"></span><div id="wl-text"></div></div>
-    <p class="hint" id="wl-how">This desktop (Wayland) asks before an app may move the pointer, type or see the
-      screen. Choose <b>Allow control</b>, then in the window that opens tick <b>Allow Remote Interaction</b> (keep <b>Allow Clipboard Access</b> on),
-      pick your screen, keep <b>Remember This Selection</b> on and press <b>Share</b>. While a phone is
-      connected, your desktop shows that it's being shared.</p>
-    <div class="row" style="margin-top:12px"><button id="btn-wl-allow" class="primary">Allow control</button></div>
-  </section>
-
-  <section aria-labelledby="phones-title">
-    <h2 id="phones-title">Paired phones</h2>
-    <p class="muted" id="no-phones">No phones yet.</p>
-    <ul class="phones" id="phones"></ul>
-  </section>
-
-  <section aria-labelledby="remote-title">
-    <h2 id="remote-title">Connect from anywhere</h2>
-    <div class="status-line" role="status"><span class="dot" id="remote-dot"></span><div id="remote-text">Checking for Tailscale…</div></div>
-    <ol class="steps" id="remote-steps" hidden>
-      <li>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</li>
-      <li>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</li>
-      <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address.</li>
-    </ol>
-    <div class="perms">
-      <label class="switch"><input type="checkbox" id="keep-awake">
-        <span>Keep this computer awake<small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span></label>
-    </div>
-    <div class="row" style="margin-top:12px"><button id="btn-recheck">Check again</button></div>
-  </section>
-
-  <section aria-labelledby="perm-title">
-    <h2 id="perm-title">What paired phones can do</h2>
-    <p class="muted">Touchpad and keyboard are always on for paired phones.</p>
-    <div class="perms">
-      <label class="switch"><input type="checkbox" id="perm-power">
-        <span>Lock, sleep and turn off the screen</span></label>
-      <label class="switch"><input type="checkbox" id="perm-session">
-        <span>Sign out, restart and shut down<small>Unsaved work in open apps can be lost.</small></span></label>
-      <label class="switch"><input type="checkbox" id="perm-apps">
-        <span>Open apps and shortcuts<small>Installed apps and the shortcuts below.</small></span></label>
-      <label class="switch"><input type="checkbox" id="perm-screen">
-        <span>See the screen<small>The PairDesk tray icon shows a red dot while a phone is watching.</small></span></label>
-      <label class="switch"><input type="checkbox" id="perm-clipboard">
-        <span>Use the clipboard<small>Copy text from this computer, and paste text from the phone.</small></span></label>
-      <label class="switch"><input type="checkbox" id="perm-files">
-        <span>Send files to this computer<small>Saved in your Downloads, in a PairDesk folder.</small></span></label>
-    </div>
-  </section>
-
-  <section aria-labelledby="files-title">
-    <h2 id="files-title">Files</h2>
-    <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
-      <b>Send files to your phone</b>
-      <span id="drop-hint" class="hint">Drop files here, or click to choose. They go to the phone's Download/PairDesk folder.</span>
-      <input type="file" id="file-input" multiple hidden>
-    </div>
-    <div class="row" id="send-to-row" hidden style="margin-top:10px">
-      <label for="send-to">Send to</label>
-      <select id="send-to"></select>
-    </div>
-    <p class="hint" id="sendto-hint"></p>
-    <ul class="transfers" id="transfers"></ul>
-    <p class="hint">Files from phones are saved in <code id="downloads"></code>.
-      <button id="btn-open-downloads" class="link">Open folder</button></p>
-  </section>
-
-  <section aria-labelledby="sc-title">
-    <h2 id="sc-title">Shortcuts</h2>
-    <p class="muted" id="no-shortcuts">Add websites, folders or programs to open from your phone. Installed apps show up on the phone without adding them here.</p>
-    <ul class="phones" id="shortcuts"></ul>
-    <form class="add" id="sc-form">
-      <div class="fields">
-        <label>Name<input type="text" id="sc-name" maxlength="64" placeholder="e.g. Class notes" required></label>
-        <label>Type
-          <select id="sc-kind">
-            <option value="url">Website</option>
-            <option value="path">File or folder</option>
-            <option value="program">Program</option>
-          </select>
-        </label>
-        <label class="wide"><span id="sc-target-label">Address</span>
-          <input type="text" id="sc-target" placeholder="https://" required></label>
-        <label class="wide" id="sc-args-row" hidden>Arguments (optional)
-          <input type="text" id="sc-args" placeholder='e.g. --new-window "C:\My Files"'></label>
+      <div class="card">
+        <h2>Paired phones</h2>
+        <p class="empty" id="no-phones">No phones yet.</p>
+        <ul class="list" id="phones"></ul>
       </div>
-      <div class="hint" id="sc-hint"></div>
-      <div class="row"><button class="primary" type="submit">Add shortcut</button></div>
-    </form>
-  </section>
+    </section>
 
-  <section aria-labelledby="sd-title" id="secure" hidden>
-    <h2 id="sd-title">Sign-in screen and admin prompts</h2>
-    <p style="margin:0 0 8px">Windows shows the lock screen, the sign-in screen and administrator prompts (UAC) on a protected screen that normal programs can't see or control. Turn this on to use them from your phone too, including at the sign-in screen after a restart.</p>
-    <p class="muted" style="margin:0 0 10px" id="sd-text"></p>
-    <div class="row" style="align-items:center">
-      <button class="primary" id="btn-sd-on" hidden>Turn on</button>
-      <button id="btn-sd-off" hidden>Turn off</button>
-    </div>
-    <p class="muted" style="margin:10px 0 0">Windows asks for administrator permission. PairDesk then installs a small helper service ("PairDesk helper") and keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.</p>
-    <p class="muted" style="margin:8px 0 0">Good to know: like any remote control that can answer administrator prompts, this also means a program already running on your account could answer one. Turn it on if you need it, and keep your phone's app lock on.</p>
-  </section>
+    <!-- Files -->
+    <section class="page" data-page="files" aria-labelledby="files-title" hidden>
+      <div class="page-head">
+        <h1 id="files-title">Files</h1>
+        <p>Send files to your phone, and see what phones sent here.</p>
+      </div>
+      <div class="card">
+        <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
+          <svg aria-hidden="true"><use href="#i-upload"/></svg>
+          <b>Send files to your phone</b>
+          <span id="drop-hint" class="hint">Drop files here, or click to choose. They go to the phone's Download/PairDesk folder.</span>
+          <input type="file" id="file-input" multiple hidden>
+        </div>
+        <div class="row" id="send-to-row" hidden style="margin-top:12px">
+          <label for="send-to">Send to</label>
+          <select id="send-to"></select>
+        </div>
+        <p class="hint" id="sendto-hint" style="margin:12px 0 0"></p>
+      </div>
+      <div class="card">
+        <h2>Transfers</h2>
+        <p class="empty" id="no-transfers">Nothing sent or received yet.</p>
+        <ul class="transfers" id="transfers"></ul>
+      </div>
+      <div class="card">
+        <div class="setting">
+          <div class="what"><b>Files from phones</b><small class="selectable"><code id="downloads"></code></small></div>
+          <button id="btn-open-downloads">Open folder</button>
+        </div>
+      </div>
+    </section>
 
-  <section aria-labelledby="up-title" id="updates" hidden>
-    <h2 id="up-title">Updates</h2>
-    <p id="up-text" style="margin:0 0 8px"></p>
-    <progress id="up-progress" max="1" value="0" hidden style="width:100%;height:6px;accent-color:var(--accent)"></progress>
-    <div class="row" id="up-actions" style="margin:8px 0 10px; align-items:center">
-      <button class="primary" id="btn-up-install" hidden>Install update</button>
-      <a id="up-download" hidden target="_blank" rel="noopener">Download</a>
-      <a id="up-notes" hidden target="_blank" rel="noopener">What's new</a>
-      <button id="btn-up-check">Check now</button>
-    </div>
-    <label class="switch" id="up-auto-row">
-      <input type="checkbox" id="up-auto">
-      Check for updates once a day
-    </label>
-  </section>
+    <!-- Shortcuts -->
+    <section class="page" data-page="shortcuts" aria-labelledby="sc-title" hidden>
+      <div class="page-head">
+        <h1 id="sc-title">Shortcuts</h1>
+        <p>Websites, folders and programs to open from your phone. Installed apps show up on the phone by themselves.</p>
+      </div>
+      <div class="card">
+        <h2>Your shortcuts</h2>
+        <p class="empty" id="no-shortcuts">None yet. Add one below.</p>
+        <ul class="list" id="shortcuts"></ul>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:12px">Add a shortcut</h2>
+        <form class="add" id="sc-form">
+          <div class="fields">
+            <label>Name<input type="text" id="sc-name" maxlength="64" placeholder="e.g. Class notes" required></label>
+            <label>Type
+              <select id="sc-kind" style="width:100%">
+                <option value="url">Website</option>
+                <option value="path">File or folder</option>
+                <option value="program">Program</option>
+              </select>
+            </label>
+            <label class="wide"><span id="sc-target-label">Address</span>
+              <input type="text" id="sc-target" placeholder="https://" required></label>
+            <label class="wide" id="sc-args-row" hidden>Arguments (optional)
+              <input type="text" id="sc-args" placeholder='e.g. --new-window "C:\My Files"'></label>
+          </div>
+          <div class="hint" id="sc-hint"></div>
+          <div class="row"><button class="primary" type="submit">Add shortcut</button></div>
+        </form>
+      </div>
+    </section>
 
-  <section aria-labelledby="settings-title">
-    <h2 id="settings-title">Settings</h2>
-    <label class="switch">
-      <input type="checkbox" id="autostart">
-      Start PairDesk when I sign in
-    </label>
-    <p class="muted" style="margin:8px 0 0" id="autostart-note"></p>
-  </section>
+    <!-- Permissions -->
+    <section class="page" data-page="permissions" aria-labelledby="perm-title" hidden>
+      <div class="page-head">
+        <h1 id="perm-title">Permissions</h1>
+        <p>What paired phones can do. Touchpad and keyboard are always on.</p>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="what"><b>Lock, sleep and turn off the screen</b></span>
+          <span class="toggle"><input type="checkbox" id="perm-power"><span></span></span></label>
+        <label class="setting"><span class="what"><b>Sign out, restart and shut down</b><small>Unsaved work in open apps can be lost.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-session"><span></span></span></label>
+        <label class="setting"><span class="what"><b>Open apps and shortcuts</b><small>Installed apps and your shortcuts.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-apps"><span></span></span></label>
+        <label class="setting"><span class="what"><b>See the screen</b><small>The PairDesk tray icon shows a red dot while a phone is watching.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-screen"><span></span></span></label>
+        <label class="setting"><span class="what"><b>Use the clipboard</b><small>Copy text from this computer, and paste text from the phone.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-clipboard"><span></span></span></label>
+        <label class="setting"><span class="what"><b>Send files to this computer</b><small>Saved in your Downloads, in a PairDesk folder.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-files"><span></span></span></label>
+      </div>
+    </section>
 
-  <div class="row">
-    <button class="danger" id="btn-quit">Stop PairDesk</button>
+    <!-- Remote access -->
+    <section class="page" data-page="remote" aria-labelledby="remote-title" hidden>
+      <div class="page-head">
+        <h1 id="remote-title">Remote access</h1>
+        <p>Reach this computer from anywhere, not only on the same Wi-Fi.</p>
+      </div>
+      <div class="card">
+        <h2>Tailscale</h2>
+        <div class="status-line" role="status"><span class="dot" id="remote-dot"></span><div id="remote-text">Checking for Tailscale…</div></div>
+        <ol class="steps" id="remote-steps" hidden>
+          <li>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</li>
+          <li>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</li>
+          <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address.</li>
+        </ol>
+        <div class="row" style="margin-top:12px"><button id="btn-recheck">Check again</button></div>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="what"><b>Keep this computer awake</b><small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span>
+          <span class="toggle"><input type="checkbox" id="keep-awake"><span></span></span></label>
+      </div>
+    </section>
+
+    <!-- Sign-in screen (Windows) -->
+    <section class="page" data-page="secure" aria-labelledby="sd-title" id="secure" hidden>
+      <div class="page-head">
+        <h1 id="sd-title">Sign-in screen</h1>
+        <p>The lock screen, the sign-in screen and administrator prompts, from your phone.</p>
+      </div>
+      <div class="card">
+        <p>Windows shows the lock screen, the sign-in screen and administrator prompts (UAC) on a protected screen that normal programs can't see or control. Turn this on to use them from your phone too, including at the sign-in screen after a restart.</p>
+        <div class="status-line" role="status"><span class="dot" id="sd-dot"></span><div id="sd-text"></div></div>
+        <div class="row">
+          <button class="primary" id="btn-sd-on" hidden>Turn on</button>
+          <button id="btn-sd-off" hidden>Turn off</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>How it works</h2>
+        <p class="muted">Windows asks for administrator permission. PairDesk then installs a small helper service ("PairDesk helper") and keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.</p>
+        <p class="muted" style="margin:0">Good to know: like any remote control that can answer administrator prompts, this also means a program already running on your account could answer one. Turn it on if you need it, and keep your phone's app lock on.</p>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="page" data-page="settings" aria-labelledby="settings-title" hidden>
+      <div class="page-head">
+        <h1 id="settings-title">Settings</h1>
+        <p>Start-up, updates and details about this computer.</p>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="what"><b>Start PairDesk when I sign in</b><small id="autostart-note"></small></span>
+          <span class="toggle"><input type="checkbox" id="autostart"><span></span></span></label>
+      </div>
+      <div class="card" id="updates" hidden>
+        <h2>Updates</h2>
+        <p id="up-text" style="margin:0 0 8px"></p>
+        <progress id="up-progress" max="1" value="0" hidden style="width:100%;height:6px;accent-color:var(--accent)"></progress>
+        <div class="row" id="up-actions" style="margin:8px 0 4px">
+          <button class="primary" id="btn-up-install" hidden>Install update</button>
+          <a id="up-download" hidden target="_blank" rel="noopener">Download</a>
+          <a id="up-notes" hidden target="_blank" rel="noopener">What's new</a>
+          <button id="btn-up-check">Check now</button>
+        </div>
+        <label class="setting" id="up-auto-row" style="margin-top:8px;border-top:1px solid var(--line);padding-bottom:0">
+          <span class="what"><b>Check for updates once a day</b></span>
+          <span class="toggle"><input type="checkbox" id="up-auto"><span></span></span></label>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:10px">About this computer</h2>
+        <dl class="about selectable">
+          <dt>Version</dt><dd id="version"></dd>
+          <dt>Addresses</dt><dd id="addresses"></dd>
+          <dt>Fingerprint</dt><dd><code id="fp"></code></dd>
+        </dl>
+      </div>
+      <div class="card">
+        <div class="setting">
+          <div class="what"><b>Stop PairDesk</b><small>Phones can't connect until you start it again.</small></div>
+          <button class="danger" id="btn-quit">Stop PairDesk</button>
+        </div>
+      </div>
+    </section>
   </div>
-
-  <footer>
-    <div id="version"></div>
-    <div>Addresses: <span id="addresses"></span></div>
-    <div>Certificate fingerprint: <code id="fp"></code></div>
-  </footer>
-</main>
+</div>
 <script>
 "use strict";
 const api = (path) => location.pathname.replace(/\/$/, "") + "/api/" + path;
@@ -321,6 +550,24 @@ function render(s) {
   $("status").textContent = connected.length
     ? "Connected: " + connected.map((p) => p.name).join(", ")
     : s.phones.length ? "Ready. Open PairDesk on your phone to connect." : "Ready to pair.";
+  $("hero-title").textContent = connected.length
+    ? (connected.length === 1 ? connected[0].name + " is connected" : connected.length + " phones are connected")
+    : s.phones.length ? "Ready for your phone" : "Pair your phone to get started";
+  $("status").textContent = connected.length
+    ? "Use the PairDesk app on your phone to control this computer."
+    : s.phones.length ? "Open PairDesk on your phone and it connects by itself."
+    : "Show a pairing code here and scan it with the PairDesk app on your phone.";
+  $("hero-icon").className = "hero-icon" + (connected.length ? " ok" : "");
+  $("hero-icon").firstElementChild.innerHTML = '<use href="#' + (connected.length ? "i-check" : "i-phone") + '"/>';
+  $("btn-home-pair").hidden = s.phones.length > 0 && !s.pairing;
+  $("side-status").textContent = connected.length ? "Connected" : "Ready";
+  $("side-dot").className = "dot" + (connected.length ? " ok" : "");
+  $("tile-phones").textContent = s.phones.length
+    ? s.phones.length + " paired" + (connected.length ? ", " + connected.length + " connected" : "")
+    : "Pair your first phone";
+  const pc = $("count-phones");
+  pc.hidden = connected.length === 0;
+  pc.textContent = connected.length;
 
   // Pairing
   const pairing = s.pairing;
@@ -350,6 +597,10 @@ function render(s) {
   $("no-phones").hidden = s.phones.length > 0;
   for (const p of s.phones) {
     const li = document.createElement("li");
+    const av = document.createElement("div");
+    av.className = "avatar";
+    av.innerHTML = '<svg><use href="#i-phone"/></svg>';
+    li.append(av);
     const info = document.createElement("div");
     info.className = "grow";
     const n = document.createElement("div");
@@ -431,6 +682,8 @@ function render(s) {
     text.textContent = "Couldn't read Tailscale's status (" + r.reason + ").";
   }
   $("remote-steps").hidden = r.status === "running" || r.status === "checking";
+  $("tile-remote").textContent = { running: "On (Tailscale)", not_connected: "Tailscale is off",
+    not_installed: "Same Wi-Fi only", checking: "Checking…" }[r.status] || "Unknown";
   const awake = $("keep-awake");
   if (document.activeElement !== awake) awake.checked = s.keep_awake;
 
@@ -457,6 +710,10 @@ function render(s) {
   const kindName = { url: "Website", path: "File or folder", program: "Program" };
   for (const x of s.shortcuts) {
     const li = document.createElement("li");
+    const av = document.createElement("div");
+    av.className = "avatar";
+    av.innerHTML = '<svg><use href="#' + ({ url: "i-globe", path: "i-files", program: "i-shortcut" }[x.kind] || "i-link") + '"/></svg>';
+    li.append(av);
     const info = document.createElement("div");
     info.className = "grow";
     const n = document.createElement("div");
@@ -486,6 +743,7 @@ function render(s) {
   renderUpdate(s.update);
   renderSecure(s.secure_desktop);
   $("version").textContent = "PairDesk " + s.version + " · " + s.os + " · port " + s.port;
+  $("side-version").textContent = "PairDesk " + s.version;
   $("addresses").textContent = s.addresses.join(", ") || "none (is Wi-Fi connected?)";
   $("fp").textContent = s.fingerprint;
 }
@@ -498,6 +756,9 @@ async function refresh() {
     render(await res.json());
   } catch (e) {
     $("status").textContent = "PairDesk isn't running.";
+    $("hero-title").textContent = "PairDesk isn't running";
+    $("side-status").textContent = "Not running";
+    $("side-dot").className = "dot warn";
   }
 }
 
@@ -525,8 +786,8 @@ function size(n) {
 
 let connectedPhones = [];
 function renderSecure(sd) {
-  $("secure").hidden = !sd;
-  if (!sd) return;
+  $("nav-secure").hidden = $("tile-secure-wrap").hidden = !sd;
+  if (!sd) { if (currentPage === "secure") go("home"); return; }
   const text = $("sd-text");
   const on = sd.state === "running" || sd.state === "starting";
   $("btn-sd-on").hidden = on || !!sd.working;
@@ -543,10 +804,16 @@ function renderSecure(sd) {
     text.textContent = "Off.";
   }
   if (sd.error) text.textContent += " " + sd.error;
+  $("sd-dot").className = "dot" + (on && sd.helper ? " ok" : on || sd.working ? " warn" : "");
+  $("tile-secure").textContent = sd.working ? "Waiting for Windows…" : on ? "On" : "Off";
 }
 
 function renderUpdate(u) {
   $("updates").hidden = !u;
+  $("count-settings").hidden = !(u && u.latest && !u.store);
+  $("tile-update").textContent = !u ? "Not available here"
+    : u.store ? "Kept up to date by the store"
+    : u.latest ? "PairDesk " + u.latest + " is available" : "Up to date (" + u.current + ")";
   if (!u) return;
   const st = u.state || { status: "idle" };
   const text = $("up-text");
@@ -614,6 +881,13 @@ function renderFiles(s) {
 
   const list = $("transfers");
   list.replaceChildren();
+  $("no-transfers").hidden = s.transfers.length > 0;
+  const active = s.transfers.filter((t) => t.state === "active" || t.state === "waiting").length;
+  $("count-files").hidden = active === 0;
+  $("count-files").textContent = active;
+  $("tile-files").textContent = connectedPhones.length
+    ? (active ? active + " in progress" : "To " + (connectedPhones.length === 1 ? connectedPhones[0].name : "your phones"))
+    : "Connect a phone first";
   for (const t of s.transfers) {
     const li = document.createElement("li");
     const name = document.createElement("span");
@@ -747,13 +1021,53 @@ $("btn-quit").onclick = async () => {
   if (!confirm("Stop PairDesk? Phones can't connect until you start it again.")) return;
   stopped = true;
   try { await post("quit"); } catch (e) {}
-  document.querySelector("main").innerHTML =
-    "<h1>PairDesk stopped</h1><p class='muted'>Start PairDesk again to let your phone connect. You can close this tab.</p>";
+  document.body.innerHTML =
+    "<div class='stopped'><div><h1>PairDesk stopped</h1><p class='muted'>Start PairDesk again to let your phone connect. You can close this window.</p></div></div>";
+};
+
+// ---- Screens ----
+const PAGES = ["home", "phones", "files", "shortcuts", "permissions", "remote", "secure", "settings"];
+let currentPage = "home";
+function go(page, focus) {
+  if (!PAGES.includes(page)) page = "home";
+  if (page === "secure" && $("nav-secure").hidden) page = "home";
+  currentPage = page;
+  for (const el of document.querySelectorAll("section.page")) el.hidden = el.dataset.page !== page;
+  for (const b of document.querySelectorAll(".nav-item")) {
+    const on = b.dataset.page === page;
+    if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    b.setAttribute("aria-selected", on);
+    b.tabIndex = on ? 0 : -1;
+  }
+  if (location.hash !== "#" + page) history.replaceState(null, "", "#" + page);
+  $("content").scrollTop = 0;
+  if (focus) document.querySelector('.nav-item[data-page="' + page + '"]').focus();
+}
+for (const b of document.querySelectorAll(".nav-item")) b.onclick = () => go(b.dataset.page);
+for (const t of document.querySelectorAll("[data-go]")) t.onclick = () => go(t.dataset.go);
+document.querySelector(".nav-list").onkeydown = (e) => {
+  const items = [...document.querySelectorAll(".nav-item")].filter((b) => !b.hidden);
+  const i = items.findIndex((b) => b.dataset.page === currentPage);
+  const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+  if (step) { e.preventDefault(); go(items[(i + step + items.length) % items.length].dataset.page, true); }
+};
+// Ctrl+1…8 switch screens, like tabs.
+window.addEventListener("keydown", (e) => {
+  if (!e.ctrlKey || e.altKey || e.shiftKey) return;
+  const items = [...document.querySelectorAll(".nav-item")].filter((b) => !b.hidden);
+  const n = Number(e.key);
+  if (n >= 1 && n <= items.length) { e.preventDefault(); go(items[n - 1].dataset.page, true); }
+});
+$("btn-home-pair").onclick = async () => {
+  go("phones");
+  try { render(await post("pair")); } catch (e) { showBanner(e.message, true); }
 };
 
 (async () => {
+  go(location.hash.slice(1) || "home");
   if (new URLSearchParams(location.search).has("pair")) {
-    history.replaceState(null, "", location.pathname);
+    history.replaceState(null, "", location.pathname + "#phones");
+    go("phones");
     try { render(await post("pair")); } catch (e) {}
   }
   await refresh();

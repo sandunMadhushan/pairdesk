@@ -19,12 +19,12 @@ use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
-use windows_sys::Win32::UI::HiDpi::GetDpiForSystem;
+use windows_sys::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, DestroyWindow, GetSystemMetrics, IDC_ARROW,
-    IMAGE_ICON, IsIconic, LR_DEFAULTSIZE, LoadCursorW, LoadImageW, PostMessageW, RegisterClassExW,
-    SM_CXSCREEN, SM_CYSCREEN, SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow, WM_APP,
-    WM_CLOSE, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    IMAGE_ICON, IsIconic, LR_DEFAULTSIZE, LoadCursorW, LoadImageW, MINMAXINFO, PostMessageW,
+    RegisterClassExW, SM_CXSCREEN, SM_CYSCREEN, SW_RESTORE, SW_SHOW, SetForegroundWindow,
+    ShowWindow, WM_APP, WM_CLOSE, WM_GETMINMAXINFO, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
 use wry::raw_window_handle::{
     HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle,
@@ -228,10 +228,10 @@ fn make_window() -> Result<HWND, String> {
             RegisterClassExW(&wc);
             name
         });
-        // About 960×760 at 100 % scaling, never bigger than the screen.
+        // About 1040×740 at 100 % scaling, never bigger than the screen.
         let dpi = GetDpiForSystem().max(96) as i32;
-        let width = (960 * dpi / 96).min(GetSystemMetrics(SM_CXSCREEN) * 9 / 10);
-        let height = (760 * dpi / 96).min(GetSystemMetrics(SM_CYSCREEN) * 9 / 10);
+        let width = (1040 * dpi / 96).min(GetSystemMetrics(SM_CXSCREEN) * 9 / 10);
+        let height = (740 * dpi / 96).min(GetSystemMetrics(SM_CYSCREEN) * 9 / 10);
         let title = wide("PairDesk");
         let hwnd = CreateWindowExW(
             0,
@@ -268,6 +268,14 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
             WM_CLOSE => {
                 ShowWindow(hwnd, 0); // SW_HIDE: gone at once for the user
                 PostMessageW(hwnd, WM_DESTROY_LATER, 0, 0);
+                0
+            }
+            WM_GETMINMAXINFO => {
+                // Room for the sidebar and a screen beside it.
+                let dpi = GetDpiForWindow(hwnd).max(96) as i32;
+                let info = &mut *(lp as *mut MINMAXINFO);
+                info.ptMinTrackSize.x = 760 * dpi / 96;
+                info.ptMinTrackSize.y = 520 * dpi / 96;
                 0
             }
             WM_DESTROY_LATER => {
