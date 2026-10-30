@@ -39,7 +39,7 @@ for _ in $(seq 50); do
   [ -n "${ID:-}" ] && break; sleep 0.2
 done
 [ -n "${ID:-}" ] || { echo "virtual sink missing"; wpctl status; exit 1; }
-wpctl set-default "$ID"
+for _ in $(seq 25); do wpctl set-default "$ID" 2>/dev/null && break; sleep 0.2; done
 # The computer's "microphone": a virtual source (silent), the default input.
 pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=e2e-mic node.description=e2e-mic
   media.class=Audio/Source object.linger=true audio.position=[ FL FR ] }' >/dev/null
@@ -48,7 +48,7 @@ for _ in $(seq 50); do
   [ -n "${MIC:-}" ] && break; sleep 0.2
 done
 [ -n "${MIC:-}" ] || { echo "virtual microphone missing"; wpctl status; exit 1; }
-wpctl set-default "$MIC"
+for _ in $(seq 25); do wpctl set-default "$MIC" 2>/dev/null && break; sleep 0.2; done
 sleep 0.5
 
 if [ -n "${WINE:-}" ]; then

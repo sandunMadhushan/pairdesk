@@ -14,6 +14,7 @@
 //! Phone → agent: `"PDM1" | µ-law bytes`.
 
 pub mod codec;
+mod echo;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(windows)]
@@ -120,6 +121,14 @@ impl Listener {
             .name("pairdesk-listen".into())
             .spawn(move || {
                 let _devices = devices;
+                // Removes the phone's own voice when it talks too.
+                let mut echo = match echo::EchoCanceller::new() {
+                    Ok(e) => Some(e),
+                    Err(e) => {
+                        log::warn!("{e}; the phone may hear itself while talking");
+                        None
+                    }
+                };
                 let mut ticker = Ticker::new();
                 let mut mixed = vec![0i16; FRAME * CHANNELS];
                 let mut part = vec![0i16; FRAME * CHANNELS];
@@ -137,6 +146,9 @@ impl Listener {
                     for s in &sources[1..] {
                         s.take(&mut part);
                         codec::mix_into(&mut mixed, &part);
+                    }
+                    if let Some(e) = echo.as_mut() {
+                        e.process(&mut mixed);
                     }
                     // An empty payload means 20 ms of silence.
                     let payload = if codec::is_silent(&mixed) {
@@ -233,6 +245,8 @@ impl Speaker {
 
     /// One "PDM1" payload: µ-law, 16 kHz mono.
     pub fn play(&mut self, ulaw: &[u8]) {
+        let voice: Vec<i16> = ulaw.iter().map(|&b| codec::ulaw_decode(b)).collect();
+        echo::push_reference(&voice);
         let pcm = codec::voice_to_working(ulaw, &mut self.last_sample);
         self.ring.push(&pcm);
     }

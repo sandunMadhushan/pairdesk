@@ -74,7 +74,7 @@ class FakeBackend implements AudioBackend {
   @override
   Future<void> stopPlayer() async => calls.add('player stop');
   @override
-  void setDucked(bool on) => calls.add('ducked $on');
+  Future<void> setCallMode(bool on) async => calls.add('call $on');
   @override
   Future<bool> startMic() async {
     calls.add('mic start');
@@ -140,22 +140,26 @@ void main() {
     audio.dispose();
   });
 
-  test('talking sends the voice and mutes the computer\'s sound meanwhile', () async {
-    final conn = FakeAudioConnection();
+  test('talking is a call: the voice goes out while the computer is still heard', () async {
+    final conn = FakeAudioConnection(allow: const Allowed(audio: true, mic: true));
     final backend = FakeBackend();
     final audio = AudioController(conn, backend: backend);
     await audio.startTalking();
     expect(audio.talking, isTrue);
-    expect(backend.calls, ['ducked true', 'mic start']);
+    await audio.setSound(true);
+    await audio.setMic(true);
+    expect(backend.calls, ['call true', 'mic start', 'player opus 312', 'player opus 312']);
+    // The computer's microphone keeps playing while talking.
+    conn.packets.add(AudioPacket(0, Uint8List.fromList([1, 2, 3])));
+    await Future<void>.delayed(Duration.zero);
+    expect(backend.played, hasLength(1));
     backend.onMic!(Uint8List(320));
     expect(conn.voice, hasLength(1));
     audio.stopTalking();
     backend.onMic!(Uint8List(320)); // late: not sent
     expect(conn.voice, hasLength(1));
-    expect(backend.calls.last, 'mic stop');
-    // Unmuted a moment later, once the voice's echo has passed.
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    expect(backend.calls.last, 'ducked false');
+    await Future<void>.delayed(Duration.zero);
+    expect(backend.calls.sublist(backend.calls.length - 2), ['mic stop', 'call false']);
     audio.dispose();
   });
 
@@ -165,7 +169,7 @@ void main() {
     await audio.startTalking();
     expect(audio.talking, isFalse);
     expect(audio.error, contains('microphone'));
-    expect(backend.calls.last, 'ducked false');
+    expect(backend.calls.last, 'call false');
     audio.dispose();
   });
 

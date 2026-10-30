@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.10.1" date="2026-10-30">
+      <description>
+        <p>Talk and listen at the same time, like a call, with echo cancelling on both sides.</p>
+      </description>
+    </release>
     <release version="0.10.0" date="2026-10-30">
       <description>
         <p>Two-way sound: hear the computer on the phone, talk through the computer's speakers, and (if allowed) hear its microphone.</p>

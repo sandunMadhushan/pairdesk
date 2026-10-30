@@ -13,8 +13,9 @@ abstract class AudioBackend {
   void play(Uint8List payload);
   Future<void> stopPlayer();
 
-  /// Mutes the computer's sound while the person talks.
-  void setDucked(bool on);
+  /// While the person talks: a phone call's audio path, so the phone's
+  /// echo cancelling works and both sides can talk at once.
+  Future<void> setCallMode(bool on);
 
   /// False if the person didn't allow the microphone.
   Future<bool> startMic();
@@ -80,8 +81,10 @@ class PlatformAudioBackend implements AudioBackend {
   }
 
   @override
-  void setDucked(bool on) {
-    _channel.invokeMethod('setDucked', {'on': on}).catchError((_) => null);
+  Future<void> setCallMode(bool on) async {
+    try {
+      await _channel.invokeMethod('setCallMode', {'on': on});
+    } catch (_) {}
   }
 
   @override

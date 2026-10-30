@@ -37,7 +37,6 @@ class AudioController extends ChangeNotifier {
   String? _error;
   AudioInfo? _info;
   bool _ready = false;
-  Timer? _unduck;
   bool _disposed = false;
 
   /// Hearing what the computer plays.
@@ -150,9 +149,10 @@ class AudioController extends ChangeNotifier {
     if (_talking || _paused) return;
     _error = null;
     _talking = true;
-    _unduck?.cancel();
-    backend.setDucked(true);
     _notify();
+    // A call: echo cancelled on the phone (the computer cancels its side),
+    // so you hear the computer while you talk.
+    await backend.setCallMode(true);
     final ok = await backend.startMic().catchError((Object e) {
       _error = 'Can\'t use the microphone: $e';
       return false;
@@ -161,7 +161,7 @@ class AudioController extends ChangeNotifier {
       _error ??= 'PairDesk needs the microphone to talk to the computer. Allow it in Android settings.';
       _talking = false;
       _handsFree = false;
-      backend.setDucked(false);
+      await backend.setCallMode(false);
       _notify();
     }
   }
@@ -170,13 +170,7 @@ class AudioController extends ChangeNotifier {
     if (!_talking) return;
     _talking = false;
     _handsFree = false;
-    backend.stopMic();
-    // Your own voice comes back from the computer a moment later: keep
-    // its sound muted until that has passed.
-    _unduck?.cancel();
-    _unduck = Timer(const Duration(milliseconds: 400), () {
-      if (!_talking) backend.setDucked(false);
-    });
+    backend.stopMic().then((_) => backend.setCallMode(false));
     _notify();
   }
 
@@ -223,10 +217,12 @@ class AudioController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _unduck?.cancel();
     _packets.cancel();
     _stopped.cancel();
-    if (_talking) backend.stopMic();
+    if (_talking) {
+      backend.stopMic();
+      backend.setCallMode(false);
+    }
     if (_info != null) conn.stopAudio();
     backend.stopPlayer();
     super.dispose();

@@ -4,7 +4,9 @@ package me.madhushan.pairdesk
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaCodec
@@ -13,6 +15,7 @@ import android.media.MediaFormat
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -29,7 +32,9 @@ import java.util.concurrent.TimeUnit
 //  - opusSupported → whether this phone can decode Opus
 //  - startPlayer {codec, rate, channels, preSkip} / play {data} / stopPlayer
 //    (an empty packet is 20 ms of silence)
-//  - setDucked {on}: mute the computer's sound while the person talks
+//  - setCallMode {on}: while the person talks: a phone call's audio path,
+//    so the phone's echo cancelling hears what it plays (both directions
+//    stay open; nothing is muted)
 //  - startMic → false if the person said no to the microphone / stopMic
 // Events to Dart: "playerError", "mic" (20 ms of 16 kHz mono µ-law),
 // "micError".
@@ -43,6 +48,8 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
     private val main = Handler(Looper.getMainLooper())
     private var player: Player? = null
     private var mic: Mic? = null
+    private var callMode = false
+    private val audioManager = activity.getSystemService(AudioManager::class.java)
 
     init {
         channel.setMethodCallHandler(this)
@@ -68,6 +75,7 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
                         rate = call.argument<Int>("rate") ?: 48000,
                         channels = call.argument<Int>("channels") ?: 2,
                         preSkip = call.argument<Int>("preSkip") ?: 0,
+                        voice = callMode,
                     )
                     result.success(true)
                 }
@@ -80,8 +88,8 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
                     player = null
                     result.success(null)
                 }
-                "setDucked" -> {
-                    player?.ducked = call.argument<Boolean>("on") == true
+                "setCallMode" -> {
+                    setCallMode(call.argument<Boolean>("on") == true)
                     result.success(null)
                 }
                 "startMic" -> {
@@ -109,12 +117,61 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
         }
     }
 
+    /// Calls play through the voice path (echo cancelled, loudspeaker or
+    /// headset); otherwise media. The player restarts on the new path.
+    private fun setCallMode(on: Boolean) {
+        if (on == callMode) return
+        callMode = on
+        try {
+            if (on) {
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                routeCall()
+            } else {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    audioManager.clearCommunicationDevice()
+                } else {
+                    @Suppress("DEPRECATION")
+                    audioManager.isSpeakerphoneOn = false
+                }
+                audioManager.mode = AudioManager.MODE_NORMAL
+            }
+        } catch (e: Throwable) {
+        }
+        player?.let { p ->
+            p.stop()
+            player = p.copy(voice = on)
+        }
+    }
+
+    private val headsets = setOf(
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+    )
+
+    /// A headset if one is plugged in or paired, else the loudspeaker (a
+    /// call's default, the earpiece, is too quiet held in front of you).
+    private fun routeCall() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            val devices = audioManager.availableCommunicationDevices
+            val pick = devices.firstOrNull { it.type in headsets || it.type == 26 /* BLE headset */ }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            pick?.let { audioManager.setCommunicationDevice(it) }
+        } else {
+            val headset = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in headsets }
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = !headset
+        }
+    }
+
     private fun startMic() {
         mic?.stop()
         mic = Mic()
     }
 
     fun release() {
+        setCallMode(false)
         player?.stop()
         player = null
         mic?.stop()
@@ -134,17 +191,12 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
         private val rate: Int,
         private val channels: Int,
         private val preSkip: Int,
+        private val voice: Boolean,
     ) {
+        fun copy(voice: Boolean) = Player(opus, rate, channels, preSkip, voice)
+
         private val queue = LinkedBlockingQueue<ByteArray>(100)
         @Volatile private var running = true
-        @Volatile var ducked = false
-            set(value) {
-                field = value
-                try {
-                    track?.setVolume(if (value) 0f else 1f)
-                } catch (e: Throwable) {
-                }
-            }
         @Volatile private var track: AudioTrack? = null
         private val thread = Thread({ run() }, "pairdesk-audio-out").apply {
             setUncaughtExceptionHandler { _, e -> fail(e) }
@@ -181,8 +233,8 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
                 t = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .setUsage(if (voice) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA)
+                            .setContentType(if (voice) AudioAttributes.CONTENT_TYPE_SPEECH else AudioAttributes.CONTENT_TYPE_MUSIC)
                             .build()
                     )
                     .setAudioFormat(
@@ -196,7 +248,6 @@ class AudioChannel(engine: FlutterEngine, private val activity: MainActivity) :
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build()
                 track = t
-                if (ducked) t.setVolume(0f)
                 t.play()
                 if (opus) codec = openOpus()
                 val silence = ByteArray(rate / 50 * channels * 2)
