@@ -278,6 +278,8 @@ pub struct Ring {
     buf: Mutex<VecDeque<i16>>,
     ready: Condvar,
     max: usize,
+    /// The speakers' ring: what's taken is the echo canceller's reference.
+    speakers: bool,
 }
 
 impl Ring {
@@ -287,6 +289,17 @@ impl Ring {
             buf: Mutex::new(VecDeque::new()),
             ready: Condvar::new(),
             max: (RATE / 1000 * max_ms) as usize * CHANNELS,
+            speakers: false,
+        }
+    }
+
+    /// The ring the speakers play from. Each block the device takes is
+    /// handed to the echo canceller at that moment, so its timing matches
+    /// what really comes out of the speakers.
+    pub fn for_speakers(max_ms: u32) -> Self {
+        Self {
+            speakers: true,
+            ..Self::new(max_ms)
         }
     }
 
@@ -321,6 +334,10 @@ impl Ring {
             *o = s;
         }
         out[n..].fill(0);
+        drop(b);
+        if self.speakers {
+            super::echo::played(out);
+        }
         n
     }
 

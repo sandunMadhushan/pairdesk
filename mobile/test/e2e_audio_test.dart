@@ -125,19 +125,31 @@ void main() {
       // ---- Talking while listening: no echo of your own voice ----
       // The phone's voice plays on the computer and comes back in the
       // recorded computer sound; the computer's echo canceller removes it.
+      // The voice is speech-like noise (a pure tone can't be told apart
+      // from itself a moment later, real voices can).
       if (loopback) {
         final heard = <AudioPacket>[];
         final sub2 = conn.audioPackets.listen(heard.add);
         await conn.startAudio(sound: true, mic: false, codecs: ['pcm']);
         final talkStart = DateTime.now();
+        var seed = 12345;
         var m = 0;
+        double sentSum = 0;
+        var sentCount = 0;
         int? lastSecondFrom;
-        for (var frame = 0; frame < 200; frame++) {
+        for (var frame = 0; frame < 250; frame++) {
           final pcm = Int16List(320);
           for (var i = 0; i < 320; i++) {
-            pcm[i] = (12000 * math.sin(2 * math.pi * 1000 * m++ / 16000)).round();
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            final noise = ((seed >> 8) & 0xffff) / 32768.0 - 1.0;
+            final syllables = math.pow(0.5 + 0.5 * math.sin(2 * math.pi * 4 * m++ / 16000), 2);
+            pcm[i] = (noise * syllables * 9000).round();
+            if (frame >= 200) {
+              sentSum += (pcm[i] / 32768) * (pcm[i] / 32768);
+              sentCount++;
+            }
           }
-          if (frame == 150) lastSecondFrom = heard.length;
+          if (frame == 200) lastSecondFrom = heard.length;
           conn.sendVoice(ulawEncode(pcm));
           final due = talkStart.add(Duration(milliseconds: 20 * (frame + 1)));
           final wait = due.difference(DateTime.now());
@@ -154,11 +166,14 @@ void main() {
           }
           count += 1920; // 20 ms of 48 kHz stereo, silence included
         }
-        final rms = math.sqrt(sum / count);
+        final sent = math.sqrt(sentSum / sentCount);
+        final back = math.sqrt(sum / count);
+        final db = 20 * math.log(back / sent) / math.ln10;
         debugPrint(
-          'e2e audio: own voice coming back while talking: rms ${rms.toStringAsFixed(4)} (sent ~0.26)',
+          'e2e audio: own voice coming back while talking: rms ${back.toStringAsFixed(4)} '
+          '(sent ${sent.toStringAsFixed(4)}, ${db.toStringAsFixed(1)} dB)',
         );
-        expect(rms, lessThan(0.03), reason: 'the phone hears itself: echo not cancelled');
+        expect(db, lessThan(-20), reason: 'the phone hears itself: echo not cancelled');
         conn.stopAudio();
         await sub2.cancel();
       }

@@ -210,7 +210,7 @@ const SPEAKER_IDLE: Duration = Duration::from_secs(3);
 
 impl Speaker {
     pub fn open() -> Result<Self, String> {
-        let ring = Arc::new(Ring::new(400));
+        let ring = Arc::new(Ring::for_speakers(400));
         let device = backend::playback(ring.clone())?;
         let alive = Arc::new(AtomicBool::new(true));
         let (flag, watched) = (alive.clone(), ring.clone());
@@ -245,8 +245,6 @@ impl Speaker {
 
     /// One "PDM1" payload: µ-law, 16 kHz mono.
     pub fn play(&mut self, ulaw: &[u8]) {
-        let voice: Vec<i16> = ulaw.iter().map(|&b| codec::ulaw_decode(b)).collect();
-        echo::push_reference(&voice);
         let pcm = codec::voice_to_working(ulaw, &mut self.last_sample);
         self.ring.push(&pcm);
     }
