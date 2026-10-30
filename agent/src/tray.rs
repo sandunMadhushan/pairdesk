@@ -65,6 +65,34 @@ fn open(url: &str) {
     }
 }
 
+/// The settings page's address, and whether this PairDesk may show it
+/// (not the sign-in screen server, which runs as SYSTEM).
+static PAGE: std::sync::OnceLock<(String, bool)> = std::sync::OnceLock::new();
+
+/// Set once at start-up, before anything is shown.
+pub fn set_page(url: String, allowed: bool) {
+    let _ = PAGE.set((url, allowed));
+}
+
+fn page_url(pair: bool) -> Option<String> {
+    let (url, allowed) = PAGE.get()?;
+    if !allowed {
+        return None;
+    }
+    Some(if pair {
+        format!("{url}?pair=1")
+    } else {
+        url.clone()
+    })
+}
+
+/// Shows PairDesk (`pair`: on the pairing code). From any thread.
+/// Windows: the PairDesk window (the browser without WebView2). Linux:
+/// the browser.
+pub fn show(pair: bool) {
+    platform::show(pair);
+}
+
 // ----------------------------------------------------------------- Windows
 
 #[cfg(windows)]
@@ -123,6 +151,25 @@ mod platform {
 
     /// Posted to the main thread when screen viewers change.
     const WM_VIEWERS: u32 = WM_APP + 1;
+    /// Posted to the main thread to show the window (wparam 1: pairing).
+    const WM_SHOW: u32 = WM_APP + 2;
+
+    pub fn show(pair: bool) {
+        let tid = MAIN_THREAD.load(Ordering::SeqCst);
+        let posted = tid != 0 && unsafe { PostThreadMessageW(tid, WM_SHOW, pair as usize, 0) } != 0;
+        if !posted && let Some(url) = page_url(pair) {
+            open(&url);
+        }
+    }
+
+    /// On the main thread: the window, or the browser if it can't be shown.
+    fn show_here(pair: bool) {
+        let Some(url) = page_url(pair) else { return };
+        let home = page_url(false).unwrap_or_default();
+        if !crate::window::show(&url, &home) {
+            open(&url);
+        }
+    }
 
     pub fn run(rt: &tokio::runtime::Runtime, state: Arc<AppState>, url: String, no_tray: bool) {
         {
@@ -136,6 +183,7 @@ mod platform {
         }
         let open_item = MenuItem::new("Open PairDesk", true, None);
         let pair_item = MenuItem::new("Pair a phone…", true, None);
+        let browser_item = MenuItem::new("Open in the browser", true, None);
         let quit_item = MenuItem::new("Stop PairDesk", true, None);
         let tray = if no_tray {
             None
@@ -145,6 +193,7 @@ mod platform {
                 .append_items(&[
                     &open_item,
                     &pair_item,
+                    &browser_item,
                     &PredefinedMenuItem::separator(),
                     &quit_item,
                 ])
@@ -187,14 +236,20 @@ mod platform {
                     }
                     continue;
                 }
+                if msg.message == WM_SHOW && msg.hwnd.is_null() {
+                    show_here(msg.wParam == 1);
+                    continue;
+                }
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
 
                 while let Ok(ev) = MenuEvent::receiver().try_recv() {
                     if ev.id == open_item.id() {
-                        open(&url);
+                        show_here(false);
                     } else if ev.id == pair_item.id() {
-                        open(&format!("{url}?pair=1"));
+                        show_here(true);
+                    } else if ev.id == browser_item.id() {
+                        open(&url);
                     } else if ev.id == quit_item.id() {
                         PostQuitMessage(0);
                     }
@@ -206,11 +261,12 @@ mod platform {
                         ..
                     } = ev
                     {
-                        open(&url);
+                        show_here(false);
                     }
                 }
             }
         }
+        crate::window::close();
         drop(tray);
     }
 }
@@ -225,6 +281,12 @@ mod platform {
     static QUIT: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 
     pub fn attach_console() {}
+
+    pub fn show(pair: bool) {
+        if let Some(url) = page_url(pair) {
+            open(&url);
+        }
+    }
 
     pub fn request_quit() {
         *QUIT.0.lock().unwrap_or_else(|p| p.into_inner()) = true;

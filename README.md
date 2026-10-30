@@ -50,12 +50,13 @@ or the [latest release](https://github.com/sandunMadhushan/pairdesk/releases/lat
      your desktop asks once whether PairDesk may control it: tick **Allow Remote
      Interaction** (keep **Allow Clipboard Access** on), pick your screen, keep
      **Remember This Selection** on and press **Share**.
-2. A PairDesk page opens in your browser with a QR code.
+2. PairDesk opens with a QR code: in its own window on Windows, as a page in
+   your browser on Linux.
 3. **Phone:** install the APK, open PairDesk, tap **Scan pairing code** and scan it.
 
 That's it. From now on, open PairDesk on the phone and it connects by itself. The
 agent starts when you sign in to the computer and lives in the tray; click the tray
-icon to open its page, pair another phone or remove one.
+icon to open it, pair another phone or remove one.
 
 **Updating:** PairDesk checks for new releases once a day and offers **Install
 update** on its page (the Windows setup, the program files and the AppImage

@@ -210,6 +210,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
       await _stopVideo();
       if (info.codec == 'h264') {
         final decoder = (widget.videoDecoder ?? PlatformVideoDecoder.new)();
+        await VideoSupport.playing(true);
         decoder.onError = _videoFailed;
         decoder.onLost = _videoLost;
         final texture = await decoder.start(info.width, info.height);
@@ -250,6 +251,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
     _texture = null;
     _videoShown = false;
     await v?.stop();
+    if (v != null) await VideoSupport.playing(false);
   }
 
   /// The picture surface went away (the app was hidden): start again when
@@ -276,6 +278,7 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
 
   void _stop() {
     _gestures.reset();
+    if (_video != null) VideoSupport.playing(false);
     if (!_streaming && !_starting) return;
     _conn.stopScreen();
     _queue.clear();

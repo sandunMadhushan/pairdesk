@@ -19,9 +19,9 @@ RepoType: git
 Repo: https://github.com/sandunMadhushan/pairdesk.git
 
 Builds:
-  - versionName: 0.9.0
-    versionCode: 1010
-    commit: v0.9.0
+  - versionName: 0.9.1
+    versionCode: 1011
+    commit: v0.9.1
     subdir: mobile
     output: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
     srclibs:
@@ -36,9 +36,9 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache PAIRDESK_UNSIGNED=1
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform=android-arm
 
-  - versionName: 0.9.0
-    versionCode: 2010
-    commit: v0.9.0
+  - versionName: 0.9.1
+    versionCode: 2011
+    commit: v0.9.1
     subdir: mobile
     output: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
     srclibs:
@@ -53,9 +53,9 @@ Builds:
       - export PUB_CACHE=$(pwd)/.pub-cache PAIRDESK_UNSIGNED=1
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform=android-arm64
 
-  - versionName: 0.9.0
-    versionCode: 4010
-    commit: v0.9.0
+  - versionName: 0.9.1
+    versionCode: 4011
+    commit: v0.9.1
     subdir: mobile
     output: build/app/outputs/flutter-apk/app-x86_64-release.apk
     srclibs:
@@ -77,5 +77,5 @@ VercodeOperation:
   - 2000 + %c
   - 4000 + %c
 UpdateCheckData: mobile/pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 0.9.0
-CurrentVersionCode: 4010
+CurrentVersion: 0.9.1
+CurrentVersionCode: 4011

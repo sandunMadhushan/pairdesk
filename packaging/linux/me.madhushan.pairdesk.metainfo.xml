@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.9.1" date="2026-10-30">
+      <description>
+        <p>Fixes the phone app closing when Smooth screen view is on. On Windows, PairDesk opens in its own window instead of the browser.</p>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-10-29">
       <description>
         <p>Smoother screen view (H.264 video). On Windows: the lock screen, the sign-in screen and administrator prompts can be used from the phone.</p>

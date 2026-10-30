@@ -420,6 +420,11 @@ fn handle(
             state.tailscale.refresh(std::time::Duration::ZERO);
             send_state(request, state)
         }
+        (Method::Post, "/api/show") => {
+            // Started again: show the window of the PairDesk already running.
+            crate::tray::show(false);
+            status(request, 200, "shown");
+        }
         (Method::Post, "/api/quit") => {
             status(request, 200, "stopping");
             on_quit();

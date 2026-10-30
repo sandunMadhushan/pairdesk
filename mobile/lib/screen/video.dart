@@ -127,12 +127,25 @@ class PlatformVideoDecoder implements VideoDecoder {
 /// Whether to ask the computer for video on this phone.
 class VideoSupport {
   static const brokenKey = 'screen.videoBroken';
+
+  /// Set while video plays. Still set when the app starts means the app
+  /// was killed during video (a crash in the phone's decoder): use JPEG
+  /// from then on.
+  static const tryingKey = 'screen.videoTrying';
   static bool? _hasDecoder;
+  static bool _checkedCrash = false;
 
   /// True if the phone has an H.264 decoder and video hasn't failed here.
   static Future<bool> available({MethodChannel channel = const MethodChannel('pairdesk/video')}) async {
-    if (!Platform.isAndroid) return false;
+    if (!(androidForTest ?? Platform.isAndroid)) return false;
     final prefs = await SharedPreferences.getInstance();
+    if (!_checkedCrash) {
+      _checkedCrash = true;
+      if (prefs.getBool(tryingKey) ?? false) {
+        await prefs.remove(tryingKey);
+        await prefs.setBool(brokenKey, true);
+      }
+    }
     if (prefs.getBool(brokenKey) ?? false) return false;
     try {
       _hasDecoder ??= await channel.invokeMethod<bool>('supported') ?? false;
@@ -152,5 +165,21 @@ class VideoSupport {
   static Future<void> reset() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(brokenKey);
+    await prefs.remove(tryingKey);
+  }
+
+  /// Video is about to play ([playing] true) or has stopped cleanly.
+  static Future<void> playing(bool playing) async {
+    final prefs = await SharedPreferences.getInstance();
+    playing ? await prefs.setBool(tryingKey, true) : await prefs.remove(tryingKey);
+  }
+
+  @visibleForTesting
+  static bool? androidForTest;
+
+  @visibleForTesting
+  static void resetForTest() {
+    _hasDecoder = null;
+    _checkedCrash = false;
   }
 }

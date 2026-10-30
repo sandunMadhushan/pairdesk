@@ -32,6 +32,41 @@ jobs:
       - run: cargo clippy --release -- -D warnings
       - run: cargo test
       - run: cargo build --release
+      # The PairDesk window (WebView2): it opens and loads the page; the
+      # screenshot is kept for a look. Then a second start shows it again.
+      - name: PairDesk window (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP pdhome
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $env:PAIRDESK_HOME = $data
+          $log = Join-Path $data agent.log
+          $agent = Start-Process -FilePath target\release\pairdesk-agent.exe -ArgumentList '--port','47955' -PassThru
+          $loaded = $false
+          for ($i = 0; $i -lt 90 -and -not $loaded; $i++) {
+            Start-Sleep 1
+            $loaded = (Test-Path $log) -and (Select-String -Path $log -Pattern 'window: page loaded' -Quiet)
+          }
+          Start-Sleep 3
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save((Join-Path $env:RUNNER_TEMP 'pairdesk-window.png'))
+          Start-Process -FilePath target\release\pairdesk-agent.exe -ArgumentList '--port','47955' -Wait
+          Start-Sleep 2
+          Get-Content $log
+          Start-Process -FilePath target\release\pairdesk-agent.exe -ArgumentList '--quit' -Wait
+          Stop-Process -Id $agent.Id -Force -ErrorAction SilentlyContinue
+          if (-not $loaded) { throw "the PairDesk window didn't load the page" }
+          if (-not (Select-String -Path $log -Pattern 'already running; showing it' -Quiet)) { throw "a second start didn't show the window" }
+      - if: runner.os == 'Windows' && always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: pairdesk-window-screenshot
+          path: ${{ runner.temp }}/pairdesk-window.png
+          if-no-files-found: ignore
       # Linux release builds target glibc 2.31 (Ubuntu 20.04, Debian 11 and newer).
       - if: runner.os == 'Linux'
         run: |
