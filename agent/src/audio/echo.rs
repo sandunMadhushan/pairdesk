@@ -41,8 +41,22 @@ fn reference() -> std::sync::MutexGuard<'static, Reference> {
     REFERENCE.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// What the speakers take, as they take it (48 kHz stereo; the phone's
+/// voice, upsampled from 16 kHz mono, so every third left sample is the
+/// original). Silence keeps the timeline but doesn't count as talking.
+pub fn played(stereo: &[i16]) {
+    let voice: Vec<i16> = stereo.chunks(CHANNELS).step_by(3).map(|f| f[0]).collect();
+    let talking = voice.iter().any(|&s| s.unsigned_abs() > 8);
+    push(&voice, talking);
+}
+
 /// The phone's voice as it goes to the speakers (16 kHz mono).
+#[cfg(test)]
 pub fn push_reference(voice: &[i16]) {
+    push(voice, true);
+}
+
+fn push(voice: &[i16], talking: bool) {
     let mut r = reference();
     r.samples.extend(voice);
     // More than a second waiting: nobody is listening; keep it short.
@@ -51,13 +65,16 @@ pub fn push_reference(voice: &[i16]) {
         let drop = r.samples.len() - max / 4;
         r.samples.drain(..drop);
     }
-    r.last_voice = Some(Instant::now());
+    if talking {
+        r.last_voice = Some(Instant::now());
+    }
 }
 
 /// Takes `n` reference samples (silence where there are none), and
 /// whether the phone talked recently.
 fn take_reference(n: usize) -> (Vec<f32>, bool) {
     let mut r = reference();
+
     let mut out = Vec::with_capacity(n);
     for _ in 0..n {
         out.push(r.samples.pop_front().map_or(0.0, |s| s as f32 / 32768.0));
@@ -79,6 +96,10 @@ pub struct EchoCanceller {
 
 impl EchoCanceller {
     pub fn new() -> Result<Self, String> {
+        // For troubleshooting (and tests that check the echo is there).
+        if std::env::var_os("PAIRDESK_NO_ECHO_CANCEL").is_some() {
+            return Err("echo cancelling is turned off (PAIRDESK_NO_ECHO_CANCEL)".into());
+        }
         let render = AudioFormat::ten_ms(REF_RATE, 1);
         let capture = AudioFormat::ten_ms(super::codec::RATE, CHANNELS as u16);
         // Only the echo canceller: noise suppression, gain control and
