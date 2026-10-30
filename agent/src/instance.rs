@@ -61,6 +61,14 @@ pub fn ask_to_quit(url: &str) -> Result<(), String> {
     }
 }
 
+/// Asks the running PairDesk to show itself (its window, on Windows).
+pub fn ask_to_show(url: &str) -> Result<(), String> {
+    match request(url, "POST", "api/show")? {
+        (200, _) => Ok(()),
+        (status, _) => Err(format!("it answered {status}")),
+    }
+}
+
 /// A minimal HTTP/1.0 request to the settings page on 127.0.0.1.
 /// `url` is the page address, e.g. `http://127.0.0.1:50123/<secret>/`.
 fn request(url: &str, method: &str, path: &str) -> Result<(u16, String), String> {

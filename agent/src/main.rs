@@ -37,6 +37,10 @@ mod update;
 #[cfg(target_os = "linux")]
 mod wayland;
 mod web;
+#[cfg(windows)]
+mod webview2_loader;
+#[cfg(windows)]
+mod window;
 mod winsys;
 
 use std::io::ErrorKind;
@@ -172,7 +176,18 @@ fn init_logging(data_dir: &Path) {
     );
     // Without a console (Windows release, or started at sign-in) log to a file.
     let to_file = cfg!(all(windows, not(debug_assertions)));
-    if to_file && let Ok(f) = std::fs::File::create(data_dir.join("agent.log")) {
+    // Appended to (starting PairDesk again mustn't wipe the running copy's
+    // log), and started afresh once it gets big.
+    let path = data_dir.join("agent.log");
+    let big = std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024);
+    if to_file
+        && let Ok(f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(!big)
+            .write(true)
+            .truncate(big)
+            .open(&path)
+    {
         builder.target(env_logger::Target::Pipe(Box::new(f)));
     }
     builder.init();
@@ -385,14 +400,17 @@ fn main() {
     }
 
     print_banner(&state, &settings.url);
+    tray::set_page(settings.url.clone(), !system_mode);
+    #[cfg(windows)]
+    window::set_data_dir(data_dir.clone());
     if args.pair {
         state.start_pairing();
         print_terminal_qr(&state);
     } else if !args.background && state.phones().list().is_empty() {
         // First run: go straight to pairing.
-        let _ = webbrowser::open(&format!("{}?pair=1", settings.url));
+        tray::show(true);
     } else if !args.background {
-        let _ = webbrowser::open(&settings.url);
+        tray::show(false);
     }
 
     tray::run(&runtime, state.clone(), settings.url.clone(), args.no_tray);
@@ -441,8 +459,12 @@ fn take_over(args: &Args, data_dir: &Path) -> std::net::TcpListener {
         .filter(|v| args.updated || instance::is_older(v, OURS));
     let Some(old) = older else {
         if !args.background {
-            info!("PairDesk is already running; opening its settings");
-            let _ = webbrowser::open(&running.url);
+            info!("PairDesk is already running; showing it");
+            // Older versions don't know how: their page in the browser.
+            if let Err(e) = instance::ask_to_show(&running.url) {
+                info!("({e}); opening its page in the browser");
+                let _ = webbrowser::open(&running.url);
+            }
         }
         std::process::exit(0);
     };
