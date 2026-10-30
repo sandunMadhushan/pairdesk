@@ -250,9 +250,14 @@ dropped rather than delayed. Sending `audio_start` again changes what is heard.
 ```
 
 in 20 ms messages (320 bytes). The agent plays them on the default output; the
-speakers open with the first message and close after 3 s without one. Phones
-mute their playback while talking (and 400 ms after), so people don't hear
-their own voice come back.
+speakers open with the first message and close after 3 s without one.
+
+Both directions work at once (since 0.10.1). The phone's voice comes back to
+the computer through its microphone and, digitally, through the recorded
+computer sound; the agent removes it with an echo canceller (WebRTC AEC3),
+using the received voice as the reference, while the phone has talked in the
+last 3 s. Phones use the call audio path while talking, so the phone's own
+echo cancelling removes the computer's sound from its microphone.
 
 While a phone hears the microphone, the tray icon shows the red dot and the
 settings page says so, with a Stop button (`api/stop-audio`).

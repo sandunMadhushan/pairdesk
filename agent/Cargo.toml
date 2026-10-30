@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
@@ -41,6 +41,7 @@ tokio-tungstenite = "0.30.0"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 webbrowser = "1"
 unsafe-libopus = "0.2"
+aec3 = "0.4"
 
 [build-dependencies]
 embed-resource = "3"

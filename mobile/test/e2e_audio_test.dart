@@ -122,6 +122,47 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 400));
         expect(packets.length, before, reason: 'no packets after audio_stop');
       }
+      // ---- Talking while listening: no echo of your own voice ----
+      // The phone's voice plays on the computer and comes back in the
+      // recorded computer sound; the computer's echo canceller removes it.
+      if (loopback) {
+        final heard = <AudioPacket>[];
+        final sub2 = conn.audioPackets.listen(heard.add);
+        await conn.startAudio(sound: true, mic: false, codecs: ['pcm']);
+        final talkStart = DateTime.now();
+        var m = 0;
+        int? lastSecondFrom;
+        for (var frame = 0; frame < 200; frame++) {
+          final pcm = Int16List(320);
+          for (var i = 0; i < 320; i++) {
+            pcm[i] = (12000 * math.sin(2 * math.pi * 1000 * m++ / 16000)).round();
+          }
+          if (frame == 150) lastSecondFrom = heard.length;
+          conn.sendVoice(ulawEncode(pcm));
+          final due = talkStart.add(Duration(milliseconds: 20 * (frame + 1)));
+          final wait = due.difference(DateTime.now());
+          if (wait > Duration.zero) await Future<void>.delayed(wait);
+        }
+        final tail = heard.sublist(lastSecondFrom!);
+        double sum = 0;
+        var count = 0;
+        for (final p in tail) {
+          final v = ByteData.sublistView(p.payload);
+          for (var i = 0; i + 1 < p.payload.length; i += 2) {
+            final x = v.getInt16(i, Endian.little) / 32768;
+            sum += x * x;
+          }
+          count += 1920; // 20 ms of 48 kHz stereo, silence included
+        }
+        final rms = math.sqrt(sum / count);
+        debugPrint(
+          'e2e audio: own voice coming back while talking: rms ${rms.toStringAsFixed(4)} (sent ~0.26)',
+        );
+        expect(rms, lessThan(0.03), reason: 'the phone hears itself: echo not cancelled');
+        conn.stopAudio();
+        await sub2.cancel();
+      }
+
       // ---- The computer's microphone, once allowed ----
       await post('api/permissions', {'power': true, 'session': true, 'apps': true, 'mic': true});
       await conn.disconnect();

@@ -80,7 +80,7 @@ class SoundSheet extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    'While you talk, the computer\'s sound is muted here so you don\'t hear yourself.',
+                    'Talk and listen at the same time, like a call. Use headphones on the phone for the best sound.',
                     style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
