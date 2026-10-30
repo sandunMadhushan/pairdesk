@@ -11,8 +11,10 @@ void main() {
   setUp(() {
     VideoSupport.resetForTest();
     VideoSupport.androidForTest = true;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async => call.method == 'supported');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async => call.method == 'supported',
+    );
   });
 
   tearDown(() => VideoSupport.androidForTest = null);
