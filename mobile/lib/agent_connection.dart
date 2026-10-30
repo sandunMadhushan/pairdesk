@@ -22,6 +22,7 @@ import 'pairing/discovery.dart';
 import 'pairing/identity.dart';
 import 'pairing/laptop.dart';
 import 'pairing/pairing_link.dart';
+import 'pairing/relay_route.dart';
 import 'screen/frame.dart';
 
 export 'audio/audio_packet.dart' show AudioInfo, AudioPacket;
@@ -120,8 +121,10 @@ class AgentException implements Exception {
 /// Tailscale addresses (100.64.0.0/10) and MagicDNS names (*.ts.net).
 bool isTailscaleHost(String host) => isTailscaleAddress(host);
 
-/// IPv4 addresses and Tailscale names; anything else from the computer is ignored.
+/// IPv4 addresses, Tailscale names and relay routes; anything else from
+/// the computer is ignored.
 bool isUsableHost(String host) {
+  if (RelayRoute.looksLike(host)) return RelayRoute.tryParse(host) != null;
   final ip = InternetAddress.tryParse(host);
   if (ip != null) return ip.type == InternetAddressType.IPv4 && !ip.isLoopback;
   return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) &&
@@ -147,7 +150,23 @@ Future<IOWebSocketChannel> openPinnedChannel(
       if (!ok) mismatch = true;
       return ok;
     };
-  final uri = Uri(scheme: 'wss', host: host, port: port, path: '/');
+  var target = host;
+  var targetPort = port;
+  if (RelayRoute.looksLike(host)) {
+    final route = RelayRoute.tryParse(host);
+    if (route == null) throw AgentException(FailureKind.unreachable, 'Bad relay address.');
+    try {
+      targetPort = await openRelayTunnel(route, timeout: timeout);
+      target = '127.0.0.1';
+    } on RelayRefused catch (e) {
+      client.close(force: true);
+      throw AgentException(FailureKind.unreachable, e.message);
+    } catch (e) {
+      client.close(force: true);
+      throw AgentException(FailureKind.unreachable, 'No answer from the relay ${route.host}.');
+    }
+  }
+  final uri = Uri(scheme: 'wss', host: target, port: targetPort, path: '/');
   try {
     final ws = await WebSocket.connect(uri.toString(), customClient: client).timeout(timeout);
     return IOWebSocketChannel(ws);
@@ -156,7 +175,10 @@ Future<IOWebSocketChannel> openPinnedChannel(
     if (mismatch) {
       throw AgentException(FailureKind.wrongComputer, 'The device at $host is not the computer you paired.');
     }
-    throw AgentException(FailureKind.unreachable, 'No answer from $host:$port.');
+    throw AgentException(
+      FailureKind.unreachable,
+      RelayRoute.looksLike(host) ? 'No answer through the relay.' : 'No answer from $host:$port.',
+    );
   }
 }
 
@@ -262,6 +284,7 @@ class AgentConnection extends ChangeNotifier {
     this.connectTimeout = const Duration(seconds: 3),
     this.remoteConnectTimeout = const Duration(seconds: 8),
     this.stagger = const Duration(milliseconds: 250),
+    this.relayHeadStart = const Duration(milliseconds: 1500),
     this.replyTimeout = const Duration(seconds: 8),
     this.pingInterval = const Duration(seconds: 3),
     this.deadAfter = const Duration(seconds: 10),
@@ -289,6 +312,9 @@ class AgentConnection extends ChangeNotifier {
 
   /// Gap between starting attempts at successive addresses.
   final Duration stagger;
+
+  /// How long direct routes get before the relay is tried too.
+  final Duration relayHeadStart;
   final Duration replyTimeout;
   final Duration pingInterval;
   final Duration deadAfter;
@@ -361,6 +387,7 @@ class AgentConnection extends ChangeNotifier {
       name: info.name,
       port: info.port,
       addresses: info.addresses,
+      helping: info.help,
     );
     await _connectAny(
       laptop,
@@ -480,14 +507,17 @@ class AgentConnection extends ChangeNotifier {
 
     for (var i = 0; i < hosts.length; i++) {
       final host = hosts[i];
-      Future<void>.delayed(stagger * i, () async {
+      // The relay is the last resort: direct routes get a head start.
+      final relay = RelayRoute.looksLike(host);
+      final delay = relay && hosts.length > 1 ? _maxDuration(stagger * i, relayHeadStart) : stagger * i;
+      Future<void>.delayed(delay, () async {
         if (done.isCompleted || _cancelRequested) return finished();
         try {
           final ch = await openPinnedChannel(
             host,
             laptop.port,
             laptop.fingerprint,
-            timeout: isTailscaleHost(host) ? remoteConnectTimeout : connectTimeout,
+            timeout: relay || isTailscaleHost(host) ? remoteConnectTimeout : connectTimeout,
           );
           if (done.isCompleted || _cancelRequested) {
             unawaited(ch.sink.close().catchError((_) {}));
@@ -973,3 +1003,5 @@ class _Link implements TransferLink {
   @override
   void sendBinary(Uint8List data) => c._sendBinary(data);
 }
+
+Duration _maxDuration(Duration a, Duration b) => a > b ? a : b;

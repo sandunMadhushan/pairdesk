@@ -32,12 +32,37 @@ class ShareInbox extends ChangeNotifier {
     try {
       final s = await _take();
       if (s.isEmpty) return;
-      final old = _pending;
-      _pending = old == null ? s : SharedItems(files: [...old.files, ...s.files], text: s.text ?? old.text);
+      // A PairDesk link (opened, or shared as text) pairs; it isn't sent.
+      final link = s.link ?? (_isPairDeskLink(s.text) ? s.text!.trim() : null);
+      if (link != null) _link = link;
+      final text = link != null && s.link == null ? null : s.text;
+      if (s.files.isNotEmpty || (text != null && text.isNotEmpty)) {
+        final old = _pending;
+        _pending = old == null
+            ? SharedItems(files: s.files, text: text)
+            : SharedItems(files: [...old.files, ...s.files], text: text ?? old.text);
+      }
       notifyListeners();
     } catch (_) {
       // No Android side (tests, other platforms): nothing shared.
     }
+  }
+
+  String? _link;
+
+  /// A pairing or "Get help" link waiting to be used.
+  String? get link => _link;
+
+  String? takeLink() {
+    final l = _link;
+    _link = null;
+    if (l != null) notifyListeners();
+    return l;
+  }
+
+  static bool _isPairDeskLink(String? text) {
+    final t = text?.trim() ?? '';
+    return t.startsWith('pairdesk://pair?') || t.startsWith('https://pairdesk.madhushan.me/p#');
   }
 
   /// Takes everything waiting; null if nothing.

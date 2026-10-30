@@ -37,8 +37,45 @@ pairdesk://pair?v=2&n=<name>&fp=<fingerprint>&t=<code>&p=<port>&a=<ip>,<ip>
 | `p` | Port |
 | `a` | The computer's LAN IPv4 addresses, comma-separated |
 
+| `r` | *(since 0.11)* The computer's relay route `host:port/id`, percent-encoded, when it's connected to a relay |
+| `h` | *(since 0.11)* `1` for a "Get help" link: the phone gets temporary, limited access (see below) |
+
 Seeing the QR code is what proves the person is at the computer. Showing a new
 code replaces the previous one.
+
+### Share link (since 0.11)
+
+The same query can be sent as a web link instead of shown as a QR code:
+
+```text
+https://pairdesk.madhushan.me/p#v=2&n=<name>&fp=…&t=…&p=…&a=…&r=…&h=1
+```
+
+Everything is after `#`, so it never reaches the web server. Android opens
+the link in PairDesk directly (verified app link, `/.well-known/assetlinks.json`);
+otherwise `site/p.html` offers "Open in PairDesk" (`intent://pair?…`) and the
+download. The app also accepts either link pasted or shared into it.
+
+Links only go **from the computer to the phone**: the phone connects to the
+computer, so the computer is the one that must hand out its fingerprint,
+addresses and a one-time code. Whoever has the link within its 10 minutes
+can pair once, so it should be sent privately (a chat, not a public post).
+
+### Get help (since 0.11)
+
+"Get help" on the computer makes a link with `h=1`. A phone that pairs
+with it:
+
+- is stored with `help_until` = pairing time + **2 hours**, and removed then,
+  or 5 minutes after it disconnects, or when the person presses *End help*;
+- gets `power`, `session`, `files`, `audio` and `mic` turned off whatever
+  the computer's switches say (screen, control, clipboard and apps follow
+  the switches);
+- is shown on the computer in a banner while connected.
+
+A phone that was already paired normally keeps its full access if it pairs
+again through a help link. The phone forgets a helping computer when the
+agent answers `not_paired`.
 
 ## Sign-in handshake
 
@@ -206,6 +243,9 @@ The settings page on the computer has three switches, all on by default:
 | `audio` | `audio_start` with `sound`, and the phone's voice ("PDM1"). Turning it off stops current listeners |
 | `mic` | `audio_start` with `mic`. **Off by default.** Turning it off stops phones that hear the microphone |
 
+Phones paired through "Get help" never get `power`, `session`, `files`,
+`audio` or `mic`, and their `allow` says so.
+
 Each request is checked against the current switches when it arrives, so a
 change applies at once. The phone also asks for confirmation before
 `sign_out`, `restart` and `shut_down`. For `lock` and `screen_off` the `ack`
@@ -307,18 +347,19 @@ either   → file_cancel   {fid, msg?}              stops it; the receiver delet
 
 ## Reaching the computer from anywhere (Tailscale)
 
-PairDesk doesn't run its own relay. Away from home it uses
-[Tailscale](https://tailscale.com), which the owner installs on the computer
-and the phone and signs in to with the same account. Tailscale carries the
-same `wss://` connection; pinning and the signed sign-in are unchanged.
+Away from home PairDesk uses [Tailscale](https://tailscale.com) when the
+owner installed it on the computer and the phone, or else a PairDesk relay
+(below). Both carry the same `wss://` connection; pinning and the signed
+sign-in are unchanged.
 
 - `welcome.addrs` lists every address the phone may use: home-network IPv4
   addresses first, then Tailscale addresses (100.64.0.0/10) and, when
   MagicDNS is on, the Tailscale name (`*.ts.net`). Adapters that only exist
   inside the computer (Docker, WSL, VirtualBox, VMware…) are left out.
 - The phone keeps up to 8 addresses: the one that worked last, then the
-  computer's current list, then older ones. Anything other than an IPv4
-  address or a `*.ts.net` name is ignored.
+  computer's current list, then older ones; the computer's newest relay
+  route is always kept, last. Anything other than an IPv4 address, a
+  `*.ts.net` name or a `relay:` route is ignored.
 - To connect, the phone starts an attempt at each address 250 ms apart and
   uses the first that passes the certificate check. Home addresses get 3 s,
   Tailscale ones 8 s (a relayed first connection can be slow).
@@ -327,6 +368,36 @@ same `wss://` connection; pinning and the signed sign-in are unchanged.
 - Optional *keep this computer awake* (settings page): Windows
   `SetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_CONTINUOUS)`, Linux
   `systemd-inhibit --what=sleep:idle`. Off by default.
+
+## Relay
+
+Since 0.11, when the phone can't reach the computer directly, both meet at a
+relay (`relay/` in this repository; hosting: [RELAY.md](RELAY.md)). The
+default is `relay.pairdesk.madhushan.me:443`; the owner can change it or
+turn it off in the computer's settings.
+
+The relay speaks a one-line text handshake, after which it copies bytes in
+both directions untouched. Lines end with `\n` and are at most 256 bytes.
+
+| From | Line | Answer |
+| --- | --- | --- |
+| Computer (control connection) | `PDR1 HOST <token>` | `OK <id>`: `id` = first 16 bytes of SHA-256(`token`), hex. A newer registration for the same id replaces the old one |
+| Phone | `PDR1 CONNECT <id>` | `OK` once joined, or `ERR offline` / `ERR no answer` |
+| Relay → computer (control) | `INCOMING <nonce>` | the computer opens a new connection: |
+| Computer (new connection) | `PDR1 ACCEPT <token> <nonce>` | `OK`; the relay sends `OK` to the phone and joins the two |
+| Relay ↔ computer (control) | `PING` every 25 s | `PONG` |
+
+`token` is 32 random bytes kept in the computer's data folder
+(`relay-token`), so only that computer can register its id. Idle
+connections close after 90 s; one IP address may hold 64 connections.
+
+On the phone the route is the address `relay:host:port/id` (`r=` in the
+pairing link, and last in `welcome.addrs` while the computer is connected to
+the relay). The phone starts relay attempts 1.5 s after the direct ones, so
+a direct path wins when there is one. It connects to the relay, sends
+`CONNECT`, and after `OK` runs TLS over that connection through a forwarder
+on 127.0.0.1, checking the certificate fingerprint as usual. The relay
+therefore sees only TLS records, sizes and IP addresses.
 
 ## Finding the computer again
 

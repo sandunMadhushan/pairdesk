@@ -100,7 +100,10 @@ async fn start_agent() -> Agent {
         port,
     ));
     let (input, rx) = InputHandle::recording();
-    tokio::spawn(crate::server::run(listener, state.clone(), input));
+    let (relayed_tx, relayed) = tokio::sync::mpsc::channel(8);
+    tokio::spawn(crate::server::run(listener, state.clone(), input, relayed));
+    // Keeps the relay channel open for the agent's lifetime.
+    std::mem::forget(relayed_tx);
     Agent {
         state,
         input: rx,
@@ -955,4 +958,50 @@ async fn sends_files_to_the_phone() {
         (t.state, t.incoming, t.done),
         (crate::state::TransferState::Done, false, data.len() as u64)
     );
+}
+
+#[tokio::test]
+async fn a_helper_gets_limited_temporary_access() {
+    let agent = start_agent().await;
+    let key = phone_key(40);
+    agent.state.start_help();
+    assert!(agent.state.pairing_links().unwrap().help);
+    let fp = *agent.state.identity.fingerprint();
+    let mut ws = connect(agent.port, fp).await.unwrap();
+    let token = token_of(&agent.state);
+    send(
+        &mut ws,
+        json!({"t":"pair","v":2,"token":token,"id":id_of(&key),"name":"Friend"}),
+    )
+    .await;
+    answer(&mut ws, &key, &fp).await;
+    let welcome = recv(&mut ws).await;
+    assert_eq!(welcome["t"], "welcome");
+    // The screen, pointer, clipboard and apps; no power, files or sound.
+    let allow = &welcome["allow"];
+    assert_eq!(allow["screen"], true);
+    assert_eq!(allow["clipboard"], true);
+    assert_eq!(allow["apps"], true);
+    for off in ["power", "session", "files", "audio", "mic"] {
+        assert_eq!(allow[off], false, "{off}");
+    }
+    let id = id_of(&key);
+    assert!(agent.state.is_helper(&id));
+    let until = agent.state.phones().get(&id).unwrap().help_until.unwrap();
+    let left = until - crate::config::unix_now();
+    assert!((7100..=7200).contains(&left), "{left}");
+
+    // Power actions are refused even though the owner allows them.
+    send(&mut ws, json!({"t":"power","a":"lock","id":7})).await;
+    let ack = recv(&mut ws).await;
+    assert_eq!(ack["ok"], false);
+    assert_eq!(ack["code"], "not_allowed");
+
+    // Still connected: not swept. Time's up: removed and disconnected.
+    assert!(agent.state.sweep_helpers().is_empty());
+    agent.state.phones().add(&id, "Friend", Some(1)).unwrap();
+    assert_eq!(agent.state.sweep_helpers(), vec!["Friend".to_string()]);
+    assert!(!agent.state.is_paired(&id));
+    let bye = recv(&mut ws).await;
+    assert_eq!(bye["code"], "not_paired");
 }

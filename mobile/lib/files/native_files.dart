@@ -18,10 +18,13 @@ class PickedFile {
 
 /// What another app shared with PairDesk.
 class SharedItems {
-  const SharedItems({this.files = const [], this.text});
+  const SharedItems({this.files = const [], this.text, this.link});
   final List<PickedFile> files;
   final String? text;
-  bool get isEmpty => files.isEmpty && (text == null || text!.isEmpty);
+
+  /// A PairDesk link that opened the app (pairing or "Get help").
+  final String? link;
+  bool get isEmpty => files.isEmpty && (text == null || text!.isEmpty) && link == null;
 }
 
 class NativeFiles {
@@ -55,7 +58,7 @@ class NativeFiles {
   Future<SharedItems> takeShared() async {
     final m = await _channel.invokeMethod<Map<Object?, Object?>>('takeShared');
     if (m == null) return const SharedItems();
-    return SharedItems(files: _files(m['files']), text: m['text'] as String?);
+    return SharedItems(files: _files(m['files']), text: m['text'] as String?, link: m['link'] as String?);
   }
 
   /// Moves a received file into Download/PairDesk.

@@ -1,5 +1,6 @@
 # Rust
 agent/target/
+relay/target/
 
 # Release artifacts built locally
 /dist/

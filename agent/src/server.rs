@@ -52,18 +52,27 @@ pub async fn run(
     listener: TcpListener,
     state: Arc<AppState>,
     input: InputHandle,
+    mut relayed: tokio::sync::mpsc::Receiver<TcpStream>,
 ) -> std::io::Result<()> {
     let tls = state.identity.tls_config().map_err(std::io::Error::other)?;
     let acceptor = TlsAcceptor::from(tls);
     let pending = Arc::new(Semaphore::new(MAX_PENDING));
 
     loop {
-        let (stream, peer) = match listener.accept().await {
-            Ok(x) => x,
-            Err(e) => {
-                warn!("accept failed: {e}");
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                continue;
+        // Phones on the network, and phones joined to us by a relay: the
+        // same TLS and sign-in either way.
+        let (stream, peer, via_relay) = tokio::select! {
+            accepted = listener.accept() => match accepted {
+                Ok((s, peer)) => (s, peer, false),
+                Err(e) => {
+                    warn!("accept failed: {e}");
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+            },
+            Some(s) = relayed.recv() => {
+                let Ok(peer) = s.peer_addr() else { continue };
+                (s, peer, true)
             }
         };
         let Ok(permit) = pending.clone().try_acquire_owned() else {
@@ -92,7 +101,7 @@ pub async fn run(
 
             match started {
                 Ok(Ok((ws, who))) => {
-                    if let Err(e) = serve(ws, who, peer, &state, input).await {
+                    if let Err(e) = serve(ws, who, peer, via_relay, &state, input).await {
                         warn!("{peer}: {e}");
                     }
                 }
@@ -183,6 +192,7 @@ async fn authenticate(
     // 3. store a new pairing
     let just_paired = token.is_some();
     if let Some(token) = token {
+        let help = state.pairing_is_help(&token);
         if !state.consume_pairing_token(&token) {
             return fail(
                 ws,
@@ -192,9 +202,13 @@ async fn authenticate(
             .await;
         }
         state
-            .add_phone(&id, &name)
+            .add_phone(&id, &name, help)
             .map_err(|e| format!("could not save the paired phone: {e}"))?;
-        info!("{peer}: paired new phone \"{name}\"");
+        if help {
+            info!("{peer}: \"{name}\" is helping (temporary access)");
+        } else {
+            info!("{peer}: paired new phone \"{name}\"");
+        }
     }
     Ok(Authenticated {
         id,
@@ -220,11 +234,12 @@ async fn serve(
     ws: Ws,
     who: Authenticated,
     peer: SocketAddr,
+    via_relay: bool,
     state: &Arc<AppState>,
     input: InputHandle,
 ) -> Result<(), String> {
     let (mut sink, mut source) = ws.split();
-    let allow = state.prefs().get().allow();
+    let allow = state.allow_for(&who.id);
     let addrs = state.phone_addresses();
     send(
         &mut sink,
@@ -240,12 +255,25 @@ async fn serve(
         },
     )
     .await?;
-    info!("{peer}: \"{}\" connected", who.name);
+    info!(
+        "{peer}: \"{}\" connected{}{}",
+        who.name,
+        if via_relay { " through the relay" } else { "" },
+        if state.is_helper(&who.id) {
+            " (helping)"
+        } else {
+            ""
+        }
+    );
 
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<SessionCmd>();
     let session = state.open_session(Session {
         phone_id: who.id.clone(),
-        address: peer.ip().to_string(),
+        address: if via_relay {
+            "the relay".into()
+        } else {
+            peer.ip().to_string()
+        },
         cmd: cmd_tx,
     });
     let mut revocations = state.subscribe_revocations();
@@ -353,7 +381,7 @@ async fn serve(
                 Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
                 Message::Binary(b) => {
                     if let Some(voice) = crate::audio::parse_talk(&b) {
-                        if !state.prefs().get().allow_audio {
+                        if !state.allow_for(&who.id).audio {
                             continue;
                         }
                         if speaker.as_ref().is_some_and(|s| !s.is_open()) {
@@ -435,7 +463,10 @@ async fn serve(
                     key: k,
                     ch: c,
                 }),
-                ClientMsg::Power { id, a } => power_request(state, id, a, reply_tx.clone()),
+                ClientMsg::Power { id, a } => {
+                    let allowed = state.prefs().get().allows(a) && !state.is_helper(&who.id);
+                    power_request(allowed, id, a, reply_tx.clone())
+                }
                 ClientMsg::Apps { id } => apps_request(state, id, reply_tx.clone()),
                 ClientMsg::Launch { id, app } => launch_request(state, id, app, reply_tx.clone()),
                 ClientMsg::ScreenStart {
@@ -445,7 +476,7 @@ async fn serve(
                     codecs,
                 } => {
                     stop_viewer(&mut viewer, state, session);
-                    if !state.prefs().get().allow_screen {
+                    if !state.allow_for(&who.id).screen {
                         send(
                             &mut sink,
                             &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))),
@@ -523,8 +554,8 @@ async fn serve(
                         continue;
                     }
                     let (allow_audio, allow_mic) = {
-                        let p = state.prefs();
-                        (p.get().allow_audio, p.get().allow_mic)
+                        let a = state.allow_for(&who.id);
+                        (a.audio, a.mic)
                     };
                     if (sound && !allow_audio) || (mic && !allow_mic) {
                         send(&mut sink, &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into())))).await?;
@@ -604,7 +635,7 @@ async fn serve(
                     }
                 }
                 ClientMsg::ClipGet { id } => {
-                    if !state.prefs().get().allow_clipboard {
+                    if !state.allow_for(&who.id).clipboard {
                         send(&mut sink, &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into())))).await?;
                         continue;
                     }
@@ -621,7 +652,7 @@ async fn serve(
                     });
                 }
                 ClientMsg::ClipSet { id, text, paste } => {
-                    if !state.prefs().get().allow_clipboard {
+                    if !state.allow_for(&who.id).clipboard {
                         send(&mut sink, &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into())))).await?;
                         continue;
                     }
@@ -649,7 +680,7 @@ async fn serve(
                 ClientMsg::FileOffer { fid, name, size } => {
                     let refuse = if fid >= files::AGENT_FIDS || incoming.contains_key(&fid) {
                         Some("Bad file id.".to_string())
-                    } else if !state.prefs().get().allow_files {
+                    } else if !state.allow_for(&who.id).files {
                         Some(NOT_ALLOWED.to_string())
                     } else if incoming.len() >= files::MAX_INCOMING {
                         Some("Too many files at once; try again in a moment.".to_string())
@@ -780,8 +811,8 @@ fn ack(id: Option<u64>, result: Result<(), (AckCode, String)>) -> ServerMsg {
     }
 }
 
-fn power_request(state: &AppState, id: Option<u64>, action: PowerAction, replies: Replies) {
-    if !state.prefs().get().allows(action) {
+fn power_request(allowed: bool, id: Option<u64>, action: PowerAction, replies: Replies) {
+    if !allowed {
         let _ = replies.send(ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))));
         return;
     }

@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.11.0" date="2026-10-31">
+      <description>
+        <p>Pair by sending a link instead of scanning the QR code. "Get help" lets someone see and control your screen for a while, with power, files and sound kept off. When the phone can't reach the computer directly, it now connects through the PairDesk relay, still encrypted end to end.</p>
+      </description>
+    </release>
     <release version="0.10.1" date="2026-10-30">
       <description>
         <p>Talk and listen at the same time, like a call, with echo cancelling on both sides.</p>

@@ -18,6 +18,10 @@ pub struct Phone {
     /// Unix seconds of the last successful connection.
     #[serde(default)]
     pub last_seen: Option<u64>,
+    /// Paired to help ("Get help"): removed at this time (Unix seconds),
+    /// or earlier when the helper leaves. None for the owner's phones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help_until: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -67,19 +71,25 @@ impl PhoneStore {
         self.get(id).is_some()
     }
 
-    /// Adds a phone, or renames it if it pairs again.
-    pub fn add(&mut self, id: &str, name: &str) -> io::Result<()> {
+    /// Adds a phone, or renames it if it pairs again. `help_until`: a
+    /// helper's temporary access (see `help_until` on [`Phone`]).
+    pub fn add(&mut self, id: &str, name: &str, help_until: Option<u64>) -> io::Result<()> {
         let now = crate::config::unix_now();
         match self.phones.iter_mut().find(|p| p.id == id) {
             Some(p) => {
                 p.name = name.to_string();
                 p.last_seen = Some(now);
+                // An owner's phone stays one, even if it also helps.
+                if p.help_until.is_some() || help_until.is_none() {
+                    p.help_until = help_until;
+                }
             }
             None => self.phones.push(Phone {
                 id: id.to_string(),
                 name: name.to_string(),
                 paired_at: now,
                 last_seen: Some(now),
+                help_until,
             }),
         }
         self.save()
@@ -115,12 +125,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut s = PhoneStore::load(dir.path()).unwrap();
         assert!(s.list().is_empty());
-        s.add("k1", "Pixel").unwrap();
-        s.add("k2", "Galaxy").unwrap();
-        s.add("k1", "Pixel 7").unwrap();
+        s.add("k1", "Pixel", None).unwrap();
+        s.add("k2", "Galaxy", None).unwrap();
+        s.add("k1", "Pixel 7", None).unwrap();
+        s.add("k3", "Helper", Some(123)).unwrap();
+        // A paired phone that later helps keeps its full access.
+        s.add("k2", "Galaxy", Some(456)).unwrap();
 
         let mut s = PhoneStore::load(dir.path()).unwrap();
-        assert_eq!(s.list().len(), 2);
+        assert_eq!(s.list().len(), 3);
         assert_eq!(s.get("k1").unwrap().name, "Pixel 7");
         assert!(s.remove("k1").unwrap());
         assert!(!s.remove("k1").unwrap());
@@ -128,5 +141,7 @@ mod tests {
         let s = PhoneStore::load(dir.path()).unwrap();
         assert!(!s.is_paired("k1"));
         assert!(s.is_paired("k2"));
+        assert_eq!(s.get("k2").unwrap().help_until, None);
+        assert_eq!(s.get("k3").unwrap().help_until, Some(123));
     }
 }

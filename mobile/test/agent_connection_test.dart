@@ -552,6 +552,16 @@ void main() {
       l.learnAddresses(working: '10.0.0.5', fromComputer: ['100.64.0.1', '10.0.0.9']);
       expect(l.addresses.length, Laptop.maxAddresses);
       expect(l.addresses.take(3), ['10.0.0.5', '100.64.0.1', '10.0.0.9']);
+      // A relay route is always kept, last, and the computer's newest wins.
+      l.learnAddresses(working: '10.0.0.5', fromComputer: ['relay:r.example.org:443/${'a' * 32}']);
+      l.learnAddresses(
+        working: '10.0.0.1',
+        fromComputer: ['10.0.0.2', 'relay:r.example.org:443/${'b' * 32}'],
+      );
+      expect(l.addresses.length, Laptop.maxAddresses);
+      expect(l.addresses.last, 'relay:r.example.org:443/${'b' * 32}');
+      expect(l.addresses.where((a) => a.startsWith('relay:')), hasLength(1));
+      expect(l.reachableAnywhere, isTrue);
     });
   });
 

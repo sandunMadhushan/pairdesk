@@ -51,6 +51,17 @@ pub struct Prefs {
     /// Look for new releases once a day.
     #[serde(default = "yes")]
     pub check_updates: bool,
+    /// Be reachable through a relay when phones can't reach this computer
+    /// directly.
+    #[serde(default = "yes")]
+    pub relay_on: bool,
+    /// The relay, `host:port`.
+    #[serde(default = "default_relay")]
+    pub relay: String,
+}
+
+fn default_relay() -> String {
+    crate::relay::DEFAULT_RELAY.to_string()
 }
 
 impl Default for Prefs {
@@ -67,6 +78,8 @@ impl Default for Prefs {
             shortcuts: Vec::new(),
             keep_awake: false,
             check_updates: true,
+            relay_on: true,
+            relay: default_relay(),
         }
     }
 }
@@ -170,6 +183,12 @@ impl PrefsStore {
 
     pub fn set_allow_clipboard(&mut self, on: bool) -> io::Result<()> {
         self.prefs.allow_clipboard = on;
+        self.save()
+    }
+
+    pub fn set_relay(&mut self, on: bool, address: &str) -> io::Result<()> {
+        self.prefs.relay_on = on;
+        self.prefs.relay = address.trim().to_string();
         self.save()
     }
 

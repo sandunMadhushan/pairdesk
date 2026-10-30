@@ -27,6 +27,7 @@ class Laptop {
     this.os,
     int? pairedAt,
     this.lastUsed,
+    this.helping = false,
   }) : pairedAt = pairedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   /// SHA-256 of the computer's certificate. Identifies the computer.
@@ -39,6 +40,10 @@ class Laptop {
   String? os;
   final int pairedAt;
   int? lastUsed;
+
+  /// Paired through a "Get help" link: temporary access to someone
+  /// else's computer.
+  final bool helping;
 
   /// Matches the `id` the computer announces on the network.
   String get shortId => hex(fingerprint.sublist(0, 8));
@@ -59,11 +64,18 @@ class Laptop {
     for (final a in [working, ...fromComputer, ...addresses]) {
       if (!merged.contains(a)) merged.add(a);
     }
-    addresses = merged.take(maxAddresses).toList();
+    // Direct routes first; the computer's current relay route always kept
+    // (it's what works from anywhere).
+    final relay = [
+      ...fromComputer.where((a) => a.startsWith('relay:')),
+      ...merged.where((a) => a.startsWith('relay:')),
+    ].firstOrNull;
+    final direct = merged.where((a) => !a.startsWith('relay:')).take(maxAddresses - (relay == null ? 0 : 1));
+    addresses = [...direct, ?relay];
   }
 
-  /// True when the phone knows a Tailscale route to this computer.
-  bool get reachableAnywhere => addresses.any(isTailscaleAddress);
+  /// True when the phone knows a route from anywhere: Tailscale or a relay.
+  bool get reachableAnywhere => addresses.any((a) => isTailscaleAddress(a) || a.startsWith('relay:'));
 
   Map<String, Object?> toJson() => {
     'fp': key,
@@ -73,6 +85,7 @@ class Laptop {
     'os': os,
     'pairedAt': pairedAt,
     'lastUsed': lastUsed,
+    if (helping) 'helping': true,
   };
 
   static Laptop? fromJson(Object? json) {
@@ -91,6 +104,7 @@ class Laptop {
       os: json['os'] as String?,
       pairedAt: json['pairedAt'] as int?,
       lastUsed: json['lastUsed'] as int?,
+      helping: json['helping'] == true,
     );
   }
 }

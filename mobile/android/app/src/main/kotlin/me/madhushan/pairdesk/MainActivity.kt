@@ -79,6 +79,7 @@ class MainActivity : FlutterFragmentActivity() {
     /// What another app shared, until Dart takes it.
     private var sharedUris: List<Uri> = emptyList()
     private var sharedText: String? = null
+    private var sharedLink: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,13 +111,15 @@ class MainActivity : FlutterFragmentActivity() {
                     "takeShared" -> {
                         val uris = sharedUris
                         val text = sharedText
+                        val link = sharedLink
                         sharedUris = emptyList()
                         sharedText = null
+                        sharedLink = null
                         io.execute {
                             val files = uris.mapNotNull {
                                 try { copyToCache(it) } catch (e: Exception) { null }
                             }
-                            main.post { result.success(mapOf("files" to files, "text" to text)) }
+                            main.post { result.success(mapOf("files" to files, "text" to text, "link" to link)) }
                         }
                     }
                     "saveToDownloads" -> {
@@ -154,6 +157,13 @@ class MainActivity : FlutterFragmentActivity() {
     /// Remembers what was shared; true if there was something.
     private fun keepShared(intent: Intent?): Boolean {
         if (intent == null) return false
+        if (intent.action == Intent.ACTION_VIEW) {
+            val link = intent.dataString ?: return false
+            if (!link.startsWith("pairdesk://pair") && !link.startsWith("https://pairdesk.madhushan.me/p")) return false
+            sharedLink = link
+            setIntent(Intent(Intent.ACTION_MAIN))
+            return true
+        }
         val uris = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(streamOf(intent))
             Intent.ACTION_SEND_MULTIPLE -> streamsOf(intent)

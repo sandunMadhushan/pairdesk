@@ -17,10 +17,10 @@
   </header>
   <main class="doc">
     <h1>Privacy policy</h1>
-    <p class="small">Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 29 October 2026.</p>
+    <p class="small">Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 31 October 2026.</p>
 
     <h2>In short</h2>
-    <p>PairDesk doesn't collect, store or share any personal data. There is no PairDesk account and no PairDesk server: your phone and your computer talk to each other directly.</p>
+    <p>PairDesk doesn't collect, store or share any personal data. There is no PairDesk account. Your phone and your computer talk to each other directly, or, when they can't reach each other, through a relay that only passes their encrypted connection along.</p>
 
     <h2>What stays on your devices</h2>
     <ul>
@@ -30,13 +30,14 @@
     </ul>
 
     <h2>What travels between your phone and computer</h2>
-    <p>Touches, key presses, the screen picture when you view it, clipboard text and files you choose to send. All of it goes directly between your two devices over an encrypted connection, and none of it is recorded. Received files are saved in the Downloads/PairDesk folder of the receiving device.</p>
+    <p>Touches, key presses, the screen picture when you view it, sound when you listen or talk, clipboard text and files you choose to send. All of it goes between your two devices over an encrypted connection (directly, or through the relay described below, which can't read it), and none of it is recorded. Received files are saved in the Downloads/PairDesk folder of the receiving device.</p>
 
     <p><b>Windows, with "Sign-in screen and admin prompts" turned on:</b> a copy of the computer's pairing keys and the list of paired phones is kept in a folder only Windows itself and administrators can read, so paired phones can reach the sign-in screen. Turning the option off deletes it.</p>
 
     <h2>Network connections PairDesk makes</h2>
     <ul>
       <li><b>Between your devices</b>, on your local network, or through <a href="https://tailscale.com">Tailscale</a> if you installed it yourself. PairDesk doesn't send anything to Tailscale; Tailscale's own privacy policy covers Tailscale.</li>
+      <li><b>The PairDesk relay</b>, when the phone can't reach the computer directly (another network, no Tailscale). The computer keeps a connection open to the relay (by default <code>relay.pairdesk.madhushan.me</code>), and a phone that can't reach it directly connects through it. The connection is encrypted end to end between your phone and your computer: the relay can't see the screen, what you type, files or sound. It sees the two IP addresses, a random id for the computer and how much data passes, keeps that only in a short service log, and stores nothing else. You can turn the relay off, or use your own, under <i>Remote access</i> on the computer.</li>
       <li><b>Update checks.</b> Once a day the computer program (and the Android app downloaded from GitHub) reads a small file from GitHub Releases to see whether a newer version exists. Like any web request, this shows GitHub your IP address. You can turn it off in PairDesk's settings on the computer. Copies from the Microsoft Store, Flathub or F-Droid don't do this; the store updates them.</li>
     </ul>
     <p>PairDesk contains no analytics, advertising or crash-reporting code.</p>
@@ -45,8 +46,10 @@
     <ul>
       <li><b>Camera</b> (phone): only to scan the pairing code. Nothing is recorded.</li>
       <li><b>Local network</b> (phone): to find and reach your computer.</li>
+      <li><b>Microphone</b> (phone): only while you talk to the computer. Your voice goes to your computer and is played there, never recorded.</li>
       <li><b>Fingerprint or screen lock</b> (phone, optional): to lock the app. Android handles it; PairDesk never sees your fingerprint.</li>
       <li><b>Screen and input</b> (computer): to show the screen to your phone and carry out its touches and key presses. On Wayland desktops you approve this in the desktop's own dialog.</li>
+      <li><b>Sound and microphone</b> (computer): to let your phone hear what the computer plays, and its microphone if you allow that in PairDesk's settings (off by default). Nothing is recorded.</li>
     </ul>
 
     <h2>Children</h2>

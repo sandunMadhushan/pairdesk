@@ -67,6 +67,17 @@ pub struct Transfer {
 /// Transfers kept in the list.
 const MAX_TRANSFERS: usize = 30;
 
+pub struct PairingLinks {
+    /// `pairdesk://pair?…`, shown as the QR code.
+    pub qr: String,
+    /// `https://…/p#…`, to send in a message.
+    pub share: String,
+    pub remaining: Duration,
+    pub help: bool,
+    /// The link includes a relay, so it works from anywhere.
+    pub relay: bool,
+}
+
 /// A phone watching the screen.
 pub struct ScreenViewer {
     pub phone_id: String,
@@ -96,6 +107,8 @@ pub struct AppState {
     prefs: Mutex<PrefsStore>,
     pub apps: Catalogue,
     pub tailscale: crate::tailscale::Cache,
+    /// Reaching this computer through a relay.
+    pub relay: crate::relay::Shared,
     /// Phones watching the screen, by session.
     viewers: Mutex<HashMap<u64, ScreenViewer>>,
     viewers_changed: watch::Sender<usize>,
@@ -133,6 +146,7 @@ impl AppState {
             prefs: Mutex::new(prefs),
             apps: Catalogue::default(),
             tailscale: Default::default(),
+            relay: Default::default(),
             viewers: Mutex::new(HashMap::new()),
             viewers_changed: watch::channel(0).0,
             listeners: Mutex::new(HashMap::new()),
@@ -158,9 +172,62 @@ impl AppState {
         self.phones().is_paired(id)
     }
 
-    pub fn add_phone(&self, id: &str, name: &str) -> io::Result<()> {
-        self.phones().add(id, name)?;
+    /// Saves a newly paired phone; `help`: paired with a "Get help" code
+    /// (temporary, limited access).
+    pub fn add_phone(&self, id: &str, name: &str, help: bool) -> io::Result<()> {
+        let until =
+            help.then(|| crate::config::unix_now() + crate::pairing::HELP_LIFETIME.as_secs());
+        self.phones().add(id, name, until)?;
         Ok(())
+    }
+
+    /// True for a phone that is only helping (temporary access).
+    pub fn is_helper(&self, id: &str) -> bool {
+        self.phones()
+            .get(id)
+            .is_some_and(|p| p.help_until.is_some())
+    }
+
+    /// What this phone may do: the owner's switches, and for a helper,
+    /// only seeing and using the screen (pointer, keyboard, clipboard and
+    /// apps): no power actions, files or sound.
+    pub fn allow_for(&self, phone_id: &str) -> crate::protocol::Allow {
+        let mut allow = self.prefs().get().allow();
+        if self.is_helper(phone_id) {
+            allow.power = false;
+            allow.session = false;
+            allow.files = false;
+            allow.audio = false;
+            allow.mic = false;
+        }
+        allow
+    }
+
+    /// Ends helpers' access when its time is up, or 5 minutes after they
+    /// left. Returns the names removed.
+    pub fn sweep_helpers(&self) -> Vec<String> {
+        let now = crate::config::unix_now();
+        let connected: Vec<String> = self.sessions().iter().map(|s| s.phone_id.clone()).collect();
+        let expired: Vec<(String, String)> = self
+            .phones()
+            .list()
+            .iter()
+            .filter(|p| {
+                p.help_until.is_some_and(|until| {
+                    now >= until
+                        || (!connected.contains(&p.id)
+                            && p.last_seen.is_some_and(|seen| now > seen + 5 * 60))
+                })
+            })
+            .map(|p| (p.id.clone(), p.name.clone()))
+            .collect();
+        let mut removed = Vec::new();
+        for (id, name) in expired {
+            if self.remove_phone(&id).unwrap_or(false) {
+                removed.push(name);
+            }
+        }
+        removed
     }
 
     /// Unpairs a phone and disconnects it if it's connected.
@@ -183,24 +250,50 @@ impl AppState {
         *lock(&self.pairing) = Some(PairingCode::new());
     }
 
+    /// "Get help": a code for someone to help, with temporary access.
+    pub fn start_help(&self) {
+        *lock(&self.pairing) = Some(PairingCode::for_help());
+    }
+
+    /// True if `token` is the current code and it's a "Get help" code.
+    pub fn pairing_is_help(&self, token: &str) -> bool {
+        lock(&self.pairing)
+            .as_ref()
+            .is_some_and(|c| c.matches(token) && c.is_help())
+    }
+
     pub fn cancel_pairing(&self) {
         *lock(&self.pairing) = None;
     }
 
-    /// The current pairing link and how long it stays valid, if any.
+    /// The current pairing link (for the QR code) and how long it stays
+    /// valid, if any.
     pub fn pairing_link(&self) -> Option<(String, Duration)> {
+        self.pairing_links().map(|l| (l.qr, l.remaining))
+    }
+
+    /// The current code as a QR link and a link to send, if any.
+    pub fn pairing_links(&self) -> Option<PairingLinks> {
         let guard = lock(&self.pairing);
         let code = guard.as_ref().filter(|c| !c.is_expired())?;
         let addresses: Vec<_> = crate::net::addresses().into_iter().map(|a| a.ip).collect();
-        let uri = PairingLink {
+        let route = self.relay.route();
+        let link = PairingLink {
             name: &self.name,
             fingerprint: self.identity.fingerprint(),
             token: code.token(),
             port: self.port,
             addresses: &addresses,
-        }
-        .to_uri();
-        Some((uri, code.remaining()))
+            relay: route.as_deref(),
+            help: code.is_help(),
+        };
+        Some(PairingLinks {
+            qr: link.to_uri(),
+            share: link.to_share(),
+            remaining: code.remaining(),
+            help: code.is_help(),
+            relay: route.is_some(),
+        })
     }
 
     /// Every address a phone may use, best first: home network, then
@@ -220,6 +313,9 @@ impl AppState {
             if let Some(name) = dns_name {
                 out.push(name);
             }
+        }
+        if let Some(route) = self.relay.route() {
+            out.push(format!("relay:{route}"));
         }
         out
     }

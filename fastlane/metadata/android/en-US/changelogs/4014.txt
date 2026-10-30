@@ -1,0 +1,3 @@
+• Pair by tapping a link sent from the computer, or paste it, instead of scanning the QR code
+• Get help: open someone's help link to see and control their computer for a while
+• Away from home without Tailscale, PairDesk connects through its relay, still encrypted end to end
