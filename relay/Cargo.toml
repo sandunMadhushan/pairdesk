@@ -1,0 +1,19 @@
+[package]
+name = "pairdesk-relay"
+version = "0.11.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "PairDesk relay: connects phones to computers that can't be reached directly"
+repository = "https://github.com/sandunMadhushan/pairdesk"
+
+[dependencies]
+env_logger = "0.11"
+getrandom = "0.2"
+log = "0.4"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

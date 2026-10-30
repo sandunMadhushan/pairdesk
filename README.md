@@ -5,13 +5,14 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.9.** Pair once with a QR code; after that the phone
+> **Status: 0.11.** Pair once with a QR code or a link; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls, a live view of the screen, clipboard and files, on your
-> Wi-Fi or from anywhere with Tailscale. Installers for Windows and Linux,
-> automatic updates, smooth H.264 screen view, and on Windows the lock screen,
-> sign-in screen and admin prompts.
+> Wi-Fi or from anywhere (Tailscale or the PairDesk relay), two-way sound, and
+> "Get help" links to help someone else for a while. Installers for Windows and
+> Linux, automatic updates, smooth H.264 screen view, and on Windows the lock
+> screen, sign-in screen and admin prompts.
 
 ## What works now
 
@@ -34,7 +35,9 @@ no codes or "accept" prompts every time.
 | Clipboard | Copy the computer's clipboard to the phone, send the phone's clipboard to the computer, or paste it straight into the computer's active window |
 | Files | Phone → computer: pick files, or **Share → PairDesk** from any app; saved in `Downloads/PairDesk`. Computer → phone: drop files on PairDesk's page, or right-click → **Send to → PairDesk phone** (Windows), "Send to phone (PairDesk)" (GNOME Files, Dolphin); saved in `Download/PairDesk` |
 | Sound | Hear what the computer plays (videos, music, calls) on the phone; talk through the computer's speakers (hold to talk or hands-free); hear the computer's microphone (off unless allowed on the computer; red tray dot while used) |
-| Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) (free for personal use); picks Wi-Fi or Tailscale by itself |
+| Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) if you use it, or else through the PairDesk relay, still encrypted end to end; picks the best route by itself |
+| Links | Pair by sending a link from the computer to the phone (chat, email) instead of scanning the QR code |
+| Get help | Someone presses **Get help** on their computer and sends you the link: you see and control their screen for up to 2 hours, without power, files or sound, and they can end it any time |
 
 ## Quick start
 
@@ -71,7 +74,34 @@ signed with a test key), install 0.8 and pair again.
 Phone and computer must be on the same Wi-Fi. Some guest or campus networks block
 devices from talking to each other; a phone hotspot or home Wi-Fi works.
 
+### Pair with a link instead of the QR code
+
+On the computer, under the QR code, press **Copy** next to the link and send it to
+your phone (a chat with yourself, an email). Tap it on the phone: PairDesk opens
+and pairs. The link works once, for 10 minutes. In the app, **Paste a link** works
+too.
+
+Links go from the computer to the phone, not the other way: the phone connects to
+the computer, so the computer has to hand out its address and a one-time code.
+
+### Help someone else
+
+1. They install PairDesk on their computer, open it and press **Get help** (Home).
+2. They send you the link it shows (chat, email).
+3. You tap it on your phone and confirm. You can see and control their screen;
+   power, session, files and sound stay off for you.
+4. Access ends after 2 hours, 5 minutes after you disconnect, or when they press
+   **End help**. Your phone then forgets that computer.
+
+Across the internet this goes through the PairDesk relay, so no setup is needed on
+either side. The relay only passes encrypted data along; see
+[docs/RELAY.md](docs/RELAY.md) to run your own.
+
 ### Use it away from home
+
+Usually nothing to do: when the phone can't reach the computer directly, it goes
+through the PairDesk relay (**Remote access** on the computer shows whether the relay
+is connected). For a direct, private route you can use Tailscale instead:
 
 1. Install [Tailscale](https://tailscale.com/download) on the computer and on the
    phone, and sign in to both with the same account (free for personal use).
@@ -126,6 +156,13 @@ tools/e2e-wayland.sh
 tools/e2e-update.sh
 # The Windows setup under Wine: install, self-update, uninstall
 SETUP=PairDesk-Setup-x.y.z-x64.exe tools/e2e-windows-setup.sh
+# Sound both ways, with echo cancelling (PipeWire)
+tools/e2e-audio.sh
+# "Get help" through the relay (build relay/ first: cd relay && cargo build)
+tools/e2e-relay.sh
+
+# Relay
+cd relay && cargo test && cargo run -- --listen 127.0.0.1:47900
 
 # Phone app
 cd mobile
@@ -138,11 +175,12 @@ flutter build apk --release
 
 ```text
 agent/      Rust desktop agent: TLS server, pairing, settings page, tray, input, updater
+relay/      PairDesk relay: joins phones and computers that can't reach each other
 mobile/     Flutter phone app (Android now, iPhone later)
 packaging/  Icons, Windows setup and Store package, Linux packages, F-Droid and Flatpak
 fastlane/   F-Droid listing: text, icon, screenshots, changelogs
 site/       pairdesk.madhushan.me
-docs/       Protocol, releasing, stores
+docs/       Protocol, relay hosting, releasing, stores
 tools/      End-to-end tests
 ```
 
@@ -163,7 +201,8 @@ releases in [docs/RELEASING.md](docs/RELEASING.md); store submissions in
 | 6 | Clipboard sync and file transfer |
 | 7 | Installers, automatic updates, website; Microsoft Store and F-Droid packages |
 | 8 | Smoother screen (H.264); Windows sign-in screen and admin prompts; PairDesk window on Windows |
-| **9** | **Two-way sound (this release)** |
+| 9 | Two-way sound, with echo cancelling |
+| **10** | **Pairing links, "Get help", PairDesk relay (this release)** |
 
 ## Contributing
 

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "me.madhushan.pairdesk",
+      "sha256_cert_fingerprints": [
+        "9E:48:8A:D4:6C:84:33:D5:20:8E:BE:95:85:2E:56:59:C8:3B:25:B6:54:09:E6:2C:6B:CD:73:FF:71:7A:21:6A"
+      ]
+    }
+  }
+]

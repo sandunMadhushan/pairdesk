@@ -27,6 +27,7 @@ mod pairing;
 mod power;
 mod prefs;
 mod protocol;
+mod relay;
 mod screen;
 mod server;
 mod shell_menu;
@@ -332,9 +333,30 @@ fn main() {
             Ok(l) => l,
             Err(e) => fatal(&format!("cannot listen: {e}")),
         };
+        // Phones joined to this computer by a relay arrive here.
+        let (relayed_tx, relayed) = tokio::sync::mpsc::channel(8);
+        match relay::load_token(&data_dir) {
+            Ok(token) => {
+                runtime.spawn(relay::run(state.clone(), token, relayed_tx));
+            }
+            Err(e) => warn!("relay: can't keep this computer's relay id: {e}"),
+        }
+        // Helpers' access ends on time, or soon after they leave.
+        {
+            let state = state.clone();
+            runtime.spawn(async move {
+                let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
+                loop {
+                    tick.tick().await;
+                    for name in state.sweep_helpers() {
+                        info!("help from \"{name}\" ended");
+                    }
+                }
+            });
+        }
         let (state, input) = (state.clone(), input.clone());
         runtime.spawn(async move {
-            if let Err(e) = server::run(listener, state, input).await {
+            if let Err(e) = server::run(listener, state, input, relayed).await {
                 error!("phone server stopped: {e}");
             }
         });

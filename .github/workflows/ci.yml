@@ -109,6 +109,24 @@ jobs:
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
+  relay:
+    name: Relay
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: relay
+      - run: cargo fmt --check
+      - run: cargo clippy --release -- -D warnings
+      - run: cargo test
+
   e2e:
     name: End to end (phone code ↔ real agent)
     runs-on: ubuntu-22.04
@@ -118,9 +136,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: agent
+          workspaces: |
+            agent
+            relay
       - run: cargo build --release
         working-directory: agent
+      - run: cargo build --release
+        working-directory: relay
       - uses: subosito/flutter-action@v2
         with:
           flutter-version-file: mobile/pubspec.yaml
@@ -128,6 +150,10 @@ jobs:
       - run: flutter pub get
         working-directory: mobile
       - run: tools/e2e.sh
+      # "Get help" through the relay: pairing link, screen, limits, ending.
+      - run: >-
+          AGENT=agent/target/release/pairdesk-agent RELAY=relay/target/release/pairdesk-relay
+          tools/e2e-relay.sh
       - run: AGENT=agent/target/release/pairdesk-agent tools/e2e-update.sh
 
   e2e-wayland:

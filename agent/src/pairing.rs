@@ -12,9 +12,14 @@ use subtle::ConstantTimeEq;
 /// How long a pairing code stays valid.
 pub const CODE_LIFETIME: Duration = Duration::from_secs(10 * 60);
 
+/// How long a helper keeps access after pairing ("Get help").
+pub const HELP_LIFETIME: Duration = Duration::from_secs(2 * 60 * 60);
+
 pub struct PairingCode {
     token: String,
     expires: Instant,
+    /// A "Get help" code: the phone gets temporary, limited access.
+    help: bool,
 }
 
 impl PairingCode {
@@ -26,7 +31,20 @@ impl PairingCode {
         Self {
             token: crate::config::b64(&crate::config::random_bytes::<16>()),
             expires: Instant::now() + lifetime,
+            help: false,
         }
+    }
+
+    /// A code that lets someone help: temporary, limited access.
+    pub fn for_help() -> Self {
+        Self {
+            help: true,
+            ..Self::new()
+        }
+    }
+
+    pub fn is_help(&self) -> bool {
+        self.help
     }
 
     pub fn token(&self) -> &str {
@@ -47,32 +65,55 @@ impl PairingCode {
     }
 }
 
-/// Everything the phone needs, as a `pairdesk://pair?...` link.
+/// Where the shareable link points; the part after `#` never leaves the
+/// phone (browsers don't send it), and the app reads it.
+pub const SHARE_BASE: &str = "https://pairdesk.madhushan.me/p#";
+
+/// Everything the phone needs, as a `pairdesk://pair?...` link (the QR
+/// code) or a shareable `https://` link (sent by message).
 pub struct PairingLink<'a> {
     pub name: &'a str,
     pub fingerprint: &'a [u8; 32],
     pub token: &'a str,
     pub port: u16,
     pub addresses: &'a [std::net::Ipv4Addr],
+    /// `host:port/id` of the relay this computer is reachable through.
+    pub relay: Option<&'a str>,
+    pub help: bool,
 }
 
 impl PairingLink<'_> {
-    pub fn to_uri(&self) -> String {
+    fn query(&self) -> String {
         let addrs = self
             .addresses
             .iter()
             .map(|a| a.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        format!(
-            "pairdesk://pair?v={}&n={}&fp={}&t={}&p={}&a={}",
+        let mut q = format!(
+            "v={}&n={}&fp={}&t={}&p={}&a={}",
             crate::protocol::PROTOCOL_VERSION,
             percent_encode(self.name),
             crate::config::b64(self.fingerprint),
             self.token,
             self.port,
             addrs
-        )
+        );
+        if let Some(r) = self.relay {
+            q.push_str(&format!("&r={}", percent_encode(r)));
+        }
+        if self.help {
+            q.push_str("&h=1");
+        }
+        q
+    }
+
+    pub fn to_uri(&self) -> String {
+        format!("pairdesk://pair?{}", self.query())
+    }
+
+    pub fn to_share(&self) -> String {
+        format!("{SHARE_BASE}{}", self.query())
     }
 }
 
@@ -113,9 +154,32 @@ mod tests {
             token: "TOKEN",
             port: 47800,
             addresses: &["192.168.1.5".parse().unwrap(), "10.0.0.2".parse().unwrap()],
+            relay: None,
+            help: false,
         }
         .to_uri();
         assert!(link.starts_with("pairdesk://pair?v=2&n=Sandun%27s%20laptop&fp="));
         assert!(link.ends_with("&t=TOKEN&p=47800&a=192.168.1.5,10.0.0.2"));
+    }
+
+    #[test]
+    fn share_link_carries_the_relay_and_help() {
+        let fp = [1u8; 32];
+        let link = PairingLink {
+            name: "PC",
+            fingerprint: &fp,
+            token: "TOKEN",
+            port: 47800,
+            addresses: &[],
+            relay: Some("relay.example.org:443/0123abcd"),
+            help: true,
+        };
+        let share = link.to_share();
+        assert!(share.starts_with("https://pairdesk.madhushan.me/p#v=2&n=PC&fp="));
+        assert!(share.ends_with("&a=&r=relay.example.org%3A443%2F0123abcd&h=1"));
+        assert_eq!(
+            &share[SHARE_BASE.len()..],
+            &link.to_uri()["pairdesk://pair?".len()..]
+        );
     }
 }

@@ -3,6 +3,7 @@
 // connects by itself when it opens.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../agent_connection.dart';
@@ -37,6 +38,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     ShareInbox.instance.addListener(_onShared);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Opened from a pairing or "Get help" link.
+      if (ShareInbox.instance.link != null) {
+        _onShared();
+        return;
+      }
       if (!_model.autoConnectDone && _model.laptops.length == 1) {
         _model.autoConnectDone = true;
         _connect(_model.laptops.first);
@@ -56,6 +62,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {});
     final route = ModalRoute.of(context);
+    if (ShareInbox.instance.link != null && route != null && route.isCurrent && !_busy) {
+      final link = ShareInbox.instance.takeLink();
+      if (link != null) _pairWithLink(link);
+      return;
+    }
     if (ShareInbox.instance.pending != null &&
         route != null &&
         route.isCurrent &&
@@ -78,19 +89,87 @@ class _HomeScreenState extends State<HomeScreen> {
     final link = await Navigator.of(context)
         .push<String>(MaterialPageRoute(builder: (_) => const ScanScreen()));
     if (link == null || !mounted) return;
+    await _pairWithLink(link);
+  }
 
+  /// A link someone sent (pairing, or "Get help"), pasted in.
+  Future<void> _pasteLink() async {
+    if (_busy) return;
+    final clip = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
+    if (!mounted) return;
+    final controller = TextEditingController(
+      text: clip.startsWith('pairdesk://') || clip.startsWith('https://pairdesk.') ? clip : '',
+    );
+    final link = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paste a link'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('A pairing or "Get help" link from PairDesk on a computer.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: controller.text.isEmpty,
+              maxLines: 3,
+              minLines: 1,
+              decoration: const InputDecoration(hintText: 'https://pairdesk.madhushan.me/p#…'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    if (link == null || link.isEmpty || !mounted) return;
+    await _pairWithLink(link);
+  }
+
+  Future<void> _pairWithLink(String link) async {
     final PairingInfo info;
     try {
       info = parsePairingLink(link);
     } on PairingLinkException catch (e) {
-      _showMessage('Can\'t use this code', e.message);
+      _showMessage('Can\'t use this link', e.message);
       return;
+    }
+    if (info.help) {
+      final yes = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.support_agent),
+          title: Text('Help on ${info.name}?'),
+          content: const Text(
+            'Someone asked for your help. You\'ll see and control their computer for up to '
+            '2 hours, or until either of you ends it. They see that you\'re connected.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Connect')),
+          ],
+        ),
+      );
+      if (yes != true || !mounted) return;
     }
     Laptop? paired;
     final ok = await _withProgress(() async => paired = await _model.pair(info));
     if (!ok || !mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Paired with ${paired!.name}. It\'s saved on this phone.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          info.help
+              ? 'Connected to ${paired!.name}.'
+              : 'Paired with ${paired!.name}. It\'s saved on this phone.',
+        ),
+      ),
+    );
     await _openControl(paired!);
   }
 
@@ -104,7 +183,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     final error = _conn.lastError;
     if (error == null) return;
-    if (error.kind == FailureKind.notPaired) {
+    if (error.kind == FailureKind.notPaired && laptop.helping) {
+      await _helpEnded(laptop);
+    } else if (error.kind == FailureKind.notPaired) {
       await _explainFailure(error, laptop);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -144,7 +225,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return ok;
   }
 
+  /// A help session's access ended on the computer: forget it here too.
+  Future<void> _helpEnded(Laptop laptop) async {
+    await _model.forget(laptop);
+    if (!mounted) return;
+    await _showMessage(
+      'Help session ended',
+      'Your access to ${laptop.name} ended. To help again, ask for a new "Get help" link.',
+    );
+  }
+
   Future<void> _explainFailure(AgentException e, Laptop? laptop) async {
+    if (e.kind == FailureKind.notPaired && laptop != null && laptop.helping) return _helpEnded(laptop);
     final network = laptop?.reachableAnywhere == true
         ? '• the phone and the computer are on the same Wi-Fi, or, away from home, '
               'Tailscale is on, on both of them'
@@ -256,6 +348,11 @@ class _HomeScreenState extends State<HomeScreen> {
           appBar: AppBar(
             title: const Text('PairDesk'),
             actions: [
+              IconButton(
+                tooltip: 'Paste a link',
+                icon: const Icon(Icons.add_link),
+                onPressed: _busy ? null : _pasteLink,
+              ),
               if (_model.settings case final settings?)
                 IconButton(
                   tooltip: 'Settings',
@@ -277,7 +374,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ? Column(
                   children: [
                     if (update != null) _UpdateCard(update: update, onDismiss: widget.updates!.dismiss),
-                    Expanded(child: _EmptyState(onAdd: _busy ? null : _addComputer)),
+                    Expanded(
+                      child: _EmptyState(
+                        onAdd: _busy ? null : _addComputer,
+                        onPaste: _busy ? null : _pasteLink,
+                      ),
+                    ),
                   ],
                 )
               : ListView(
@@ -399,15 +501,19 @@ class _LaptopTile extends StatelessWidget {
         leading: CircleAvatar(
           backgroundColor: scheme.primaryContainer,
           foregroundColor: scheme.onPrimaryContainer,
-          child: const Icon(Icons.laptop),
+          child: Icon(laptop.helping ? Icons.support_agent : Icons.laptop),
         ),
         title: Text(laptop.name, overflow: TextOverflow.ellipsis),
-        subtitle: Text(switch ((os, laptop.reachableAnywhere)) {
-          (null, true) => 'Wi-Fi or Tailscale',
-          (null, false) => 'Tap to connect',
-          (final os?, true) => '$os · Wi-Fi or Tailscale',
-          (final os?, false) => '$os · tap to connect',
-        }),
+        subtitle: Text(
+          laptop.helping
+              ? 'Helping · temporary access'
+              : switch ((os, laptop.reachableAnywhere)) {
+                  (null, true) => 'Here or away',
+                  (null, false) => 'Tap to connect',
+                  (final os?, true) => '$os · here or away',
+                  (final os?, false) => '$os · tap to connect',
+                },
+        ),
         onTap: onTap,
         trailing: PopupMenuButton<String>(
           tooltip: 'More',
@@ -423,9 +529,10 @@ class _LaptopTile extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onAdd});
+  const _EmptyState({required this.onAdd, required this.onPaste});
 
   final VoidCallback? onAdd;
+  final VoidCallback? onPaste;
 
   @override
   Widget build(BuildContext context) {
@@ -468,6 +575,15 @@ class _EmptyState extends StatelessWidget {
                   onPressed: onAdd,
                   icon: const Icon(Icons.qr_code_scanner),
                   label: const Text('Scan pairing code'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onPaste,
+                  icon: const Icon(Icons.add_link),
+                  label: const Text('Paste a link instead'),
                 ),
               ),
             ],

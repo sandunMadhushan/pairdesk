@@ -200,6 +200,10 @@
   dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
   dl.about dt { color: var(--muted); }
   dl.about dd { margin: 0; overflow-wrap: anywhere; }
+  .linkbox { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; }
+  .linkbox input { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+  .warn-note { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 12px; }
+  .help-card { border-color: var(--accent); }
   .stopped { display: grid; place-items: center; height: 100vh; text-align: center; padding: 24px; }
 
   /* Narrow (a small browser window): the sidebar becomes a bar on top. */
@@ -264,6 +268,10 @@
         <span id="viewing-text"></span>
         <button id="btn-stop-view">Stop</button>
       </div>
+      <div id="helping" class="banner viewing" hidden role="status">
+        <span id="helping-text"></span>
+        <button id="btn-end-help">End help</button>
+      </div>
       <div id="listening" class="banner viewing" hidden role="status">
         <span id="listening-text"></span>
         <button id="btn-stop-audio">Stop</button>
@@ -295,6 +303,26 @@
         <div class="row"><button id="btn-wl-allow" class="primary">Allow control</button></div>
       </div>
 
+      <div class="card help-card" id="help-active" hidden>
+        <h2>Someone can help you now</h2>
+        <div class="warn-note"><b>Only send this to someone you know and trust.</b> They'll see and control this computer. PairDesk will never ask you for it.</div>
+        <div class="pair">
+          <div class="qr" id="help-qr" aria-label="Help QR code"></div>
+          <div class="grow">
+            <p style="margin:0 0 6px">Send them this link. They open it on their phone with the PairDesk app (or scan the code).</p>
+            <div class="linkbox"><input type="text" id="help-share" readonly aria-label="Help link"><button id="btn-copy-help" class="primary">Copy link</button></div>
+            <p class="muted" id="help-where"></p>
+            <p class="hint" style="margin:0 0 10px">They can see the screen, use the pointer and keyboard, the clipboard and apps. Not: shut down, files or sound. Access ends after 2 hours, when they leave, or when you end it.</p>
+            <button id="btn-help-cancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="help-idle">
+        <div class="setting">
+          <div class="what"><b>Get help from someone</b><small>Let a friend see and control this computer from their phone, for a while. Works from anywhere.</small></div>
+          <button id="btn-get-help">Get help</button>
+        </div>
+      </div>
       <div class="tiles">
         <button class="tile" data-go="phones"><svg><use href="#i-phone"/></svg><b>Phones</b><span id="tile-phones">–</span></button>
         <button class="tile" data-go="files"><svg><use href="#i-upload"/></svg><b>Send files</b><span id="tile-files">–</span></button>
@@ -323,7 +351,9 @@
               <li>Open PairDesk on your phone.</li>
               <li>Tap <b>Scan pairing code</b> and point the camera at this code.</li>
             </ol>
-            <p class="muted">Phone and computer must be on the same Wi-Fi. The code works once and expires in <span id="expires"></span>.</p>
+            <p class="muted" id="pair-where"></p>
+            <p class="hint" style="margin:0 0 4px">Or send this link to your phone and open it there (or paste it in the app):</p>
+            <div class="linkbox"><input type="text" id="pair-share" readonly aria-label="Pairing link"><button id="btn-copy-pair">Copy</button></div>
             <div class="row">
               <button id="btn-new">New code</button>
               <button id="btn-cancel">Cancel</button>
@@ -445,6 +475,17 @@
           <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address.</li>
         </ol>
         <div class="row" style="margin-top:12px"><button id="btn-recheck">Check again</button></div>
+      </div>
+      <div class="card">
+        <h2>PairDesk relay</h2>
+        <div class="status-line" role="status"><span class="dot" id="relay-dot"></span><div id="relay-text"></div></div>
+        <p class="hint">When your phone can't reach this computer directly (another network, no Tailscale), it connects through the relay. Everything stays encrypted between your phone and this computer: the relay only passes it along and can't see your screen or what you type.</p>
+        <label class="setting" style="padding-top:4px"><span class="what"><b>Use the relay</b></span>
+          <span class="toggle"><input type="checkbox" id="relay-on"><span></span></span></label>
+        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Relay server</summary>
+          <div class="linkbox" style="margin-top:8px"><input type="text" id="relay-address" spellcheck="false" aria-label="Relay server (host:port)"><button id="btn-relay-save">Save</button></div>
+          <p class="hint" style="margin:0">host:port. You can run your own: see docs/RELAY.md in the PairDesk repository.</p>
+        </details>
       </div>
       <div class="card">
         <label class="setting"><span class="what"><b>Keep this computer awake</b><small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span>
@@ -577,24 +618,44 @@ function render(s) {
   pc.hidden = connected.length === 0;
   pc.textContent = connected.length;
 
-  // Pairing
-  const pairing = s.pairing;
+  // Pairing (a "Get help" code shows on Home instead)
+  const help = s.pairing && s.pairing.help ? s.pairing : null;
+  const pairing = s.pairing && !s.pairing.help ? s.pairing : null;
   $("pair-idle").hidden = !!pairing;
   $("pair-active").hidden = !pairing;
+  $("help-active").hidden = !help;
+  $("help-idle").hidden = !!help;
+  if (help) {
+    if ($("help-qr").dataset.link !== help.link) {
+      $("help-qr").innerHTML = help.svg; // generated by this agent, not user input
+      $("help-qr").dataset.link = help.link;
+      $("help-share").value = help.share;
+    }
+    const hm = Math.floor(help.expires_in / 60), hs = help.expires_in % 60;
+    $("help-where").textContent = (help.relay
+      ? "Works from anywhere. "
+      : "Works on this Wi-Fi only: the relay isn't connected (see Remote access). ") +
+      "The link works once and expires in " + hm + ":" + String(hs).padStart(2, "0") + ".";
+  }
   if (pairing) {
+    $("pair-share").value = pairing.share;
+    $("pair-where").textContent = (pairing.relay ? "" : "Phone and computer must be on the same Wi-Fi. ") +
+      "The code works once and expires in " + Math.floor(pairing.expires_in / 60) + ":" +
+      String(pairing.expires_in % 60).padStart(2, "0") + ".";
     if ($("qr").dataset.link !== pairing.link) {
       $("qr").innerHTML = pairing.svg; // generated by this agent, not user input
       $("qr").dataset.link = pairing.link;
     }
-    const m = Math.floor(pairing.expires_in / 60), sec = pairing.expires_in % 60;
-    $("expires").textContent = m + ":" + String(sec).padStart(2, "0");
+
   }
 
   // New phone appeared while pairing → success
   const ids = s.phones.map((p) => p.id);
   if (lastPhoneIds && wasPairing && !pairing) {
     const added = s.phones.find((p) => !lastPhoneIds.includes(p.id));
-    if (added) showBanner("Paired with " + added.name + ". It can now connect any time.");
+    if (added) showBanner(added.helping_until
+      ? added.name + " is connected to help you."
+      : "Paired with " + added.name + ". It can now connect any time.");
   }
   lastPhoneIds = ids;
   wasPairing = !!pairing;
@@ -619,6 +680,12 @@ function render(s) {
     meta.textContent = p.connected ? "Connected from " + p.address : "Last used " + ago(p.last_seen);
     info.append(n, meta);
     li.append(info);
+    if (p.helping_until) {
+      const b = document.createElement("span");
+      b.className = "badge view";
+      b.textContent = "Helping until " + new Date(p.helping_until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      li.append(b);
+    }
     if (p.listening && p.listening.mic) {
       const b = document.createElement("span");
       b.className = "badge view";
@@ -713,6 +780,17 @@ function render(s) {
   $("viewing-text").textContent = viewers.length
     ? viewers.map((p) => p.name).join(", ") + (viewers.length > 1 ? " are" : " is") + " viewing your screen."
     : "";
+
+  // Someone is helping
+  const helpers = s.phones.filter((p) => p.helping_until && p.connected);
+  $("helping").hidden = helpers.length === 0;
+  $("helping-text").textContent = helpers.length
+    ? helpers.map((p) => p.name).join(", ") + (helpers.length > 1 ? " are" : " is") + " helping you and can control this computer."
+    : "";
+  $("btn-end-help").dataset.ids = helpers.map((p) => p.id).join(",");
+
+  // Relay
+  renderRelay(s.relay);
 
   // Someone hears the microphone
   const ears = s.phones.filter((p) => p.listening && p.listening.mic);
@@ -811,6 +889,30 @@ function size(n) {
 }
 
 let connectedPhones = [];
+function renderRelay(r) {
+  if (!r) return;
+  const st = r.state || { status: "off" };
+  $("relay-dot").className = "dot" + (st.status === "online" ? " ok" : st.status === "failed" ? " warn" : "");
+  $("relay-text").textContent = {
+    online: "Connected. Your phones can reach this computer from anywhere.",
+    connecting: "Connecting to the relay…",
+    failed: "Can't reach the relay (" + (st.msg || "unknown error") + "). Trying again.",
+    off: "Off. Phones reach this computer only on the same Wi-Fi or through Tailscale.",
+  }[st.status] || "";
+  const on = $("relay-on"), addr = $("relay-address");
+  if (document.activeElement !== on) on.checked = r.on;
+  if (document.activeElement !== addr && !addr.dataset.edited) addr.value = r.address;
+}
+
+async function copyText(input, button) {
+  input.select();
+  try { await navigator.clipboard.writeText(input.value); }
+  catch (e) { document.execCommand("copy"); }
+  const old = button.textContent;
+  button.textContent = "Copied";
+  setTimeout(() => (button.textContent = old), 1500);
+}
+
 function renderSecure(sd) {
   $("nav-secure").hidden = $("tile-secure-wrap").hidden = !sd;
   if (!sd) { if (currentPage === "secure") go("home"); return; }
@@ -1005,6 +1107,28 @@ $("sc-form").onsubmit = async (e) => {
   } catch (err) { showBanner(err.message, true); }
 };
 
+$("btn-get-help").onclick = async () => {
+  go("home");
+  try { render(await post("pair", { help: true })); } catch (e) { showBanner(e.message, true); }
+};
+$("btn-help-cancel").onclick = async () => render(await post("cancel-pair"));
+$("btn-copy-help").onclick = () => copyText($("help-share"), $("btn-copy-help"));
+$("btn-copy-pair").onclick = () => copyText($("pair-share"), $("btn-copy-pair"));
+$("btn-end-help").onclick = async () => {
+  for (const id of ($("btn-end-help").dataset.ids || "").split(",").filter(Boolean)) {
+    try { render(await post("remove", { id })); } catch (e) { showBanner(e.message, true); }
+  }
+  showBanner("Help ended. They can't connect again without a new link.");
+};
+const saveRelay = async () => {
+  try {
+    render(await post("relay", { on: $("relay-on").checked, address: $("relay-address").value }));
+    delete $("relay-address").dataset.edited;
+  } catch (e) { showBanner(e.message, true); refresh(); }
+};
+$("relay-on").onchange = saveRelay;
+$("btn-relay-save").onclick = saveRelay;
+$("relay-address").oninput = () => ($("relay-address").dataset.edited = "1");
 $("btn-stop-audio").onclick = async () => {
   try { render(await post("stop-audio", {})); } catch (e) { showBanner(e.message, true); }
 };

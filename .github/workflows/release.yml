@@ -121,7 +121,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: agent
+          workspaces: |
+            agent
+            relay
       # glibc 2.31: runs on Ubuntu 20.04, Debian 11 and newer.
       - run: |
           pip install ziglang
@@ -132,6 +134,14 @@ jobs:
           mkdir -p out
           cp agent/target/x86_64-unknown-linux-gnu/release/pairdesk-agent out/pairdesk-agent-$VERSION-linux-x64
           packaging/linux/build-packages.sh "$VERSION" out/pairdesk-agent-$VERSION-linux-x64 out
+      # The relay, for whoever hosts one (docs/RELAY.md): static, any Linux.
+      - run: |
+          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+          cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
+          cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/pairdesk-relay ../out/pairdesk-relay-linux-x64
+          cp target/aarch64-unknown-linux-musl/release/pairdesk-relay ../out/pairdesk-relay-linux-arm64
+        working-directory: relay
       - uses: actions/upload-artifact@v5
         with:
           name: linux
@@ -290,6 +300,7 @@ jobs:
           | **Windows** | [PairDesk-Setup-$VERSION-x64.exe]($dl/PairDesk-Setup-$VERSION-x64.exe) (recommended), or the [program file]($dl/pairdesk-agent-$VERSION-windows-x64.exe) |
           | **Linux** | [.deb]($dl/pairdesk_${VERSION}_amd64.deb) (Ubuntu, Debian), [.rpm]($dl/pairdesk-$VERSION-1.x86_64.rpm) (Fedora, openSUSE), [AppImage]($dl/PairDesk-$VERSION-x86_64.AppImage) (any distribution) |
           | **Android** | [arm64]($dl/pairdesk-$VERSION-android-arm64.apk) (most phones), [armv7]($dl/pairdesk-$VERSION-android-armv7.apk) (older phones) |
+          | **Relay** (for hosting your own, see [RELAY.md](https://github.com/$REPO/blob/main/docs/RELAY.md)) | [Linux x64]($dl/pairdesk-relay-linux-x64), [Linux arm64]($dl/pairdesk-relay-linux-arm64) |
 
           Check downloads against \`SHA256SUMS.txt\`. PairDesk checks its own updates against \`latest.json.sig\`.
           EOF

@@ -165,8 +165,41 @@ fn handle(
         ),
         (Method::Get, "/api/state") => send_state(request, state),
         (Method::Post, "/api/pair") => {
-            state.start_pairing();
+            #[derive(Deserialize, Default)]
+            struct Body {
+                #[serde(default)]
+                help: bool,
+            }
+            let b: Body = serde_json::from_str(&body).unwrap_or_default();
+            if b.help {
+                state.start_help();
+            } else {
+                state.start_pairing();
+            }
             send_state(request, state)
+        }
+        (Method::Post, "/api/relay") => {
+            #[derive(Deserialize)]
+            struct Body {
+                on: bool,
+                address: String,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) if !b.on || valid_relay(&b.address) => {
+                    let saved = state.prefs().set_relay(b.on, &b.address);
+                    state.relay.settings_changed();
+                    match saved {
+                        Ok(()) => send_state(request, state),
+                        Err(e) => status(request, 500, &format!("could not save: {e}")),
+                    }
+                }
+                Some(_) => status(
+                    request,
+                    400,
+                    "Enter the relay as host:port, e.g. relay.example.org:443.",
+                ),
+                None => status(request, 400, "bad request"),
+            }
         }
         (Method::Post, "/api/cancel-pair") => {
             state.cancel_pairing();
@@ -497,13 +530,15 @@ fn send_state(request: Request, state: &AppState) {
                 "last_seen": p.last_seen,
                 "connected": connected.is_some(),
                 "viewing": viewing.contains(&p.id),
+                "helping_until": p.help_until,
                 "listening": listening.iter().find(|l| l.0 == p.id).map(|l| json!({ "sound": l.1, "mic": l.2 })),
                 "address": connected.map(|s| s.address.clone()),
             })
         })
         .collect();
 
-    let pairing = state.pairing_link().map(|(link, remaining)| {
+    let pairing = state.pairing_links().map(|l| {
+        let link = l.qr;
         let svg = qrcode::QrCode::with_error_correction_level(&link, qrcode::EcLevel::M)
             .map(|code| {
                 code.render::<qrcode::render::svg::Color>()
@@ -512,7 +547,14 @@ fn send_state(request: Request, state: &AppState) {
                     .build()
             })
             .unwrap_or_default();
-        json!({ "link": link, "svg": svg, "expires_in": remaining.as_secs() })
+        json!({
+            "link": link,
+            "share": l.share,
+            "help": l.help,
+            "relay": l.relay,
+            "svg": svg,
+            "expires_in": l.remaining.as_secs(),
+        })
     });
 
     let addrs = crate::net::addresses();
@@ -570,6 +612,12 @@ fn send_state(request: Request, state: &AppState) {
         },
         "shortcuts": shortcuts,
         "remote": remote,
+        "relay": {
+            "on": prefs.relay_on,
+            "address": prefs.relay,
+            "default": crate::relay::DEFAULT_RELAY,
+            "state": state.relay.status(),
+        },
         "keep_awake": state.awake.is_on(),
         "transfers": state.transfers(),
         "downloads": crate::files::downloads_dir().display().to_string(),
@@ -703,8 +751,31 @@ fn reveal(path: &std::path::Path) {
     }
 }
 
+/// `host:port`, with a sensible host.
+fn valid_relay(address: &str) -> bool {
+    let a = address.trim();
+    let Some((host, port)) = a.rsplit_once(':') else {
+        return false;
+    };
+    !host.is_empty()
+        && host.len() < 254
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '[' | ']' | ':'))
+        && port.parse::<u16>().is_ok_and(|p| p > 0)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn relay_addresses() {
+        assert!(super::valid_relay("relay.example.org:443"));
+        assert!(super::valid_relay(" 10.0.0.2:47900 "));
+        assert!(!super::valid_relay("relay.example.org"));
+        assert!(!super::valid_relay("bad host:443"));
+        assert!(!super::valid_relay("host:0"));
+    }
+
     use super::*;
 
     #[test]

@@ -50,6 +50,20 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
+            <!-- Pairing and "Get help" links: from the QR code, or sent in a
+                 message (the https form; the part after # stays on the phone). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="pairdesk" android:host="pair"/>
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="pairdesk.madhushan.me" android:path="/p"/>
+            </intent-filter>
         </activity>
         <!-- Opening received files on Android 9 and older (kept in the app's folder). -->
         <provider
