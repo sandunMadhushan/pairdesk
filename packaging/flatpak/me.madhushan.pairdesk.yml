@@ -24,6 +24,9 @@ finish-args:
   # Wayland, the X server (XTEST, XShm) on X11 desktops.
   - --socket=wayland
   - --socket=fallback-x11
+  # Sound: the computer's sound and microphone to the phone, the phone's
+  # voice to the speakers (PulseAudio, or PipeWire's PulseAudio service).
+  - --socket=pulseaudio
   # Tray icon.
   - --talk-name=org.kde.StatusNotifierWatcher
   # Launching the computer's apps and power actions (lock, sleep, restart,
@@ -59,5 +62,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/sandunMadhushan/pairdesk.git
-        tag: v0.9.1
+        tag: v0.10.0
       - cargo-sources.json

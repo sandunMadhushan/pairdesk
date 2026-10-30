@@ -37,6 +37,12 @@ pub struct Prefs {
     /// Receive files from phones.
     #[serde(default = "yes")]
     pub allow_files: bool,
+    /// Hear the computer's sound; talk through its speakers.
+    #[serde(default = "yes")]
+    pub allow_audio: bool,
+    /// Hear the computer's microphone. Off until the owner turns it on.
+    #[serde(default)]
+    pub allow_mic: bool,
     #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
     /// Keep the computer from sleeping so phones can always reach it.
@@ -56,6 +62,8 @@ impl Default for Prefs {
             allow_screen: true,
             allow_clipboard: true,
             allow_files: true,
+            allow_audio: true,
+            allow_mic: false,
             shortcuts: Vec::new(),
             keep_awake: false,
             check_updates: true,
@@ -106,6 +114,8 @@ impl Prefs {
             screen: self.allow_screen,
             clipboard: self.allow_clipboard,
             files: self.allow_files,
+            audio: self.allow_audio,
+            mic: self.allow_mic,
         }
     }
 
@@ -160,6 +170,16 @@ impl PrefsStore {
 
     pub fn set_allow_clipboard(&mut self, on: bool) -> io::Result<()> {
         self.prefs.allow_clipboard = on;
+        self.save()
+    }
+
+    pub fn set_allow_audio(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.allow_audio = on;
+        self.save()
+    }
+
+    pub fn set_allow_mic(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.allow_mic = on;
         self.save()
     }
 

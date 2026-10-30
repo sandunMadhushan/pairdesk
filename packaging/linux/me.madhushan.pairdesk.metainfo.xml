@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.10.0" date="2026-10-30">
+      <description>
+        <p>Two-way sound: hear the computer on the phone, talk through the computer's speakers, and (if allowed) hear its microphone.</p>
+      </description>
+    </release>
     <release version="0.9.1" date="2026-10-30">
       <description>
         <p>Fixes the phone app closing when Smooth screen view is on. A new look with separate screens, and on Windows, PairDesk opens in its own window instead of the browser.</p>

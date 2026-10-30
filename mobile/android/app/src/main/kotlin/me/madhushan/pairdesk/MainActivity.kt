@@ -50,6 +50,32 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
+    private var micAnswer: ((Boolean) -> Unit)? = null
+    private val micPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val answer = micAnswer
+            micAnswer = null
+            answer?.invoke(granted)
+        }
+    private var audio: AudioChannel? = null
+
+    /// Asks for the microphone (to talk to the computer).
+    fun requestMicPermission(answer: (Boolean) -> Unit) {
+        micAnswer?.invoke(false)
+        micAnswer = answer
+        try {
+            micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+        } catch (e: Exception) {
+            micAnswer = null
+            answer(false)
+        }
+    }
+
+    override fun onDestroy() {
+        audio?.release()
+        super.onDestroy()
+    }
+
     /// What another app shared, until Dart takes it.
     private var sharedUris: List<Uri> = emptyList()
     private var sharedText: String? = null
@@ -67,6 +93,7 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         VideoChannel(flutterEngine)
+        audio = AudioChannel(flutterEngine, this)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pairdesk/files").apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {

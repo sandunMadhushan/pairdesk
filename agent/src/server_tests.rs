@@ -392,12 +392,14 @@ async fn welcome_lists_features_and_permissions() {
             "screen",
             "clipboard",
             "files",
-            "video"
+            "video",
+            "audio"
         ])
     );
+    // The microphone is off until the owner allows it.
     assert_eq!(
         welcome["allow"],
-        json!({"power": true, "session": true, "apps": true, "screen": true, "clipboard": true, "files": true})
+        json!({"power": true, "session": true, "apps": true, "screen": true, "clipboard": true, "files": true, "audio": true, "mic": false})
     );
 }
 

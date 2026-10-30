@@ -214,6 +214,21 @@ pub enum ClientMsg {
     /// Send the whole screen again on the next frame.
     ScreenRefresh,
     ScreenStop,
+    /// Starts (or changes) listening: the computer's sound and/or its
+    /// microphone, sent as "PDA1" binary messages (since 0.10). Answered
+    /// with `audio`. Both false stops it.
+    AudioStart {
+        #[serde(default)]
+        id: Option<u64>,
+        #[serde(default)]
+        sound: bool,
+        #[serde(default)]
+        mic: bool,
+        /// What the phone can decode, best first: `opus`, `pcm`.
+        #[serde(default)]
+        codecs: Vec<String>,
+    },
+    AudioStop,
     /// Moves the pointer to a point on the shown screen, 0..1 from the
     /// top-left corner.
     MoveTo {
@@ -321,6 +336,24 @@ pub enum ServerMsg {
     ScreenStopped {
         msg: String,
     },
+    /// Answer to `audio_start`; "PDA1" messages follow.
+    Audio {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<u64>,
+        /// `opus` or `pcm` (16-bit little-endian).
+        codec: &'static str,
+        rate: u32,
+        channels: u32,
+        frame_ms: u32,
+        /// Opus samples to drop at the start (for the decoder's header).
+        pre_skip: u16,
+        sound: bool,
+        mic: bool,
+    },
+    /// Listening ended on the computer's side.
+    AudioStopped {
+        msg: String,
+    },
     /// Something the person should know (e.g. "approve on the computer").
     /// Phones before 0.6 ignore it.
     Notice {
@@ -393,6 +426,12 @@ pub struct Allow {
     pub clipboard: bool,
     /// Send files to this computer.
     pub files: bool,
+    /// Hear the computer's sound and talk through its speakers (0.10).
+    #[serde(default)]
+    pub audio: bool,
+    /// Hear the computer's microphone (0.10).
+    #[serde(default)]
+    pub mic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -609,13 +648,15 @@ mod tests {
                 screen: true,
                 clipboard: true,
                 files: false,
+                audio: true,
+                mic: false,
             },
             addrs: vec!["192.168.1.5".into(), "100.101.102.103".into()],
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true,"clipboard":true,"files":false},"addrs":["192.168.1.5","100.101.102.103"]}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true,"clipboard":true,"files":false,"audio":true,"mic":false},"addrs":["192.168.1.5","100.101.102.103"]}"#
         );
         let json = serde_json::to_string(&ServerMsg::Ack {
             id: Some(4),
