@@ -9,6 +9,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod apps;
+mod audio;
 mod auth;
 mod autostart;
 mod awake;

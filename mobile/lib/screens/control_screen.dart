@@ -4,6 +4,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../agent_connection.dart';
+import '../audio/audio_controller.dart';
+import '../audio/native_audio.dart';
+import '../audio/sound_sheet.dart';
 import '../files/share_inbox.dart';
 import '../files/transfers.dart';
 import 'exchange_sheet.dart';
@@ -21,7 +24,11 @@ class ControlScreen extends StatefulWidget {
     required this.laptopKey,
     this.settings,
     this.inbox,
+    this.audioBackend,
   });
+
+  /// The phone's sound hardware (tests use a stand-in).
+  final AudioBackend? audioBackend;
 
   final AgentConnection connection;
 
@@ -36,7 +43,7 @@ class ControlScreen extends StatefulWidget {
   State<ControlScreen> createState() => _ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> {
+class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserver {
   final _text = TextEditingController();
   final _textFocus = FocusNode();
   bool _showKeyboard = false;
@@ -47,6 +54,7 @@ class _ControlScreenState extends State<ControlScreen> {
   StreamSubscription<String>? _notices;
   StreamSubscription<Transfer>? _received;
   late final Exchange _exchange = Exchange(_conn, _say);
+  late final AudioController _audio = AudioController(_conn, backend: widget.audioBackend);
   ShareInbox get _inbox => widget.inbox ?? ShareInbox.instance;
 
   void _say(String text, {SnackBarAction? action}) {
@@ -76,6 +84,31 @@ class _ControlScreenState extends State<ControlScreen> {
     });
     _inbox.addListener(_takeShared);
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeShared());
+    WidgetsBinding.instance.addObserver(this);
+    _audio.addListener(_onAudioChanged);
+  }
+
+  // Sound stops while PairDesk isn't on screen, and picks up again after.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _audio.resume();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _audio.pause();
+    }
+  }
+
+  void _onAudioChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _openSound() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => SoundSheet(audio: _audio),
+    );
   }
 
   /// "Share → PairDesk" from another app: files go to the computer, text
@@ -102,6 +135,9 @@ class _ControlScreenState extends State<ControlScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _audio.removeListener(_onAudioChanged);
+    _audio.dispose();
     _inbox.removeListener(_takeShared);
     _received?.cancel();
     _notices?.cancel();
@@ -247,6 +283,20 @@ class _ControlScreenState extends State<ControlScreen> {
                   ),
                 ),
                 actions: [
+                  if (_audio.talking)
+                    IconButton(
+                      tooltip: 'Stop talking',
+                      color: Theme.of(context).colorScheme.error,
+                      icon: const Icon(Icons.mic),
+                      onPressed: _audio.stopTalking,
+                    ),
+                  IconButton(
+                    tooltip: 'Sound',
+                    isSelected: _audio.sound || _audio.mic,
+                    icon: const Icon(Icons.headphones_outlined),
+                    selectedIcon: const Icon(Icons.headphones),
+                    onPressed: _openSound,
+                  ),
                   IconButton(
                     tooltip: 'Clipboard and files',
                     icon: const Icon(Icons.swap_vert),

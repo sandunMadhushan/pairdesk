@@ -34,6 +34,7 @@ const FEATURES: &[&str] = &[
     "clipboard",
     "files",
     "video",
+    "audio",
 ];
 /// Largest WebSocket message accepted from a phone (a file chunk is 128 KiB,
 /// clipboard text up to 200 KB).
@@ -267,6 +268,12 @@ async fn serve(
         HashMap::new();
     let (sent_tx, mut sent_rx) = tokio::sync::mpsc::unbounded_channel::<u32>();
     let mut next_fid = files::AGENT_FIDS;
+    // Sound for the phone: a short queue; packets are dropped rather than
+    // delayed when the network is slow.
+    let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(25);
+    let mut listener: Option<crate::audio::Listener> = None;
+    let mut speaker: Option<crate::audio::Speaker> = None;
+    let mut speaker_failed: Option<std::time::Instant> = None;
 
     let result = async {
         loop {
@@ -276,11 +283,18 @@ async fn serve(
                     if matches!(reply, ServerMsg::ScreenStopped { .. }) {
                         stop_viewer(&mut viewer, state, session);
                     }
+                    if matches!(reply, ServerMsg::AudioStopped { .. }) {
+                        stop_listener(&mut listener, state, session);
+                    }
                     send(&mut sink, &reply).await?;
                     continue;
                 }
                 Some(frame) = frame_rx.recv() => {
                     sink.send(Message::binary(frame)).await.map_err(|e| e.to_string())?;
+                    continue;
+                }
+                Some(packet) = audio_rx.recv() => {
+                    sink.send(Message::binary(packet)).await.map_err(|e| e.to_string())?;
                     continue;
                 }
                 Ok(msg) = notices.recv() => {
@@ -338,6 +352,37 @@ async fn serve(
                 Message::Close(_) => break,
                 Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
                 Message::Binary(b) => {
+                    if let Some(voice) = crate::audio::parse_talk(&b) {
+                        if !state.prefs().get().allow_audio {
+                            continue;
+                        }
+                        if speaker.as_ref().is_some_and(|s| !s.is_open()) {
+                            speaker = None;
+                        }
+                        let retry = speaker_failed.is_none_or(|t| t.elapsed() > Duration::from_secs(5));
+                        if speaker.is_none() && retry {
+                            match tokio::task::block_in_place(crate::audio::Speaker::open) {
+                                Ok(s) => {
+                                    info!("{peer}: \"{}\" is talking through the speakers", who.name);
+                                    speaker = Some(s);
+                                    speaker_failed = None;
+                                }
+                                Err(e) => {
+                                    warn!("{peer}: speakers: {e}");
+                                    if speaker_failed.is_none() {
+                                        send(&mut sink, &ServerMsg::Notice {
+                                            msg: format!("Can't play your voice on the computer: {e}"),
+                                        }).await?;
+                                    }
+                                    speaker_failed = Some(std::time::Instant::now());
+                                }
+                            }
+                        }
+                        if let Some(s) = speaker.as_mut() {
+                            s.play(voice);
+                        }
+                        continue;
+                    }
                     let Some((fid, offset, data)) = files::parse_chunk(&b) else {
                         send(&mut sink, &error(ErrorCode::BadMessage, "unknown binary message")).await?;
                         continue;
@@ -471,6 +516,87 @@ async fn serve(
                     }
                 }
                 ClientMsg::ScreenStop => stop_viewer(&mut viewer, state, session),
+                ClientMsg::AudioStart { id, sound, mic, codecs } => {
+                    stop_listener(&mut listener, state, session);
+                    if !sound && !mic {
+                        send(&mut sink, &ack(id, Ok(()))).await?;
+                        continue;
+                    }
+                    let (allow_audio, allow_mic) = {
+                        let p = state.prefs();
+                        (p.get().allow_audio, p.get().allow_mic)
+                    };
+                    if (sound && !allow_audio) || (mic && !allow_mic) {
+                        send(&mut sink, &ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into())))).await?;
+                        continue;
+                    }
+                    let Some(codec) = crate::audio::Codec::choose(&codecs) else {
+                        send(&mut sink, &ack(id, Err((AckCode::Failed, "No sound format in common.".into())))).await?;
+                        continue;
+                    };
+                    let (packets, notes) = (audio_tx.clone(), reply_tx.clone());
+                    let started = tokio::task::spawn_blocking(move || {
+                        crate::audio::Listener::start(
+                            sound,
+                            mic,
+                            codec,
+                            move |p| match packets.try_send(p) {
+                                Ok(()) => true,
+                                // Behind: drop this packet, keep going.
+                                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => true,
+                                Err(_) => false,
+                            },
+                            move |msg| {
+                                let _ = notes.send(ServerMsg::AudioStopped { msg });
+                            },
+                        )
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    match started {
+                        Ok(l) => {
+                            info!(
+                                "{peer}: \"{}\" is listening ({})",
+                                who.name,
+                                match (sound, mic) {
+                                    (true, true) => "sound and microphone",
+                                    (true, false) => "sound",
+                                    _ => "microphone",
+                                }
+                            );
+                            state.add_listener(
+                                session,
+                                crate::state::AudioListener {
+                                    phone_id: who.id.clone(),
+                                    sound,
+                                    mic,
+                                    stop: l.stop_flag(),
+                                    notify: reply_tx.clone(),
+                                },
+                            );
+                            send(
+                                &mut sink,
+                                &ServerMsg::Audio {
+                                    id,
+                                    codec: l.codec.name(),
+                                    rate: crate::audio::codec::RATE,
+                                    channels: crate::audio::codec::CHANNELS as u32,
+                                    frame_ms: crate::audio::codec::FRAME_MS,
+                                    pre_skip: l.pre_skip,
+                                    sound,
+                                    mic,
+                                },
+                            )
+                            .await?;
+                            listener = Some(l);
+                        }
+                        Err(e) => {
+                            warn!("{peer}: sound: {e}");
+                            send(&mut sink, &ack(id, Err((AckCode::Failed, e)))).await?;
+                        }
+                    }
+                }
+                ClientMsg::AudioStop => stop_listener(&mut listener, state, session),
                 ClientMsg::MoveTo { x, y } => {
                     if let Some(v) = &viewer {
                         let (dx, dy) = v.to_desktop(x, y);
@@ -599,6 +725,8 @@ async fn serve(
     .await;
 
     stop_viewer(&mut viewer, state, session);
+    stop_listener(&mut listener, state, session);
+    drop(speaker);
     for (_, inc) in incoming.drain() {
         state.transfer_end(inc.transfer, Err("The phone disconnected.".into()));
     }
@@ -622,6 +750,14 @@ fn stop_viewer(viewer: &mut Option<crate::screen::Viewer>, state: &AppState, ses
     if let Some(v) = viewer.take() {
         state.remove_viewer(session);
         tokio::task::spawn_blocking(move || drop(v));
+    }
+}
+
+/// Ends this phone's listening, if any.
+fn stop_listener(listener: &mut Option<crate::audio::Listener>, state: &AppState, session: u64) {
+    if let Some(l) = listener.take() {
+        state.remove_listener(session);
+        tokio::task::spawn_blocking(move || drop(l));
     }
 }
 

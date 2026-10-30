@@ -88,6 +88,8 @@ Input commands sent before `welcome` are refused and the connection is closed.
 | `clip_get` | `id` | Asks for the computer's clipboard text. Answered with `clip` |
 | `clip_set` | `id`, `text` (≤ 200 KB UTF-8), `paste` (optional bool) | Puts text on the computer's clipboard; with `paste`, then presses Ctrl+V there. Answered with `ack` |
 | `file_*` | see [Files](#files) | Files both ways |
+| `audio_start` | `id`, `sound` (bool), `mic` (bool), `codecs` (e.g. `["opus","pcm"]`) | Listen to the computer's sound and/or microphone (since 0.10). Answered with `audio` |
+| `audio_stop` | — | Stop listening |
 
 Named keys: `enter`, `backspace`, `escape`, `tab`, `space`, `delete`, `up`, `down`,
 `left`, `right`, `home`, `end`, `page_up`, `page_down`, `volume_up`, `volume_down`,
@@ -109,6 +111,8 @@ installed apps plus shortcuts the owner set up on the settings page.
 | `apps` | `id`, `shortcuts`, `apps`: lists of `{"id","name","kind"}`, kind `app`, `url`, `folder`, `file` or `program` | Answer to `apps` |
 | `clip` | `id`, `text` | Answer to `clip_get` (`""` when the clipboard holds no text) |
 | `file_*` | see [Files](#files) | Files both ways |
+| `audio` | `id`, `codec` (`opus` or `pcm`), `rate`, `channels`, `frame_ms`, `pre_skip`, `sound`, `mic` | Answer to `audio_start`; "PDA1" messages follow (see [Sound](#sound)) |
+| `audio_stopped` | `msg` | Listening ended on the computer's side |
 | `pong` | — | Reply to `ping` |
 | `notice` | `msg` | Something for the person to read, e.g. "approve PairDesk on the computer" (since 0.6; older phones ignore it) |
 | `error` | `code`, `msg` | See below |
@@ -199,6 +203,8 @@ The settings page on the computer has three switches, all on by default:
 | `screen` | `screen_start` (turning it off also stops current viewers) |
 | `clipboard` | `clip_get`, `clip_set` |
 | `files` | `file_offer` from a phone (files sent from the computer need no permission: the owner sends them) |
+| `audio` | `audio_start` with `sound`, and the phone's voice ("PDM1"). Turning it off stops current listeners |
+| `mic` | `audio_start` with `mic`. **Off by default.** Turning it off stops phones that hear the microphone |
 
 Each request is checked against the current switches when it arrives, so a
 change applies at once. The phone also asks for confirmation before
@@ -216,6 +222,40 @@ they keep working. Phones check `features` before offering the new tabs.
 - If a phone disconnects while holding a button (`down` without `up`), the agent releases it.
 - The phone pings every 3 s and treats 10 s of silence as a lost connection.
 - Messages larger than 512 KiB are refused.
+
+## Sound
+
+Since 0.10 (feature `audio`). Two directions, independent of each other:
+
+**Listening** (computer → phone). `audio_start` with `sound` (whatever the
+computer plays: WASAPI loopback on Windows, the default output's monitor on
+Linux through PulseAudio/PipeWire) and/or `mic` (the default microphone).
+Both are mixed into one stream of 20 ms packets, 48 kHz stereo:
+
+```
+"PDA1" | seq u32 BE | payload
+```
+
+The payload is one Opus packet (`codec: opus`, 96 kbit/s with sound, 48 with
+the microphone only), or 16-bit little-endian PCM (`codec: pcm`) for phones
+without an Opus decoder. **An empty payload is 20 ms of silence**: nothing is
+encoded or sent while nothing plays. `pre_skip` is the Opus encoder's delay in
+samples, for the decoder's `OpusHead`. When the network is slow, packets are
+dropped rather than delayed. Sending `audio_start` again changes what is heard.
+
+**Talking** (phone → computer). The phone sends its microphone as
+
+```
+"PDM1" | 16 kHz mono G.711 µ-law
+```
+
+in 20 ms messages (320 bytes). The agent plays them on the default output; the
+speakers open with the first message and close after 3 s without one. Phones
+mute their playback while talking (and 400 ms after), so people don't hear
+their own voice come back.
+
+While a phone hears the microphone, the tray icon shows the red dot and the
+settings page says so, with a Stop button (`api/stop-audio`).
 
 ## Clipboard
 

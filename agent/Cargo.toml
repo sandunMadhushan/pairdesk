@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.9.1"
+version = "0.10.0"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
@@ -40,6 +40,7 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 tokio-tungstenite = "0.30.0"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 webbrowser = "1"
+unsafe-libopus = "0.2"
 
 [build-dependencies]
 embed-resource = "3"
@@ -49,6 +50,7 @@ tray-icon = "0.21"
 # The PairDesk window: the settings page in WebView2 (part of Windows).
 wry = { version = "0.57", default-features = false, features = ["os-webview"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_Packaging_Appx", "Win32_System_Com", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Services", "Win32_System_StationsAndDesktops", "Win32_UI_Shell", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
+cpal = "0.18"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"

@@ -33,6 +33,7 @@ no codes or "accept" prompts every time.
 | Screen | Live view of the computer's screen. Move the pointer like on the touchpad (tap to click, tap-and-drag to drag, two fingers to scroll or right-click, pinch to zoom; the zoomed view follows the pointer), or switch to tap-to-point. Full screen; red tray dot while watched |
 | Clipboard | Copy the computer's clipboard to the phone, send the phone's clipboard to the computer, or paste it straight into the computer's active window |
 | Files | Phone → computer: pick files, or **Share → PairDesk** from any app; saved in `Downloads/PairDesk`. Computer → phone: drop files on PairDesk's page, or right-click → **Send to → PairDesk phone** (Windows), "Send to phone (PairDesk)" (GNOME Files, Dolphin); saved in `Download/PairDesk` |
+| Sound | Hear what the computer plays (videos, music, calls) on the phone; talk through the computer's speakers (hold to talk or hands-free); hear the computer's microphone (off unless allowed on the computer; red tray dot while used) |
 | Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) (free for personal use); picks Wi-Fi or Tailscale by itself |
 
 ## Quick start
@@ -160,7 +161,9 @@ releases in [docs/RELEASING.md](docs/RELEASING.md); store submissions in
 | 4 | Live screen view on Windows and Linux X11 |
 | 5 | Linux agent on Wayland |
 | 6 | Clipboard sync and file transfer |
-| **7** | **Installers, automatic updates, website; Microsoft Store and F-Droid packages (this release)** |
+| 7 | Installers, automatic updates, website; Microsoft Store and F-Droid packages |
+| 8 | Smoother screen (H.264); Windows sign-in screen and admin prompts; PairDesk window on Windows |
+| **9** | **Two-way sound (this release)** |
 
 ## Contributing
 

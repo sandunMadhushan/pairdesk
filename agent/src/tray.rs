@@ -51,11 +51,16 @@ fn icon_rgba(viewing: bool) -> (Vec<u8>, u32) {
 
 #[cfg(windows)]
 fn tooltip(state: &AppState) -> String {
-    let viewing = state.viewing_phones().len();
-    if viewing > 0 {
-        format!("PairDesk – {} – your screen is being viewed", state.name)
-    } else {
-        format!("PairDesk – {}", state.name)
+    let screen = !state.viewing_phones().is_empty();
+    let mic = state.listening_phones().iter().any(|l| l.2);
+    match (screen, mic) {
+        (true, true) => format!(
+            "PairDesk – {} – your screen and microphone are in use",
+            state.name
+        ),
+        (true, false) => format!("PairDesk – {} – your screen is being viewed", state.name),
+        (false, true) => format!("PairDesk – {} – your microphone is being heard", state.name),
+        (false, false) => format!("PairDesk – {}", state.name),
     }
 }
 
@@ -227,7 +232,7 @@ mod platform {
                 }
                 if msg.message == WM_VIEWERS {
                     if let Some(t) = &tray {
-                        let viewing = !state.viewing_phones().is_empty();
+                        let viewing = state.watched();
                         let (rgba, n) = icon_rgba(viewing);
                         if let Ok(icon) = Icon::from_rgba(rgba, n, n) {
                             let _ = t.set_icon(Some(icon));
@@ -309,7 +314,10 @@ mod platform {
         }
         fn title(&self) -> String {
             if self.viewing {
-                format!("PairDesk – {} – your screen is being viewed", self.name)
+                format!(
+                    "PairDesk – {} – your screen or microphone is in use",
+                    self.name
+                )
             } else {
                 format!("PairDesk – {}", self.name)
             }
@@ -373,7 +381,7 @@ mod platform {
                         // Lives until the agent stops; shows screen viewers.
                         let mut rx = state.subscribe_viewers();
                         while rx.changed().await.is_ok() {
-                            let viewing = !state.viewing_phones().is_empty();
+                            let viewing = state.watched();
                             handle.update(|t| t.viewing = viewing).await;
                         }
                         std::future::pending::<()>().await;

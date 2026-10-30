@@ -1,0 +1,2 @@
+• Two-way sound: hear the computer on your phone, talk through its speakers, and hear its microphone if you allow it on the computer
+• Fixed: the app closed when Smooth screen view was on

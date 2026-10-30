@@ -264,6 +264,10 @@
         <span id="viewing-text"></span>
         <button id="btn-stop-view">Stop</button>
       </div>
+      <div id="listening" class="banner viewing" hidden role="status">
+        <span id="listening-text"></span>
+        <button id="btn-stop-audio">Stop</button>
+      </div>
     </div>
 
     <!-- Home -->
@@ -419,6 +423,10 @@
           <span class="toggle"><input type="checkbox" id="perm-clipboard"><span></span></span></label>
         <label class="setting"><span class="what"><b>Send files to this computer</b><small>Saved in your Downloads, in a PairDesk folder.</small></span>
           <span class="toggle"><input type="checkbox" id="perm-files"><span></span></span></label>
+        <label class="setting"><span class="what"><b>Sound and talking</b><small>Hear what this computer plays, and talk through its speakers.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-audio"><span></span></span></label>
+        <label class="setting"><span class="what"><b>Hear the microphone</b><small>Hear people near this computer. Off unless you turn it on; the tray icon shows a red dot while a phone listens.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-mic"><span></span></span></label>
       </div>
     </section>
 
@@ -511,7 +519,7 @@
 const api = (path) => location.pathname.replace(/\/$/, "") + "/api/" + path;
 const $ = (id) => document.getElementById(id);
 let lastPhoneIds = null;
-const PERMS = ["power", "session", "apps", "screen", "clipboard", "files"];
+const PERMS = ["power", "session", "apps", "screen", "clipboard", "files", "audio", "mic"];
 let wasPairing = false;
 let stopped = false;
 
@@ -611,12 +619,23 @@ function render(s) {
     meta.textContent = p.connected ? "Connected from " + p.address : "Last used " + ago(p.last_seen);
     info.append(n, meta);
     li.append(info);
+    if (p.listening && p.listening.mic) {
+      const b = document.createElement("span");
+      b.className = "badge view";
+      b.textContent = "Hearing microphone";
+      li.append(b);
+    } else if (p.listening) {
+      const b = document.createElement("span");
+      b.className = "badge";
+      b.textContent = "Listening";
+      li.append(b);
+    }
     if (p.viewing) {
       const b = document.createElement("span");
       b.className = "badge view";
       b.textContent = "Viewing screen";
       li.append(b);
-    } else if (p.connected) {
+    } else if (p.connected && !p.listening) {
       const b = document.createElement("span");
       b.className = "badge";
       b.textContent = "Connected";
@@ -693,6 +712,13 @@ function render(s) {
   $("viewing").hidden = viewers.length === 0;
   $("viewing-text").textContent = viewers.length
     ? viewers.map((p) => p.name).join(", ") + (viewers.length > 1 ? " are" : " is") + " viewing your screen."
+    : "";
+
+  // Someone hears the microphone
+  const ears = s.phones.filter((p) => p.listening && p.listening.mic);
+  $("listening").hidden = ears.length === 0;
+  $("listening-text").textContent = ears.length
+    ? ears.map((p) => p.name).join(", ") + (ears.length > 1 ? " are" : " is") + " hearing this computer's microphone."
     : "";
 
   for (const k of PERMS) {
@@ -979,6 +1005,9 @@ $("sc-form").onsubmit = async (e) => {
   } catch (err) { showBanner(err.message, true); }
 };
 
+$("btn-stop-audio").onclick = async () => {
+  try { render(await post("stop-audio", {})); } catch (e) { showBanner(e.message, true); }
+};
 $("btn-stop-view").onclick = async () => {
   try { render(await post("stop-screen", {})); } catch (e) { showBanner(e.message, true); }
 };

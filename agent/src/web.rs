@@ -214,6 +214,10 @@ fn handle(
                 clipboard: Option<bool>,
                 #[serde(default)]
                 files: Option<bool>,
+                #[serde(default)]
+                audio: Option<bool>,
+                #[serde(default)]
+                mic: Option<bool>,
             }
             match serde_json::from_str::<Body>(&body).ok() {
                 Some(b) => {
@@ -228,9 +232,21 @@ fn handle(
                     if let (Ok(()), Some(on)) = (&saved, b.files) {
                         saved = prefs.set_allow_files(on);
                     }
+                    if let (Ok(()), Some(on)) = (&saved, b.audio) {
+                        saved = prefs.set_allow_audio(on);
+                    }
+                    if let (Ok(()), Some(on)) = (&saved, b.mic) {
+                        saved = prefs.set_allow_mic(on);
+                    }
                     drop(prefs);
                     if b.screen == Some(false) {
                         state.stop_viewing(None);
+                    }
+                    const OFF: &str = "This was turned off in PairDesk settings on the computer.";
+                    if b.audio == Some(false) {
+                        state.stop_listening(None, false, OFF);
+                    } else if b.mic == Some(false) {
+                        state.stop_listening(None, true, OFF);
                     }
                     match saved {
                         Ok(()) => send_state(request, state),
@@ -416,6 +432,20 @@ fn handle(
             state.stop_viewing(target.as_deref());
             send_state(request, state)
         }
+        (Method::Post, "/api/stop-audio") => {
+            #[derive(Deserialize)]
+            struct Body {
+                #[serde(default)]
+                id: Option<String>,
+            }
+            let target = serde_json::from_str::<Body>(&body).ok().and_then(|b| b.id);
+            state.stop_listening(
+                target.as_deref(),
+                false,
+                "Listening was stopped on the computer.",
+            );
+            send_state(request, state)
+        }
         (Method::Post, "/api/refresh-remote") => {
             state.tailscale.refresh(std::time::Duration::ZERO);
             send_state(request, state)
@@ -453,6 +483,7 @@ fn send_state(request: Request, state: &AppState) {
         .collect();
     let sessions = state.sessions();
     let viewing = state.viewing_phones();
+    let listening = state.listening_phones();
     let phones: Vec<_> = state
         .phones()
         .list()
@@ -466,6 +497,7 @@ fn send_state(request: Request, state: &AppState) {
                 "last_seen": p.last_seen,
                 "connected": connected.is_some(),
                 "viewing": viewing.contains(&p.id),
+                "listening": listening.iter().find(|l| l.0 == p.id).map(|l| json!({ "sound": l.1, "mic": l.2 })),
                 "address": connected.map(|s| s.address.clone()),
             })
         })
@@ -533,6 +565,8 @@ fn send_state(request: Request, state: &AppState) {
             "screen": prefs.allow_screen,
             "clipboard": prefs.allow_clipboard,
             "files": prefs.allow_files,
+            "audio": prefs.allow_audio,
+            "mic": prefs.allow_mic,
         },
         "shortcuts": shortcuts,
         "remote": remote,

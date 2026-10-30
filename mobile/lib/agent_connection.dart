@@ -14,6 +14,7 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 
+import 'audio/audio_packet.dart';
 import 'files/native_files.dart';
 import 'files/transfers.dart';
 import 'pairing/codec.dart';
@@ -22,6 +23,8 @@ import 'pairing/identity.dart';
 import 'pairing/laptop.dart';
 import 'pairing/pairing_link.dart';
 import 'screen/frame.dart';
+
+export 'audio/audio_packet.dart' show AudioInfo, AudioPacket;
 
 const int defaultAgentPort = 47800;
 
@@ -185,6 +188,8 @@ class Allowed {
     this.screen = false,
     this.clipboard = false,
     this.files = false,
+    this.audio = false,
+    this.mic = false,
   });
   final bool power;
   final bool session;
@@ -194,6 +199,12 @@ class Allowed {
 
   /// Sending files to the computer.
   final bool files;
+
+  /// Hearing the computer's sound and talking through its speakers.
+  final bool audio;
+
+  /// Hearing the computer's microphone.
+  final bool mic;
 
   bool action(PowerAction a) => a.endsSession ? session : power;
 
@@ -205,6 +216,8 @@ class Allowed {
           screen: j['screen'] == true,
           clipboard: j['clipboard'] == true,
           files: j['files'] == true,
+          audio: j['audio'] == true,
+          mic: j['mic'] == true,
         )
       : const Allowed();
 }
@@ -569,6 +582,10 @@ class AgentConnection extends ChangeNotifier {
       _screenEvents.add(decoded['msg'] as String? ?? 'Screen view stopped.');
       return;
     }
+    if (decoded['t'] == 'audio_stopped') {
+      _audioStopped.add(decoded['msg'] as String? ?? 'Sound stopped.');
+      return;
+    }
     final type = decoded['t'];
     if (type is String && type.startsWith('file_') && transfers.handleMessage(decoded)) return;
     if (decoded['t'] == 'notice') {
@@ -580,6 +597,7 @@ class AgentConnection extends ChangeNotifier {
         (decoded['t'] == 'ack' ||
             decoded['t'] == 'apps' ||
             decoded['t'] == 'screen' ||
+            decoded['t'] == 'audio' ||
             decoded['t'] == 'clip')) {
       _requests.remove(id)?.complete(decoded);
       return;
@@ -819,6 +837,10 @@ class AgentConnection extends ChangeNotifier {
   Stream<String> get screenStopped => _screenEvents.stream;
 
   void _onBinary(Uint8List data) {
+    if (AudioPacket.matches(data)) {
+      _audio.add(AudioPacket.parse(data));
+      return;
+    }
     if (isFileChunk(data)) {
       transfers.handleChunk(data);
       return;
@@ -895,6 +917,30 @@ class AgentConnection extends ChangeNotifier {
   /// Moves the pointer to a point on the shown screen (0..1 from top-left).
   void moveTo(double x, double y) => _send({'t': 'move_to', 'x': x, 'y': y});
 
+  // ---- Sound ----------------------------------------------------------
+
+  final _audio = StreamController<AudioPacket>.broadcast();
+  final _audioStopped = StreamController<String>.broadcast();
+
+  /// The computer's sound while listening.
+  Stream<AudioPacket> get audioPackets => _audio.stream;
+
+  /// Listening ended on the computer's side (the reason, for people).
+  Stream<String> get audioStopped => _audioStopped.stream;
+
+  /// Starts (or changes) listening to the computer's [sound] and/or its
+  /// [mic]. [codecs]: what this phone can decode, best first.
+  Future<AudioInfo> startAudio({required bool sound, required bool mic, required List<String> codecs}) async {
+    _requireFeature('audio');
+    final reply = await _request({'t': 'audio_start', 'sound': sound, 'mic': mic, 'codecs': codecs});
+    return AudioInfo.fromJson(reply);
+  }
+
+  void stopAudio() => _send({'t': 'audio_stop'});
+
+  /// 20 ms of the phone's voice (16 kHz mono µ-law) for the speakers.
+  void sendVoice(Uint8List ulaw) => _sendBinary(voiceMessage(ulaw));
+
   Future<void> launch(String appId) async {
     _requireFeature('apps');
     await _request({'t': 'launch', 'app': appId});
@@ -905,6 +951,8 @@ class AgentConnection extends ChangeNotifier {
     transfers.dispose();
     _frames.close();
     _screenEvents.close();
+    _audio.close();
+    _audioStopped.close();
     _notices.close();
     disconnect(notify: false);
     super.dispose();

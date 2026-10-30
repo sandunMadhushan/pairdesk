@@ -74,6 +74,15 @@ pub struct ScreenViewer {
     pub notify: tokio::sync::mpsc::UnboundedSender<crate::protocol::ServerMsg>,
 }
 
+/// A phone listening to the computer's sound or microphone.
+pub struct AudioListener {
+    pub phone_id: String,
+    pub sound: bool,
+    pub mic: bool,
+    pub stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub notify: tokio::sync::mpsc::UnboundedSender<crate::protocol::ServerMsg>,
+}
+
 pub struct AppState {
     pub identity: Identity,
     pub name: String,
@@ -90,6 +99,8 @@ pub struct AppState {
     /// Phones watching the screen, by session.
     viewers: Mutex<HashMap<u64, ScreenViewer>>,
     viewers_changed: watch::Sender<usize>,
+    /// Phones listening, by session (also signalled on `viewers_changed`).
+    listeners: Mutex<HashMap<u64, AudioListener>>,
     pub awake: crate::awake::KeepAwake,
     /// Messages for every connected phone (e.g. "approve on the computer").
     pub notices: tokio::sync::broadcast::Sender<String>,
@@ -124,6 +135,7 @@ impl AppState {
             tailscale: Default::default(),
             viewers: Mutex::new(HashMap::new()),
             viewers_changed: watch::channel(0).0,
+            listeners: Mutex::new(HashMap::new()),
             awake: Default::default(),
             notices: tokio::sync::broadcast::channel(8).0,
             transfers: Mutex::new(Vec::new()),
@@ -295,6 +307,50 @@ impl AppState {
         let n = v.len();
         drop(v);
         self.viewers_changed.send_replace(n);
+    }
+
+    // ---- audio ----
+
+    pub fn add_listener(&self, session: u64, listener: AudioListener) {
+        lock(&self.listeners).insert(session, listener);
+        // The count is of viewers; sending marks a change either way.
+        self.viewers_changed.send_replace(lock(&self.viewers).len());
+    }
+
+    pub fn remove_listener(&self, session: u64) {
+        if lock(&self.listeners).remove(&session).is_some() {
+            self.viewers_changed.send_replace(lock(&self.viewers).len());
+        }
+    }
+
+    /// (phone id, hears the sound, hears the microphone) for each listener.
+    pub fn listening_phones(&self) -> Vec<(String, bool, bool)> {
+        lock(&self.listeners)
+            .values()
+            .map(|l| (l.phone_id.clone(), l.sound, l.mic))
+            .collect()
+    }
+
+    /// True while a phone sees the screen or hears the microphone: the
+    /// tray shows a red dot.
+    pub fn watched(&self) -> bool {
+        !lock(&self.viewers).is_empty() || lock(&self.listeners).values().any(|l| l.mic)
+    }
+
+    /// Stops listening for one phone (or all), telling it why. With
+    /// `mic_only`, only listeners that hear the microphone.
+    pub fn stop_listening(&self, phone_id: Option<&str>, mic_only: bool, why: &str) {
+        lock(&self.listeners).retain(|_, l| {
+            if phone_id.is_some_and(|id| id != l.phone_id) || (mic_only && !l.mic) {
+                return true;
+            }
+            l.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            let _ = l
+                .notify
+                .send(crate::protocol::ServerMsg::AudioStopped { msg: why.into() });
+            false
+        });
+        self.viewers_changed.send_replace(lock(&self.viewers).len());
     }
 
     // ---- files ----
