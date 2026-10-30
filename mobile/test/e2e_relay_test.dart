@@ -79,8 +79,12 @@ void main() {
       expect(phone['connected'], isTrue);
       expect(phone['address'], 'the relay');
 
-      // Reconnecting later works through the relay too.
+      // Reconnecting later, still from elsewhere, works through the relay
+      // too. (The phone has learned the computer's home addresses by now;
+      // here they'd answer, so leave them out as if away from home.)
       await conn.disconnect();
+      if (env['E2E_DIRECT'] == null) laptop.addresses.removeWhere((a) => !a.startsWith('relay:'));
+      if (env['E2E_DIRECT'] == null) expect(laptop.addresses, isNotEmpty);
       await conn.connect(laptop, me, phoneName: 'Helper');
       if (env['E2E_DIRECT'] == null) expect(conn.address, startsWith('relay:'));
 
