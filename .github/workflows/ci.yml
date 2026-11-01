@@ -127,6 +127,24 @@ jobs:
       - run: cargo clippy --release -- -D warnings
       - run: cargo test
 
+  site:
+    name: Website
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: test -f out/index.html && test -f out/p/index.html && test -f out/.well-known/assetlinks.json
+
   e2e:
     name: End to end (phone code ↔ real agent)
     runs-on: ubuntu-22.04

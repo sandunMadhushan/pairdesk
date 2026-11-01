@@ -179,7 +179,7 @@ relay/      PairDesk relay: joins phones and computers that can't reach each oth
 mobile/     Flutter phone app (Android now, iPhone later)
 packaging/  Icons, Windows setup and Store package, Linux packages, F-Droid and Flatpak
 fastlane/   F-Droid listing: text, icon, screenshots, changelogs
-site/       pairdesk.madhushan.me
+site/       pairdesk.madhushan.me (Next.js, Tailwind, GSAP, Three.js, Lenis; static export)
 docs/       Protocol, relay hosting, releasing, stores
 tools/      End-to-end tests
 ```

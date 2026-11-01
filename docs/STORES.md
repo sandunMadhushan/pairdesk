@@ -25,7 +25,7 @@ policy) and `.github/workflows/pages.yml`.
    **Enforce HTTPS** once the certificate is issued.
 4. Actions → Website → Run workflow (later pushes to `site/` deploy by themselves).
 
-The stores link to `https://pairdesk.madhushan.me/privacy.html`.
+The stores link to `https://pairdesk.madhushan.me/privacy/`.
 
 ## 2. Microsoft Store (free for individuals)
 
@@ -45,11 +45,11 @@ for port 47800 and mDNS on private networks, and gets updates from the Store.
    with that identity.
 3. Start a submission:
    - Pricing: Free. Category: Utilities & tools (or Productivity).
-   - Properties: privacy policy URL `https://pairdesk.madhushan.me/privacy.html`;
+   - Properties: privacy policy URL `https://pairdesk.madhushan.me/privacy/`;
      website `https://pairdesk.madhushan.me`.
    - Packages: upload `PairDesk-x.y.z.msix`.
    - Store listing: use the description below and screenshots of the
-     settings page (`site/screenshots/settings.png`) plus phone screenshots.
+     settings page (`site/public/screenshots/settings.png`) plus phone screenshots.
    - Submission options → notes for certification: the `runFullTrust`
      capability is needed because PairDesk is a desktop program that moves
      the pointer and types on behalf of the paired phone; there is no
@@ -133,7 +133,7 @@ Their conditions (<https://signpath.org/terms>), and where PairDesk stands:
 - Privacy: the update check is described in the privacy policy and can be
   turned off on the settings page.
 - A "Code signing policy" page linked from the home and download pages:
-  `site/code-signing.html` (linked in the footer). Update it once accepted.
+  `site/app/code-signing/page.tsx` (linked in the footer). Update it once accepted.
 - Multi-factor authentication on GitHub and SignPath for everyone on the team.
 
 Apply at <https://signpath.org/apply>. Once accepted, set the secret

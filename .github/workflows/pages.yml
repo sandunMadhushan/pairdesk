@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Publishes site/ to GitHub Pages (pairdesk.madhushan.me).
+# Builds site/ (Next.js, static export) and publishes it to GitHub Pages
+# (pairdesk.madhushan.me).
 # One-time setup: Settings → Pages → Source: GitHub Actions; custom domain
 # pairdesk.madhushan.me (DNS: CNAME pairdesk → sandunmadhushan.github.io).
 name: Website
@@ -29,9 +30,17 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      # Next.js static export: site/ -> site/out/
+      - run: npm ci && npm run build
+        working-directory: site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: site/out
       - id: deploy
         uses: actions/deploy-pages@v4

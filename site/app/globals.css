@@ -1,0 +1,151 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+@import "tailwindcss";
+@import "lenis/dist/lenis.css";
+
+/*
+  PairDesk: two devices joined by a signal.
+  Blue is the devices (the app's own icon blue); amber is the link between
+  them: data in flight, focus, "connected". Everything else stays quiet.
+*/
+@theme {
+  --color-night: #0a0f24;
+  --color-deep: #0e1530;
+  --color-panel: #131a38;
+  --color-line: #232c55;
+  --color-ink: #e9edfa;
+  --color-mist: #93a0c6;
+  --color-blue: #3a74f0;
+  --color-blue-deep: #1f4fc4;
+  --color-signal: #ffb648;
+
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-night);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-night);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--color-signal);
+    color: var(--color-night);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  a {
+    text-underline-offset: 0.2em;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+/* The headline type: tight, wide-ish, optical size for display. */
+.display {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 96, "wdth" 96;
+  font-weight: 700;
+  letter-spacing: -0.024em;
+  line-height: 0.95;
+}
+
+.link {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-signal) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+}
+.link:hover {
+  color: var(--color-signal);
+}
+
+/* Long-form pages: privacy, code signing. */
+.prose-doc {
+  max-width: 68ch;
+}
+.prose-doc h1 {
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  margin-bottom: 0.4rem;
+}
+.prose-doc h2 {
+  font-size: 1.5rem;
+  font-weight: 650;
+  margin-top: 2.6rem;
+  margin-bottom: 0.6rem;
+}
+.prose-doc p,
+.prose-doc li {
+  color: color-mix(in oklab, var(--color-ink) 88%, var(--color-mist));
+}
+.prose-doc p + p {
+  margin-top: 1rem;
+}
+.prose-doc ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.6rem;
+}
+.prose-doc li::marker {
+  color: var(--color-signal);
+}
+.prose-doc a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-signal) 70%, transparent);
+}
+.prose-doc a:hover {
+  color: var(--color-signal);
+}
+.prose-doc code {
+  font-size: 0.9em;
+  background: var(--color-panel);
+  padding: 0.1em 0.35em;
+  border-radius: 6px;
+}
+.prose-doc b {
+  color: var(--color-ink);
+}
+
+/* FAQ disclosure marker */
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] .faq-mark {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
