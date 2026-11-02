@@ -3,49 +3,54 @@
 @import "lenis/dist/lenis.css";
 
 /*
-  PairDesk: two devices joined by a signal.
-  Blue is the devices (the app's own icon blue); amber is the link between
-  them: data in flight, focus, "connected". Everything else stays quiet.
+  PairDesk, light: a pale sky page with white sheets laid on it.
+  Pair blue is the brand (bands, footer, primary actions); marker orange is
+  the pen that draws on the page (pins, doodles, notes, focus).
 */
 @theme {
-  --color-night: #0a0f24;
-  --color-deep: #0e1530;
-  --color-panel: #131a38;
-  --color-line: #232c55;
-  --color-ink: #e9edfa;
-  --color-mist: #93a0c6;
-  --color-blue: #3a74f0;
-  --color-blue-deep: #1f4fc4;
-  --color-signal: #ffb648;
+  --color-sky: #eef3fb;
+  --color-sky-deep: #e2e9f6;
+  --color-sheet: #ffffff;
+  --color-ink: #141a2e;
+  --color-slate: #566180;
+  --color-line: #d9e1ef;
+  --color-pair: #1f5bff;
+  --color-pair-deep: #1546cc;
+  --color-pair-soft: #e3ebff;
+  --color-marker: #ff7a1a;
+  --color-go: #19b46b;
 
-  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Outfit Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-hand: "Caveat Variable", "Segoe Print", cursive;
 
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @layer base {
   html {
-    color-scheme: dark;
-    background: var(--color-night);
+    background: var(--color-sky);
+    overflow-x: clip;
     -webkit-text-size-adjust: 100%;
   }
   body {
-    background: var(--color-night);
+    background: var(--color-sky);
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 1.0625rem;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
   }
   ::selection {
-    background: var(--color-signal);
-    color: var(--color-night);
+    background: var(--color-pair);
+    color: white;
   }
   :focus-visible {
-    outline: 2px solid var(--color-signal);
+    outline: 2.5px solid var(--color-marker);
     outline-offset: 3px;
-    border-radius: 6px;
+    border-radius: 8px;
   }
   a {
     text-underline-offset: 0.2em;
@@ -53,7 +58,6 @@
   h1,
   h2,
   h3 {
-    font-family: var(--font-display);
     text-wrap: balance;
   }
   p {
@@ -61,23 +65,139 @@
   }
 }
 
-/* The headline type: tight, wide-ish, optical size for display. */
 .display {
   font-family: var(--font-display);
-  font-variation-settings: "opsz" 96, "wdth" 96;
-  font-weight: 700;
-  letter-spacing: -0.024em;
-  line-height: 0.95;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.hand {
+  font-family: var(--font-hand);
+  font-weight: 600;
+  line-height: 1.05;
 }
 
 .link {
   color: var(--color-ink);
   text-decoration: underline;
-  text-decoration-color: color-mix(in oklab, var(--color-signal) 70%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--color-pair) 55%, transparent);
   text-decoration-thickness: 1.5px;
 }
 .link:hover {
-  color: var(--color-signal);
+  color: var(--color-pair);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 48px;
+  border-radius: 999px;
+  padding: 0.7rem 1.5rem;
+  font-weight: 600;
+  transition:
+    transform 0.25s var(--ease-out-quint),
+    background-color 0.2s,
+    box-shadow 0.25s;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn-ink {
+  background: var(--color-ink);
+  color: white;
+  box-shadow: 0 10px 24px -12px rgba(20, 26, 46, 0.7);
+}
+.btn-ink:hover {
+  background: #26304f;
+}
+.btn-pair {
+  background: var(--color-pair);
+  color: white;
+  box-shadow: 0 12px 26px -12px var(--color-pair);
+}
+.btn-pair:hover {
+  background: var(--color-pair-deep);
+}
+.btn-line {
+  border: 1.5px solid color-mix(in oklab, var(--color-ink) 22%, transparent);
+  color: var(--color-ink);
+  background: color-mix(in oklab, white 60%, transparent);
+}
+.btn-line:hover {
+  border-color: var(--color-ink);
+}
+.btn-white {
+  background: white;
+  color: var(--color-pair-deep);
+}
+.btn-white:hover {
+  background: var(--color-pair-soft);
+}
+
+/* A white sheet laid on the sky: the page is a stack of these. */
+.sheet {
+  background: var(--color-sheet);
+  border-radius: clamp(28px, 4vw, 44px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 40px 80px -48px rgba(31, 58, 120, 0.35),
+    0 2px 6px rgba(31, 58, 120, 0.04);
+  transform-origin: 50% 0%;
+}
+
+/* Floating chips around the devices */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: white;
+  border-radius: 18px;
+  padding: 0.6rem 0.9rem;
+  box-shadow:
+    0 18px 40px -18px rgba(31, 58, 120, 0.45),
+    0 1px 2px rgba(31, 58, 120, 0.08);
+  font-size: 0.9rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Gentle idle float for decorations; stopped for reduced motion below. */
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+.bob {
+  animation: bob 5.5s ease-in-out infinite;
+}
+.bob-slow {
+  animation: bob 7.5s ease-in-out infinite;
+}
+@keyframes ping-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: currentColor;
+  animation: ping-ring 1.8s var(--ease-out-quint) infinite;
 }
 
 /* Long-form pages: privacy, code signing. */
@@ -85,18 +205,19 @@
   max-width: 68ch;
 }
 .prose-doc h1 {
-  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  font-size: clamp(2.4rem, 6vw, 3.8rem);
   margin-bottom: 0.4rem;
 }
 .prose-doc h2 {
-  font-size: 1.5rem;
+  font-size: 1.55rem;
   font-weight: 650;
+  letter-spacing: -0.02em;
   margin-top: 2.6rem;
   margin-bottom: 0.6rem;
 }
 .prose-doc p,
 .prose-doc li {
-  color: color-mix(in oklab, var(--color-ink) 88%, var(--color-mist));
+  color: color-mix(in oklab, var(--color-ink) 82%, var(--color-slate));
 }
 .prose-doc p + p {
   margin-top: 1rem;
@@ -108,27 +229,27 @@
   gap: 0.6rem;
 }
 .prose-doc li::marker {
-  color: var(--color-signal);
+  color: var(--color-marker);
 }
 .prose-doc a {
-  color: var(--color-ink);
+  color: var(--color-pair-deep);
   text-decoration: underline;
-  text-decoration-color: color-mix(in oklab, var(--color-signal) 70%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--color-pair) 45%, transparent);
 }
 .prose-doc a:hover {
-  color: var(--color-signal);
+  color: var(--color-pair);
 }
 .prose-doc code {
   font-size: 0.9em;
-  background: var(--color-panel);
-  padding: 0.1em 0.35em;
+  background: var(--color-sky);
+  padding: 0.1em 0.4em;
   border-radius: 6px;
 }
 .prose-doc b {
   color: var(--color-ink);
 }
 
-/* FAQ disclosure marker */
+/* FAQ disclosure */
 details > summary {
   list-style: none;
   cursor: pointer;
@@ -137,7 +258,9 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 details[open] .faq-mark {
-  transform: rotate(45deg);
+  transform: rotate(90deg);
+  background: var(--color-pair);
+  color: white;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -145,7 +268,145 @@ details[open] .faq-mark {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Small loops inside the device pictures */
+@keyframes eq {
+  0%,
+  100% {
+    height: 30%;
+  }
+  50% {
+    height: 100%;
+  }
+}
+.eq {
+  height: 60%;
+  animation: eq 0.9s ease-in-out infinite;
+}
+@keyframes prog {
+  from {
+    width: 20%;
+  }
+  to {
+    width: 85%;
+  }
+}
+.prog {
+  animation: prog 14s linear infinite alternate;
+}
+@keyframes pinch {
+  0%,
+  18% {
+    transform: scale(1);
+  }
+  42%,
+  70% {
+    transform: scale(1.75);
+  }
+  92%,
+  100% {
+    transform: scale(1);
+  }
+}
+.pinch {
+  transform-origin: 78% 70%;
+  animation: pinch 7s var(--ease-out-quint) infinite;
+}
+@keyframes finger-a {
+  0%,
+  18% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  42% {
+    transform: translate(-90%, -90%);
+    opacity: 1;
+  }
+  48%,
+  100% {
+    transform: translate(-90%, -90%);
+    opacity: 0;
+  }
+}
+@keyframes finger-b {
+  0%,
+  18% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  22% {
+    opacity: 1;
+  }
+  42% {
+    transform: translate(90%, 90%);
+    opacity: 1;
+  }
+  48%,
+  100% {
+    transform: translate(90%, 90%);
+    opacity: 0;
+  }
+}
+.finger-a {
+  animation: finger-a 7s var(--ease-out-quint) infinite;
+}
+.finger-b {
+  animation: finger-b 7s var(--ease-out-quint) infinite;
+}
+/* A file travelling from the phone to the computer's folder, on an arc */
+@keyframes fly {
+  0% {
+    left: 22%;
+    top: 52%;
+    opacity: 0;
+    transform: scale(0.5) rotate(-8deg);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1) rotate(-4deg);
+  }
+  50% {
+    left: 46%;
+    top: 14%;
+    transform: scale(1.05) rotate(4deg);
+  }
+  88% {
+    left: 70%;
+    top: 40%;
+    opacity: 1;
+    transform: scale(0.9) rotate(0deg);
+  }
+  100% {
+    left: 72%;
+    top: 46%;
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+.fly {
+  position: absolute;
+  animation: fly 4.8s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+@keyframes key-press {
+  0%,
+  70%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 4px 0 #c9d2e3, 0 14px 26px -14px rgba(31, 58, 120, 0.5);
+  }
+  80% {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #c9d2e3, 0 8px 18px -12px rgba(31, 58, 120, 0.5);
+  }
+}
+.key {
+  animation: key-press 3.2s ease-in-out infinite;
 }

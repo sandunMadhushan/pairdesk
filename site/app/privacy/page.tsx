@@ -11,7 +11,7 @@ export default function Privacy() {
   return (
     <DocPage>
       <h1 className="display">Privacy policy</h1>
-      <p className="mt-4 text-[0.95rem] !text-mist">
+      <p className="mt-4 text-[0.95rem] !text-slate">
         Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 31
         October 2026.
       </p>

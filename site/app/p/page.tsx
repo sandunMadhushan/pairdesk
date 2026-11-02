@@ -16,8 +16,10 @@ export default function PairLink() {
   return (
     <>
       <Header />
-      <main className="mx-auto min-h-svh max-w-7xl px-4 pt-36 pb-24 sm:px-6">
-        <LinkLanding />
+      <main className="min-h-svh px-3 pt-28 pb-16 sm:px-6 sm:pt-32">
+        <div className="sheet mx-auto max-w-3xl px-6 py-12 sm:px-14 sm:py-16">
+          <LinkLanding />
+        </div>
       </main>
     </>
   );

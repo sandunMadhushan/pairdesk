@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { Metadata, Viewport } from "next";
-import "@fontsource-variable/bricolage-grotesque/standard.css";
-import "@fontsource-variable/atkinson-hyperlegible-next/index.css";
+import "@fontsource-variable/outfit/index.css";
+import "@fontsource-variable/caveat/index.css";
 import "./globals.css";
 import SmoothScroll from "@/components/SmoothScroll";
 
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0f24",
+  themeColor: "#eef3fb",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
