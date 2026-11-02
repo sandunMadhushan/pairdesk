@@ -50,7 +50,7 @@ cat >"$D/DEBIAN/control" <<C
 Package: pairdesk
 Version: $VERSION
 Architecture: amd64
-Maintainer: Sandun Madhushan <dilshansoftlab@gmail.com>
+Maintainer: Sandun Madhushan <contact@madhushan.me>
 Installed-Size: $SIZE
 Depends: libc6 (>= 2.31)
 Recommends: xdg-desktop-portal, libpipewire-0.3-0

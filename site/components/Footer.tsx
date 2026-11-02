@@ -18,8 +18,15 @@ export default function Footer() {
             </span>
             PairDesk
           </p>
-          <p className="mt-4 text-white/80">
-            Free software under the GPL-3.0-or-later licence, made by Sandun Madhushan.
+          <p className="mt-4 text-white/80">Free software under the GPL-3.0-or-later licence.</p>
+          <p className="mt-2 text-white/80">
+            Built by{" "}
+            <a
+              href="https://madhushan.me"
+              className="font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white"
+            >
+              Sandun Madhushan
+            </a>
           </p>
           <a href="/#download" className="btn btn-white mt-7">
             Download PairDesk

@@ -108,7 +108,7 @@ export default function Privacy() {
       <h2>Changes and contact</h2>
       <p>
         If this policy changes, the new version will be published on this page with a new date. Questions:{" "}
-        <a href="mailto:dilshansoftlab@gmail.com">dilshansoftlab@gmail.com</a> or{" "}
+        <a href="mailto:contact@madhushan.me">contact@madhushan.me</a> or{" "}
         <a href="https://github.com/sandunMadhushan/pairdesk/issues">GitHub issues</a>.
       </p>
     </DocPage>
