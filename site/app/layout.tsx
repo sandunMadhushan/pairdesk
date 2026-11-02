@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/outfit/index.css";
 import "@fontsource-variable/caveat/index.css";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import SmoothScroll from "@/components/SmoothScroll";
 import { AUTHOR, DESCRIPTION, NAME, OG_IMAGE, SITE, TAGLINE } from "@/lib/seo";
 
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <SmoothScroll />
         {children}
+        <Analytics />
       </body>
     </html>
   );

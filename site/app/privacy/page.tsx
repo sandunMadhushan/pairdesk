@@ -15,8 +15,8 @@ export default function Privacy() {
     <DocPage>
       <h1 className="display">Privacy policy</h1>
       <p className="mt-4 text-[0.95rem] !text-slate">
-        Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 31
-        October 2026.
+        Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 2
+        November 2026.
       </p>
 
       <h2>In short</h2>
@@ -77,7 +77,19 @@ export default function Privacy() {
           Microsoft Store, Flathub or F-Droid don&apos;t do this; the store updates them.
         </li>
       </ul>
-      <p className="mt-4">PairDesk contains no analytics, advertising or crash-reporting code. Neither does this website; it only asks GitHub which version is the latest, for the download buttons.</p>
+      <p className="mt-4">
+        The PairDesk apps contain no analytics, advertising or crash-reporting code.
+      </p>
+
+      <h2>This website</h2>
+      <p>
+        The website counts visits with Vercel Web Analytics, which has no cookies and doesn&apos;t follow you from site
+        to site. It records which pages are opened, roughly where from (country), and the browser and device type, so
+        I can see whether the site is useful. It doesn&apos;t record your IP address in a form that identifies you, and
+        it never sees pairing links: they are kept in the part of the address after the <code>#</code>, which
+        browsers don&apos;t send. The download buttons also ask GitHub which version is the latest, which shows GitHub
+        your IP address.
+      </p>
 
       <h2>Permissions</h2>
       <ul>

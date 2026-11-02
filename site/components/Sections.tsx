@@ -156,7 +156,7 @@ export function Tour() {
 const FACTS = [
   {
     title: "No account, no tracking",
-    body: "There's nothing to sign up for. PairDesk contains no analytics, ads or crash reporting.",
+    body: "There's nothing to sign up for. The apps contain no analytics, ads or crash reporting.",
   },
   {
     title: "Encrypted end to end",
