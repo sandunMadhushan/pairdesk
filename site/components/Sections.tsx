@@ -121,29 +121,26 @@ export function Tour() {
           The phone app, up close
         </h2>
       </div>
-      <div
-        data-pop
-        className="mt-12 flex snap-x snap-mandatory gap-6 overflow-x-auto px-4 pt-4 pb-10 sm:px-6 lg:px-[max(1.5rem,calc((100vw-80rem)/2+1.5rem))] [scrollbar-width:thin]"
-        tabIndex={0}
-        aria-label="Screenshots of the phone app, scroll sideways for more"
-      >
-        {SHOTS.map((s, i) => (
-          <figure key={s.src} data-pop-item className={`w-[min(60vw,240px)] shrink-0 snap-start ${i % 2 ? "lg:mt-12" : ""}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={s.src}
-              alt={s.caption}
-              width={540}
-              height={1170}
-              loading="lazy"
-              className="rounded-[30px] border-[6px] border-[#10131d] bg-white shadow-[0_40px_70px_-40px_rgba(20,30,70,.6)] transition-transform duration-500 ease-[var(--ease-out-quint)] hover:-translate-y-2 hover:rotate-[-1.5deg]"
-            />
-            <figcaption className="mt-4 text-center font-medium text-slate">{s.caption}</figcaption>
-          </figure>
-        ))}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <div data-pop className="mt-12 flex flex-wrap justify-center gap-x-5 gap-y-10 lg:flex-nowrap lg:justify-between">
+          {SHOTS.map((s, i) => (
+            <figure key={s.src} data-pop-item className={`w-[calc(50%-0.625rem)] max-w-[240px] sm:w-[calc(33.333%-0.84rem)] lg:w-auto lg:flex-1 ${i % 2 ? "lg:mt-12" : ""}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={s.src}
+                alt={s.caption}
+                width={540}
+                height={1170}
+                loading="lazy"
+                className="w-full rounded-[30px] border-[6px] border-[#10131d] bg-white shadow-[0_40px_70px_-40px_rgba(20,30,70,.6)] transition-transform duration-500 ease-[var(--ease-out-quint)] hover:-translate-y-2 hover:rotate-[-1.5deg]"
+              />
+              <figcaption className="mt-4 text-center font-medium text-slate">{s.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
       </div>
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <ul className="mt-6 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-16 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
           {MORE.map((m) => (
             <li key={m.title} className="border-t-2 border-line pt-5">
               <h3 className="text-xl font-semibold tracking-tight">{m.title}</h3>
