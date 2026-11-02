@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { Metadata } from "next";
 import DocPage from "@/components/DocPage";
+import { page } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "PairDesk privacy policy",
-  description: "PairDesk collects no personal data. Your phone talks to your computer over an encrypted connection.",
-};
+export const metadata: Metadata = page({
+  title: "Privacy policy",
+  description:
+    "PairDesk collects no personal data and has no account. Your phone talks to your computer over an encrypted connection, directly or through a relay that can't read it.",
+  path: "/privacy/",
+});
 
 export default function Privacy() {
   return (

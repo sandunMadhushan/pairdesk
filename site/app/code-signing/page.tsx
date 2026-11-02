@@ -2,11 +2,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import DocPage from "@/components/DocPage";
+import { page } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "PairDesk code signing policy",
-  description: "How PairDesk's Windows downloads are built and signed.",
-};
+export const metadata: Metadata = page({
+  title: "Code signing policy",
+  description: "How PairDesk's Windows downloads are built from the public source code and signed, and who can sign them.",
+  path: "/code-signing/",
+});
 
 export default function CodeSigning() {
   return (
