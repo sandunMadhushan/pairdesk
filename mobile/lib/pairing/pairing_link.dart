@@ -90,11 +90,7 @@ PairingInfo parsePairingLink(String text) {
     throw PairingLinkException('This PairDesk code is damaged. Show a new code on the computer.');
   }
 
-  final addresses = (q['a'] ?? '')
-      .split(',')
-      .map((a) => a.trim())
-      .where(isUsableHost)
-      .toList();
+  final addresses = (q['a'] ?? '').split(',').map((a) => a.trim()).where(isUsableHost).toList();
   if (q['r'] case final r? when r.isNotEmpty) {
     final route = RelayRoute.tryParse(r);
     if (route != null) addresses.add(route.toString());
