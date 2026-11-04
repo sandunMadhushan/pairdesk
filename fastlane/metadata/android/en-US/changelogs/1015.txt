@@ -1,0 +1,4 @@
+• Fixes connecting from another network: the computer now tells the phone its new addresses as soon as they change, so turning Tailscale on works without pairing again
+• Pairing links carry the computer's Tailscale name too
+• New in a computer's menu: "Add an address", to type one yourself
+• On Windows, the computer's Remote access page can now allow PairDesk through the firewall on every kind of network, which is what blocked Tailscale connections
