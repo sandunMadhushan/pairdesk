@@ -3,10 +3,10 @@
 // the same as `https://pairdesk.madhushan.me/p#...` to send in a message
 // (the part after `#` never leaves the phone).
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'codec.dart';
+import 'host.dart';
 import 'relay_route.dart';
 
 /// Where shared links point.
@@ -93,7 +93,7 @@ PairingInfo parsePairingLink(String text) {
   final addresses = (q['a'] ?? '')
       .split(',')
       .map((a) => a.trim())
-      .where((a) => InternetAddress.tryParse(a)?.type == InternetAddressType.IPv4)
+      .where(isUsableHost)
       .toList();
   if (q['r'] case final r? when r.isNotEmpty) {
     final route = RelayRoute.tryParse(r);

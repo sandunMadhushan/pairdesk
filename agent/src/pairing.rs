@@ -76,7 +76,8 @@ pub struct PairingLink<'a> {
     pub fingerprint: &'a [u8; 32],
     pub token: &'a str,
     pub port: u16,
-    pub addresses: &'a [std::net::Ipv4Addr],
+    /// IPv4 addresses and, when Tailscale has MagicDNS on, its name.
+    pub addresses: &'a [String],
     /// `host:port/id` of the relay this computer is reachable through.
     pub relay: Option<&'a str>,
     pub help: bool,
@@ -84,12 +85,7 @@ pub struct PairingLink<'a> {
 
 impl PairingLink<'_> {
     fn query(&self) -> String {
-        let addrs = self
-            .addresses
-            .iter()
-            .map(|a| a.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
+        let addrs = self.addresses.join(",");
         let mut q = format!(
             "v={}&n={}&fp={}&t={}&p={}&a={}",
             crate::protocol::PROTOCOL_VERSION,
@@ -153,13 +149,17 @@ mod tests {
             fingerprint: &fp,
             token: "TOKEN",
             port: 47800,
-            addresses: &["192.168.1.5".parse().unwrap(), "10.0.0.2".parse().unwrap()],
+            addresses: &[
+                "192.168.1.5".into(),
+                "10.0.0.2".into(),
+                "pc.tail1.ts.net".into(),
+            ],
             relay: None,
             help: false,
         }
         .to_uri();
         assert!(link.starts_with("pairdesk://pair?v=2&n=Sandun%27s%20laptop&fp="));
-        assert!(link.ends_with("&t=TOKEN&p=47800&a=192.168.1.5,10.0.0.2"));
+        assert!(link.ends_with("&t=TOKEN&p=47800&a=192.168.1.5,10.0.0.2,pc.tail1.ts.net"));
     }
 
     #[test]

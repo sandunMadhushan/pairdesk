@@ -36,6 +36,8 @@ pub mod acl;
 #[cfg(windows)]
 pub mod desktop;
 #[cfg(windows)]
+pub mod firewall;
+#[cfg(windows)]
 pub mod helper;
 #[cfg(windows)]
 pub mod service;

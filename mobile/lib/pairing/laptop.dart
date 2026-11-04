@@ -8,15 +8,9 @@ import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'codec.dart';
+import 'host.dart';
 
-/// Same test as the connection uses (100.64.0.0/10 or *.ts.net).
-bool isTailscaleAddress(String host) {
-  if (host.toLowerCase().endsWith('.ts.net')) return true;
-  final parts = host.split('.');
-  if (parts.length != 4) return false;
-  final a = int.tryParse(parts[0]), b = int.tryParse(parts[1]);
-  return a == 100 && b != null && b >= 64 && b <= 127;
-}
+export 'host.dart' show isTailscaleAddress, isUsableHost;
 
 class Laptop {
   Laptop({

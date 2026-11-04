@@ -87,6 +87,9 @@ enum Mode {
     Service,
     #[cfg_attr(not(windows), allow(dead_code))]
     SessionHelper,
+    /// Writes the Windows Firewall rules (elevated, from the settings page).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    AllowFirewall,
 }
 
 fn usage() -> String {
@@ -135,6 +138,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-tray" => a.no_tray = true,
             "--quit" => a.quit = true,
             #[cfg(windows)]
+            "--allow-firewall" => a.mode = Mode::AllowFirewall,
             "--install-service" => a.mode = Mode::InstallService,
             #[cfg(windows)]
             "--uninstall-service" => a.mode = Mode::UninstallService,
@@ -283,13 +287,26 @@ fn main() {
     {
         let state = state.clone();
         std::thread::spawn(move || {
+            let mut last: Option<Vec<String>> = None;
             loop {
                 if let tailscale::Status::Running { ips, dns_name, .. } =
                     state.tailscale.refresh(std::time::Duration::from_secs(50))
                 {
                     log::debug!("Tailscale: {ips:?} {dns_name:?}");
                 }
-                std::thread::sleep(std::time::Duration::from_secs(60));
+                // A phone that connected over Wi-Fi keeps whatever addresses
+                // it was told. Tell it again whenever they change, so turning
+                // Tailscale on (or the relay coming up, or a new Wi-Fi
+                // address) reaches phones that are already connected.
+                let now = state.phone_addresses();
+                if last.as_ref() != Some(&now) {
+                    if last.is_some() {
+                        let told = state.broadcast_addresses();
+                        log::info!("addresses changed to {now:?}; told {told} phone(s)");
+                    }
+                    last = Some(now);
+                }
+                std::thread::sleep(std::time::Duration::from_secs(10));
             }
         });
     }
@@ -557,6 +574,25 @@ fn windows_modes(args: &Args) {
                     eprintln!("PairDesk: {e}");
                     std::process::exit(1);
                 }
+            }
+        }
+        Mode::AllowFirewall => {
+            #[cfg(windows)]
+            {
+                log_to("firewall.log");
+                match winsys::firewall::allow(args.port) {
+                    Ok(()) => std::process::exit(0),
+                    Err(e) => {
+                        error!("{e}");
+                        eprintln!("PairDesk: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                eprintln!("PairDesk: --allow-firewall is only for Windows.");
+                std::process::exit(1);
             }
         }
         Mode::Service => {

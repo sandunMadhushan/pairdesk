@@ -2,6 +2,8 @@
 // App-wide state: this phone's identity, the paired computers and the
 // connection.
 
+import 'dart:async';
+
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
@@ -80,12 +82,34 @@ class AppModel extends ChangeNotifier {
     await store.save(_laptops);
   }
 
+  /// Saves addresses the computer sent while connected (Tailscale coming
+  /// up, a new Wi-Fi address, the relay starting), so the next connection
+  /// from another network has a route to try.
+  StreamSubscription<void>? _addressSub;
+
+  void _watchAddresses() {
+    _addressSub ??= connection.addressUpdates.listen((_) => _save());
+  }
+
+  /// Adds an address the owner typed in, e.g. the computer's Tailscale
+  /// address copied from its PairDesk page. Returns false if it isn't one
+  /// PairDesk can dial.
+  Future<bool> addAddress(Laptop laptop, String address) async {
+    final host = address.trim();
+    if (host.isEmpty || !isUsableHost(host)) return false;
+    laptop.rememberAddress(host);
+    await _save();
+    return true;
+  }
+
   Future<void> connect(Laptop laptop) async {
+    _watchAddresses();
     await connection.connect(laptop, identity, phoneName: phoneName);
     await _save();
   }
 
   Future<Laptop> pair(PairingInfo info) async {
+    _watchAddresses();
     final laptop = await connection.pair(info, identity, phoneName: phoneName);
     _laptops = [laptop, ..._laptops.where((l) => l.key != laptop.key)];
     await _save();

@@ -390,6 +390,11 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/allow-firewall") => {
+            #[cfg(windows)]
+            crate::winsys::firewall::request();
+            send_state(request, state)
+        }
         (Method::Post, "/api/wayland-allow") => {
             #[cfg(target_os = "linux")]
             if let Some(remote) = crate::wayland::global() {
@@ -629,12 +634,26 @@ fn send_state(request: Request, state: &AppState) {
         }),
         "autostart_managed": crate::autostart::managed_by(),
         "secure_desktop": crate::winsys::settings_state(),
+        "firewall": firewall_state(),
     });
     respond(
         request,
         Response::from_string(body.to_string()),
         "application/json",
     );
+}
+
+/// Whether phones can reach this computer through Windows Firewall on
+/// every kind of network (Tailscale's adapter is usually a "public" one).
+fn firewall_state() -> serde_json::Value {
+    #[cfg(windows)]
+    {
+        crate::winsys::firewall::status()
+    }
+    #[cfg(not(windows))]
+    {
+        serde_json::Value::Null
+    }
 }
 
 /// `%XX` decoding for query values (encodeURIComponent output).

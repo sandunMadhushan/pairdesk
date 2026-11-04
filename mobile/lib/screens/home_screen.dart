@@ -335,6 +335,57 @@ class _HomeScreenState extends State<HomeScreen> {
     if (name != null && name.isNotEmpty) await _model.rename(laptop, name);
   }
 
+  /// Lets the owner type an address PairDesk hasn't seen, so a computer
+  /// paired before Tailscale was set up isn't a dead end.
+  Future<void> _addAddress(Laptop laptop) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add an address'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Open PairDesk on ${laptop.name} and copy an address from its Remote access '
+              'page \u2014 the Tailscale one (100.x.x.x or a name ending in .ts.net) works '
+              'from anywhere.',
+              style: Theme.of(ctx).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 253,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: const InputDecoration(labelText: 'Address', hintText: '100.101.102.103'),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (value == null || value.isEmpty) return;
+    final ok = await _model.addAddress(laptop, value);
+    if (!mounted) return;
+    if (!ok) {
+      await _showMessage(
+        'Not an address PairDesk can use',
+        'Type the computer\'s IP address (like 192.168.1.5 or 100.101.102.103) or its '
+            'Tailscale name ending in .ts.net.',
+      );
+    }
+  }
+
   // ---- UI -------------------------------------------------------------
 
   @override
@@ -410,6 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         laptop: l,
                         onTap: _busy ? null : () => _connect(l),
                         onRename: () => _rename(l),
+                        onAddAddress: () => _addAddress(l),
                         onForget: () => _confirmForget(l),
                       ),
                   ],
@@ -477,12 +529,14 @@ class _LaptopTile extends StatelessWidget {
     required this.laptop,
     required this.onTap,
     required this.onRename,
+    required this.onAddAddress,
     required this.onForget,
   });
 
   final Laptop laptop;
   final VoidCallback? onTap;
   final VoidCallback onRename;
+  final VoidCallback onAddAddress;
   final VoidCallback onForget;
 
   @override
@@ -517,9 +571,14 @@ class _LaptopTile extends StatelessWidget {
         onTap: onTap,
         trailing: PopupMenuButton<String>(
           tooltip: 'More',
-          onSelected: (v) => v == 'rename' ? onRename() : onForget(),
+          onSelected: (v) => switch (v) {
+            'rename' => onRename(),
+            'address' => onAddAddress(),
+            _ => onForget(),
+          },
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'rename', child: Text('Rename')),
+            PopupMenuItem(value: 'address', child: Text('Add an address')),
             PopupMenuItem(value: 'forget', child: Text('Remove')),
           ],
         ),

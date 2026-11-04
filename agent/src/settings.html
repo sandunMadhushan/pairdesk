@@ -472,9 +472,15 @@
         <ol class="steps" id="remote-steps" hidden>
           <li>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</li>
           <li>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</li>
-          <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address.</li>
+          <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address. (Already paired phones are told as soon as Tailscale comes up; you can also just scan a new pairing code.)</li>
         </ol>
         <div class="row" style="margin-top:12px"><button id="btn-recheck">Check again</button></div>
+      </div>
+      <div class="card" id="card-firewall" hidden>
+        <h2>Windows Firewall</h2>
+        <div class="status-line" role="status"><span class="dot" id="fw-dot"></span><div id="fw-text"></div></div>
+        <p class="hint">Windows asks which networks an app may be reached on, and leaves "public" ones out. It usually files the Tailscale adapter as public, so phones get through on Wi-Fi but not through Tailscale. This writes a rule for every kind of network instead.</p>
+        <div class="row" style="margin-top:12px"><button id="btn-firewall">Allow PairDesk on all networks</button></div>
       </div>
       <div class="card">
         <h2>PairDesk relay</h2>
@@ -758,6 +764,9 @@ function render(s) {
     const where = (r.ips || []).join(", ") + (r.dns_name ? " (" + r.dns_name + ")" : "");
     text.textContent = "Tailscale is on. With Tailscale also on your phone, PairDesk can reach this computer from anywhere at " +
       where + ". If your phone was paired before you set up Tailscale, open PairDesk on it once at home.";
+    if (s.firewall && !s.firewall.allowed && !s.firewall.working) {
+      text.textContent += " If the phone still can't connect, allow PairDesk through Windows Firewall below.";
+    }
   } else if (r.status === "not_connected") {
     text.textContent = r.reason + " Open Tailscale on this computer to connect from away.";
   } else if (r.status === "not_installed") {
@@ -768,6 +777,7 @@ function render(s) {
     text.textContent = "Couldn't read Tailscale's status (" + r.reason + ").";
   }
   $("remote-steps").hidden = r.status === "running" || r.status === "checking";
+  renderFirewall(s.firewall);
   $("tile-remote").textContent = { running: "On (Tailscale)", not_connected: "Tailscale is off",
     not_installed: "Same Wi-Fi only", checking: "Checking…" }[r.status] || "Unknown";
   const awake = $("keep-awake");
@@ -866,6 +876,9 @@ async function refresh() {
   }
 }
 
+$("btn-firewall").onclick = async () => {
+  try { render(await post("allow-firewall")); } catch (err) { showBanner(err.message, true); }
+};
 $("btn-pair").onclick = async () => render(await post("pair"));
 $("btn-new").onclick = async () => render(await post("pair"));
 $("btn-cancel").onclick = async () => render(await post("cancel-pair"));
@@ -911,6 +924,28 @@ async function copyText(input, button) {
   const old = button.textContent;
   button.textContent = "Copied";
   setTimeout(() => (button.textContent = old), 1500);
+}
+
+function renderFirewall(fw) {
+  $("card-firewall").hidden = !fw;
+  if (!fw) return;
+  const dot = $("fw-dot"), text = $("fw-text"), btn = $("btn-firewall");
+  btn.disabled = !!fw.working;
+  if (fw.working) {
+    dot.className = "dot warn";
+    text.textContent = "Waiting for you to answer Windows' administrator prompt\u2026";
+  } else if (fw.error) {
+    dot.className = "dot warn";
+    text.textContent = fw.error;
+  } else if (fw.allowed) {
+    dot.className = "dot ok";
+    text.textContent = "Phones can reach PairDesk on every kind of network, Tailscale included.";
+    btn.textContent = "Write the rules again";
+  } else {
+    dot.className = "dot warn";
+    text.textContent = "Not set. If your phone connects on Wi-Fi but not through Tailscale, the firewall is the likely reason.";
+    btn.textContent = "Allow PairDesk on all networks";
+  }
 }
 
 function renderSecure(sd) {

@@ -121,16 +121,6 @@ class AgentException implements Exception {
 /// Tailscale addresses (100.64.0.0/10) and MagicDNS names (*.ts.net).
 bool isTailscaleHost(String host) => isTailscaleAddress(host);
 
-/// IPv4 addresses, Tailscale names and relay routes; anything else from
-/// the computer is ignored.
-bool isUsableHost(String host) {
-  if (RelayRoute.looksLike(host)) return RelayRoute.tryParse(host) != null;
-  final ip = InternetAddress.tryParse(host);
-  if (ip != null) return ip.type == InternetAddressType.IPv4 && !ip.isLoopback;
-  return RegExp(r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$', caseSensitive: false).hasMatch(host) &&
-      host.length < 254;
-}
-
 /// Opens a WebSocket over TLS that only accepts the pinned certificate.
 /// Exposed for tests.
 @visibleForTesting
@@ -367,6 +357,16 @@ class AgentConnection extends ChangeNotifier {
 
   List<String> _agentAddrs = const [];
 
+  /// The computer this connection belongs to, so an `addrs` message can
+  /// update its saved addresses while connected.
+  Laptop? _connected;
+
+  final _addressUpdates = StreamController<void>.broadcast();
+
+  /// Fires when the computer's addresses changed and were saved on the
+  /// [Laptop]; the app writes them to storage.
+  Stream<void> get addressUpdates => _addressUpdates.stream;
+
   DateTime? _pingSentAt;
   Duration? _latency;
 
@@ -439,6 +439,7 @@ class AgentConnection extends ChangeNotifier {
       _fail(best ?? AgentException(FailureKind.unreachable, 'No address known for ${laptop.name}.'));
     }
 
+    _connected = laptop;
     laptop
       ..learnAddresses(working: _address!, fromComputer: _agentAddrs)
       ..name = _agentName ?? laptop.name
@@ -618,6 +619,24 @@ class AgentConnection extends ChangeNotifier {
     }
     final type = decoded['t'];
     if (type is String && type.startsWith('file_') && transfers.handleMessage(decoded)) return;
+    // The computer's addresses changed (Tailscale came up, a new Wi-Fi
+    // address, the relay started). Keep them, so the next connection from
+    // another network has a route to try without pairing again.
+    if (decoded['t'] == 'addrs') {
+      final fresh = [
+        if (decoded['addrs'] is List)
+          for (final a in decoded['addrs'] as List)
+            if (a is String && isUsableHost(a)) a,
+      ];
+      _agentAddrs = fresh;
+      final laptop = _connected;
+      if (laptop != null && fresh.isNotEmpty) {
+        final before = laptop.addresses.join(',');
+        laptop.learnAddresses(working: _address ?? laptop.addresses.first, fromComputer: fresh);
+        if (laptop.addresses.join(',') != before) _addressUpdates.add(null);
+      }
+      return;
+    }
     if (decoded['t'] == 'notice') {
       final msg = decoded['msg'];
       if (msg is String && msg.isNotEmpty) _notices.add(msg);
@@ -675,6 +694,7 @@ class AgentConnection extends ChangeNotifier {
       }
     }
     _requests.clear();
+    _connected = null;
     _pingTimer?.cancel();
     _pingTimer = null;
     final reply = _reply;
@@ -984,6 +1004,7 @@ class AgentConnection extends ChangeNotifier {
     _audio.close();
     _audioStopped.close();
     _notices.close();
+    _addressUpdates.close();
     disconnect(notify: false);
     super.dispose();
   }

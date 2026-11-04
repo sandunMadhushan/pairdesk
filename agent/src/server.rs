@@ -331,6 +331,10 @@ async fn serve(
                 }
                 Some(cmd) = cmd_rx.recv() => {
                     match cmd {
+                        SessionCmd::Addrs(addrs) => {
+                            send(&mut sink, &ServerMsg::Addrs { addrs }).await?;
+                            continue;
+                        }
                         SessionCmd::SendFile(file) => {
                             let fid = next_fid;
                             next_fid = next_fid.wrapping_add(1).max(files::AGENT_FIDS);

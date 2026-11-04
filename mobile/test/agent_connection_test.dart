@@ -542,6 +542,29 @@ void main() {
       expect(conn.latency, isNull);
     });
 
+    test('learns a Tailscale address that appears while connected', () async {
+      agent.addrs = ['192.168.1.50'];
+      final conn = AgentConnection(pingInterval: const Duration(milliseconds: 100));
+      final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
+      expect(laptop.reachableAnywhere, isFalse);
+
+      final saved = expectLater(conn.addressUpdates.first, completes);
+      // Tailscale comes up on the computer after the phone connected.
+      agent.socket!.add(
+        jsonEncode({
+          't': 'addrs',
+          'addrs': ['192.168.1.50', '100.101.102.103', 'pc.tail1234.ts.net', 'evil.example.com'],
+        }),
+      );
+      await saved;
+
+      expect(laptop.addresses, contains('100.101.102.103'));
+      expect(laptop.addresses, contains('pc.tail1234.ts.net'));
+      expect(laptop.addresses, isNot(contains('evil.example.com')));
+      expect(laptop.reachableAnywhere, isTrue);
+      await conn.disconnect();
+    });
+
     test('keeps at most eight addresses, newest first', () {
       final l = Laptop(
         fingerprint: Uint8List(32),

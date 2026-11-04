@@ -359,6 +359,13 @@ pub enum ServerMsg {
     Notice {
         msg: String,
     },
+    /// The computer's addresses changed (e.g. Tailscale came up after the
+    /// phone connected). Same list as `Welcome.addrs`: home network first,
+    /// then Tailscale addresses and name, then the relay route.
+    /// Added in 0.11.1; older phones ignore it.
+    Addrs {
+        addrs: Vec<String>,
+    },
     /// Answer to `clip_get`.
     Clip {
         #[serde(skip_serializing_if = "Option::is_none")]

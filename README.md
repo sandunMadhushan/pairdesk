@@ -106,11 +106,20 @@ is connected). For a direct, private route you can use Tailscale instead:
 1. Install [Tailscale](https://tailscale.com/download) on the computer and on the
    phone, and sign in to both with the same account (free for personal use).
 2. Open PairDesk on the phone once at home, so it learns the computer's Tailscale address.
+   Phones that are already connected are told as soon as Tailscale comes up, and a
+   freshly scanned pairing code carries the address too.
 3. Away from home, turn Tailscale on, on the phone, and open PairDesk. The title bar
    shows whether you're connected via Wi-Fi or Tailscale.
 
 The computer must be awake: turn on **Keep this computer awake** on its PairDesk page
 if it tends to sleep.
+
+**Works on Wi-Fi but not through Tailscale?** On Windows that is almost always the
+firewall. Windows asks which networks an app may be reached on and leaves "public" ones
+out, and it usually files the Tailscale adapter as public. Open **Remote access** on the
+computer and press **Allow PairDesk on all networks**. If the phone has no Tailscale
+address for the computer at all, its menu on the phone (⋮ next to the computer) has
+**Add an address**, where you can type the `100.x.x.x` address shown on that same page.
 
 ### Known limits
 

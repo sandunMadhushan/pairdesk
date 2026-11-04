@@ -28,6 +28,8 @@ pub struct Session {
 #[derive(Debug)]
 pub enum SessionCmd {
     SendFile(std::sync::Arc<crate::files::Outbound>),
+    /// Tell the phone the computer's addresses changed.
+    Addrs(Vec<String>),
 }
 
 impl std::fmt::Debug for crate::files::Outbound {
@@ -276,7 +278,14 @@ impl AppState {
     pub fn pairing_links(&self) -> Option<PairingLinks> {
         let guard = lock(&self.pairing);
         let code = guard.as_ref().filter(|c| !c.is_expired())?;
-        let addresses: Vec<_> = crate::net::addresses().into_iter().map(|a| a.ip).collect();
+        // Every route the phone could use, so a link scanned away from home
+        // (or before Tailscale was running) still carries the Tailscale
+        // address and name. The relay goes in its own field.
+        let addresses: Vec<String> = self
+            .phone_addresses()
+            .into_iter()
+            .filter(|a| !a.starts_with("relay:"))
+            .collect();
         let route = self.relay.route();
         let link = PairingLink {
             name: &self.name,
@@ -318,6 +327,18 @@ impl AppState {
             out.push(format!("relay:{route}"));
         }
         out
+    }
+
+    /// Tells every connected phone the computer's addresses, so a phone
+    /// that connected over Wi-Fi learns the Tailscale address (or relay
+    /// route) the moment it appears, without pairing again.
+    /// Returns how many phones were told.
+    pub fn broadcast_addresses(&self) -> usize {
+        let addrs = self.phone_addresses();
+        lock(&self.sessions)
+            .values()
+            .filter(|s| s.cmd.send(SessionCmd::Addrs(addrs.clone())).is_ok())
+            .count()
     }
 
     pub fn pairing_token_valid(&self, token: &str) -> bool {

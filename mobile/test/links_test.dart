@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pairdesk/agent_connection.dart';
 import 'package:pairdesk/files/share_inbox.dart';
 import 'package:pairdesk/files/native_files.dart';
+import 'package:pairdesk/pairing/host.dart';
 import 'package:pairdesk/pairing/pairing_link.dart';
 import 'package:pairdesk/pairing/relay_route.dart';
 

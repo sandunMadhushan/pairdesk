@@ -48,8 +48,8 @@
     <!-- Phones connect on TCP 47800; mDNS (UDP 5353) lets them find this computer. -->
     <desktop2:Extension Category="windows.firewallRules">
       <desktop2:FirewallRules Executable="pairdesk-agent.exe">
-        <desktop2:Rule Direction="in" IPProtocol="TCP" LocalPortMin="47800" LocalPortMax="47800" Profile="domainAndPrivate" />
-        <desktop2:Rule Direction="in" IPProtocol="UDP" LocalPortMin="5353" LocalPortMax="5353" Profile="domainAndPrivate" />
+        <desktop2:Rule Direction="in" IPProtocol="TCP" LocalPortMin="47800" LocalPortMax="47800" Profile="all" />
+        <desktop2:Rule Direction="in" IPProtocol="UDP" LocalPortMin="5353" LocalPortMax="5353" Profile="all" />
       </desktop2:FirewallRules>
     </desktop2:Extension>
   </Extensions>
