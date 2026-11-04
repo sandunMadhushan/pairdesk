@@ -31,6 +31,7 @@ import java.util.concurrent.Executors
 //  - openFile: opens a received file in the app that handles it
 class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
+    private var updates: UpdateChannel? = null
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
@@ -73,6 +74,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onDestroy() {
         audio?.release()
+        updates?.dispose()
         super.onDestroy()
     }
 
@@ -95,6 +97,7 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         VideoChannel(flutterEngine)
         audio = AudioChannel(flutterEngine, this)
+        updates = UpdateChannel(flutterEngine, this)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pairdesk/files").apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {

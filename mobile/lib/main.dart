@@ -10,14 +10,36 @@ import 'files/share_inbox.dart';
 import 'screens/home_screen.dart';
 import 'settings/app_lock.dart';
 import 'update_check.dart';
+import 'update_install.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final model = await AppModel.load();
   ShareInbox.instance.start();
   final updates = await _updateChecker();
-  runApp(PairDeskApp(model: model, updates: updates));
+  runApp(
+    PairDeskApp(
+      model: model,
+      updates: updates,
+      installer: updates == null ? null : UpdateInstaller(cacheDir: _updateCache),
+    ),
+  );
   updates?.checkIfDue();
+}
+
+/// Where a downloaded APK waits until Android installs it: the app's own
+/// temporary space, which Android clears by itself if the install never
+/// happens. Only PairDesk can read it.
+Future<Directory> _updateCache() async {
+  final dir = Directory('${Directory.systemTemp.path}/pairdesk-updates');
+  if (!dir.existsSync()) await dir.create(recursive: true);
+  // One update at a time: drop anything an earlier try left behind.
+  for (final old in dir.listSync()) {
+    try {
+      await old.delete(recursive: true);
+    } catch (_) {}
+  }
+  return dir;
 }
 
 /// GitHub builds look for new releases; F-Droid builds leave that to F-Droid.
@@ -33,10 +55,13 @@ Future<UpdateChecker?> _updateChecker() async {
 }
 
 class PairDeskApp extends StatelessWidget {
-  const PairDeskApp({super.key, required this.model, this.updates});
+  const PairDeskApp({super.key, required this.model, this.updates, this.installer});
 
   final AppModel model;
   final UpdateChecker? updates;
+
+  /// Downloads and installs an update; made only when [updates] is.
+  final UpdateInstaller? installer;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +78,7 @@ class PairDeskApp extends StatelessWidget {
         if (settings == null || child == null) return child ?? const SizedBox.shrink();
         return AppLockGate(settings: settings, child: child);
       },
-      home: HomeScreen(model: model, updates: updates),
+      home: HomeScreen(model: model, updates: updates, installer: installer),
     );
   }
 }

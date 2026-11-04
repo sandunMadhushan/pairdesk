@@ -26,7 +26,13 @@ const manifestUrl = 'https://github.com/sandunMadhushan/pairdesk/releases/latest
 const updatePublicKey = 'mPqsTySowXha+X+KMh49/y3HgcepbYP8QvYdpIGnwaU=';
 
 class AvailableUpdate {
-  const AvailableUpdate({required this.version, required this.download, required this.notes});
+  const AvailableUpdate({
+    required this.version,
+    required this.download,
+    required this.notes,
+    this.sha256 = '',
+    this.size = 0,
+  });
   final String version;
 
   /// The APK for this phone.
@@ -34,6 +40,11 @@ class AvailableUpdate {
 
   /// The release page.
   final Uri notes;
+
+  /// What the signed manifest says the APK should be, so a download that
+  /// was changed on the way is thrown away instead of installed.
+  final String sha256;
+  final int size;
 }
 
 /// True when [a] is an older version than [b] ("0.7.0" < "0.10.0").
@@ -108,13 +119,45 @@ class UpdateChecker extends ChangeNotifier {
       } else {
         await prefs.setString(
           _foundKey,
-          jsonEncode({'v': found.version, 'd': '${found.download}', 'n': '${found.notes}'}),
+          jsonEncode({
+            'v': found.version,
+            'd': '${found.download}',
+            'n': '${found.notes}',
+            's': found.sha256,
+            'z': found.size,
+          }),
         );
       }
       _set(found != null && prefs.getString(_dismissedKey) != found.version ? found : null);
     } catch (e) {
       debugPrint('update check failed: $e');
     }
+  }
+
+  /// "Check for updates" in Settings: asks now, whatever the timer and
+  /// any earlier "Not now" said. Returns the update, or null when this is
+  /// the newest. Throws if the check failed.
+  Future<AvailableUpdate?> checkNow({DateTime? now}) async {
+    final found = await check();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_lastCheckKey, (now ?? DateTime.now()).millisecondsSinceEpoch);
+    await prefs.remove(_dismissedKey);
+    if (found == null) {
+      await prefs.remove(_foundKey);
+    } else {
+      await prefs.setString(
+        _foundKey,
+        jsonEncode({
+          'v': found.version,
+          'd': '${found.download}',
+          'n': '${found.notes}',
+          's': found.sha256,
+          'z': found.size,
+        }),
+      );
+    }
+    _set(found);
+    return found;
   }
 
   AvailableUpdate? _restore(SharedPreferences prefs) {
@@ -126,6 +169,8 @@ class UpdateChecker extends ChangeNotifier {
         version: m['v'] as String,
         download: Uri.parse(m['d'] as String),
         notes: Uri.parse(m['n'] as String),
+        sha256: m['s'] as String? ?? '',
+        size: m['z'] as int? ?? 0,
       );
       if (!isOlderVersion(currentVersion, u.version)) return null;
       return prefs.getString(_dismissedKey) == u.version ? null : u;
@@ -175,6 +220,8 @@ class UpdateChecker extends ChangeNotifier {
     return AvailableUpdate(
       version: version,
       download: download,
+      sha256: asset['sha256'] as String? ?? '',
+      size: asset['size'] as int? ?? 0,
       notes: notes != null && notes.scheme == 'https'
           ? notes
           : Uri.parse('https://github.com/sandunMadhushan/pairdesk/releases/latest'),

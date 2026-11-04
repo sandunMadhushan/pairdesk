@@ -12,17 +12,21 @@ import '../app_model.dart';
 import '../pairing/laptop.dart';
 import '../pairing/pairing_link.dart';
 import '../update_check.dart';
+import '../update_install.dart';
 import 'control_screen.dart';
 import 'scan_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.model, this.updates});
+  const HomeScreen({super.key, required this.model, this.updates, this.installer});
 
   final AppModel model;
 
   /// New releases on GitHub (only in GitHub builds).
   final UpdateChecker? updates;
+
+  /// Downloads and installs an update. Null in tests and on F-Droid builds.
+  final UpdateInstaller? installer;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -388,10 +392,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_model, ?widget.updates]),
+      listenable: Listenable.merge([_model, ?widget.updates, ?widget.installer]),
       builder: (context, _) {
         final laptops = _model.laptops;
         final update = widget.updates?.available;
+        final installer = widget.installer;
         return Scaffold(
           appBar: AppBar(
             title: const Text('PairDesk'),
@@ -405,9 +410,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 IconButton(
                   tooltip: 'Settings',
                   icon: const Icon(Icons.settings_outlined),
-                  onPressed: () =>
-                      Navigator.of(context)
-                          .push(MaterialPageRoute(builder: (_) => SettingsScreen(settings: settings))),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SettingsScreen(settings: settings, updates: widget.updates),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -421,7 +428,8 @@ class _HomeScreenState extends State<HomeScreen> {
           body: laptops.isEmpty
               ? Column(
                   children: [
-                    if (update != null) _UpdateCard(update: update, onDismiss: widget.updates!.dismiss),
+                    if (update != null && installer != null)
+                      _UpdateCard(update: update, installer: installer, onDismiss: widget.updates!.dismiss),
                     Expanded(
                       child: _EmptyState(
                         onAdd: _busy ? null : _addComputer,
@@ -433,7 +441,8 @@ class _HomeScreenState extends State<HomeScreen> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
                   children: [
-                    if (update != null) _UpdateCard(update: update, onDismiss: widget.updates!.dismiss),
+                    if (update != null && installer != null)
+                      _UpdateCard(update: update, installer: installer, onDismiss: widget.updates!.dismiss),
                     if (ShareInbox.instance.pending case final shared?)
                       Card(
                         child: ListTile(
@@ -469,14 +478,60 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _UpdateCard extends StatelessWidget {
-  const _UpdateCard({required this.update, required this.onDismiss});
+class _UpdateCard extends StatefulWidget {
+  const _UpdateCard({required this.update, required this.installer, required this.onDismiss});
 
   final AvailableUpdate update;
+  final UpdateInstaller installer;
   final VoidCallback onDismiss;
 
   @override
+  State<_UpdateCard> createState() => _UpdateCardState();
+}
+
+class _UpdateCardState extends State<_UpdateCard> {
+  Future<void> _update() async {
+    final installer = widget.installer;
+    if (!await installer.canInstall()) {
+      if (!mounted) return;
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Let PairDesk install updates'),
+          content: const Text(
+            'Android asks for this once. On the next screen turn on "Allow from this source" '
+            'for PairDesk, then come back and press Update.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open settings')),
+          ],
+        ),
+      );
+      if (go == true) await installer.requestPermission();
+      return;
+    }
+    await installer.install(widget.update);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final update = widget.update;
+    final installer = widget.installer;
+    final theme = Theme.of(context);
+    final (title, detail) = switch (installer.stage) {
+      UpdateStage.downloading => ('Downloading PairDesk ${update.version}', null),
+      UpdateStage.installing => ('Getting it ready\u2026', null),
+      UpdateStage.waiting => (
+        'Finish in Android',
+        'Android is asking you to confirm. PairDesk restarts once it is installed.',
+      ),
+      UpdateStage.failed => ('Update failed', installer.error),
+      UpdateStage.idle => (
+        'PairDesk ${update.version} is available',
+        'Press Update: PairDesk downloads it and Android installs it over this version.',
+      ),
+    };
     return Card(
       margin: const EdgeInsets.fromLTRB(4, 4, 4, 8),
       child: Padding(
@@ -486,33 +541,43 @@ class _UpdateCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.system_update_outlined),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'PairDesk ${update.version} is available',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                Icon(
+                  installer.stage == UpdateStage.failed ? Icons.error_outline : Icons.system_update_outlined,
+                  color: installer.stage == UpdateStage.failed ? theme.colorScheme.error : null,
                 ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
               ],
             ),
-            const Padding(
-              padding: EdgeInsets.only(left: 36, top: 4),
-              child: Text('Download it, then open the file to install it over this version.'),
-            ),
+            if (detail != null)
+              Padding(padding: const EdgeInsets.only(left: 36, top: 4), child: Text(detail)),
+            if (installer.stage == UpdateStage.downloading)
+              Padding(
+                padding: const EdgeInsets.only(left: 36, top: 12, right: 8),
+                child: LinearProgressIndicator(value: installer.progress),
+              ),
             OverflowBar(
               alignment: MainAxisAlignment.end,
-              children: [
-                TextButton(onPressed: onDismiss, child: const Text('Not now')),
-                TextButton(
-                  onPressed: () => launchUrl(update.notes, mode: LaunchMode.externalApplication),
-                  child: const Text('What\'s new'),
-                ),
-                FilledButton.tonal(
-                  onPressed: () => launchUrl(update.download, mode: LaunchMode.externalApplication),
-                  child: const Text('Download'),
-                ),
-              ],
+              children: switch (installer.stage) {
+                UpdateStage.downloading || UpdateStage.installing => const <Widget>[],
+                UpdateStage.waiting => [TextButton(onPressed: installer.reset, child: const Text('Close'))],
+                UpdateStage.failed => [
+                  TextButton(onPressed: installer.reset, child: const Text('Close')),
+                  TextButton(
+                    onPressed: () => launchUrl(update.notes, mode: LaunchMode.externalApplication),
+                    child: const Text('Open GitHub'),
+                  ),
+                  FilledButton.tonal(onPressed: _update, child: const Text('Try again')),
+                ],
+                UpdateStage.idle => [
+                  TextButton(onPressed: widget.onDismiss, child: const Text('Not now')),
+                  TextButton(
+                    onPressed: () => launchUrl(update.notes, mode: LaunchMode.externalApplication),
+                    child: const Text('What\'s new'),
+                  ),
+                  FilledButton.tonal(onPressed: _update, child: const Text('Update')),
+                ],
+              },
             ),
           ],
         ),

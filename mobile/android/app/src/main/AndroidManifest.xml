@@ -12,6 +12,10 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <!-- Optional app lock with fingerprint or screen lock. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <!-- Installing a newer PairDesk over this one, from the GitHub release.
+         Android still asks the owner before anything is installed, and only
+         accepts an APK signed with the same key as this one. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="PairDesk"
         android:allowBackup="false"

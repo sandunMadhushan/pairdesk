@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../screen/video.dart';
 
 import '../settings/app_lock.dart';
+import '../update_check.dart';
 import 'remote_help_screen.dart';
 import '../settings/app_settings.dart';
 
@@ -13,11 +14,15 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
     required this.settings,
+    this.updates,
     this.authenticate = deviceAuthenticate,
     this.canAuthenticate = deviceCanAuthenticate,
   });
 
   final AppSettings settings;
+
+  /// New releases on GitHub. Null on F-Droid builds, which F-Droid updates.
+  final UpdateChecker? updates;
   final Authenticator authenticate;
   final Future<bool> Function() canAuthenticate;
 
@@ -108,6 +113,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             const SmoothVideoTile(),
             header('About'),
+            if (updates != null) _CheckForUpdates(updates: updates!),
             FutureBuilder<PackageInfo>(
               future: PackageInfo.fromPlatform(),
               builder: (_, snap) => ListTile(
@@ -125,6 +131,54 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "Check for updates" in About: asks GitHub now, rather than waiting for
+/// the once-a-day check. What it finds shows on the Home screen.
+class _CheckForUpdates extends StatefulWidget {
+  const _CheckForUpdates({required this.updates});
+
+  final UpdateChecker updates;
+
+  @override
+  State<_CheckForUpdates> createState() => _CheckForUpdatesState();
+}
+
+class _CheckForUpdatesState extends State<_CheckForUpdates> {
+  bool _busy = false;
+  String? _answer;
+
+  Future<void> _check() async {
+    setState(() {
+      _busy = true;
+      _answer = null;
+    });
+    String answer;
+    try {
+      final found = await widget.updates.checkNow();
+      answer = found == null
+          ? 'This is the newest version.'
+          : 'PairDesk ${found.version} is available \u2014 see the Home screen.';
+    } catch (_) {
+      answer = 'Couldn\'t reach GitHub. Check the phone\'s connection.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _answer = answer;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: const Icon(Icons.system_update_outlined),
+    title: const Text('Check for updates'),
+    subtitle: Text(_answer ?? 'PairDesk also checks by itself once a day'),
+    trailing: _busy
+        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+        : null,
+    onTap: _busy ? null : _check,
+  );
 }
 
 /// Screen view as video (H.264) or pictures. Video turns itself off when

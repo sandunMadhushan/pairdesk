@@ -66,7 +66,11 @@ icon to open it, pair another phone or remove one.
 update** on its page (the Windows setup, the program files and the AppImage
 update themselves; with the `.deb`/`.rpm`, install the new package). Each update
 is signed; PairDesk checks the signature and checksum first. The phone app (from
-GitHub) shows when a new version is out.
+GitHub) does the same: it offers **Update**, downloads the APK, checks it against
+the signed manifest and lets Android install it over the old copy — Android asks
+once for permission to let PairDesk install apps, and always asks you to confirm
+each install. **Settings → About → Check for updates** asks straight away. The
+F-Droid build leaves updating to F-Droid.
 
 Upgrading the phone app from 0.7 or earlier: uninstall the old app first (it was
 signed with a test key), install 0.8 and pair again.
