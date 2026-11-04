@@ -91,6 +91,17 @@ void main() {
     return f;
   }
 
+  /// Waits until [done], or gives up after [limit]. Loaded machines (a
+  /// build in the background, a busy CI runner) take their time, so these
+  /// tests wait for the thing they are about to check instead of sleeping
+  /// for a fixed number of milliseconds and hoping.
+  Future<void> until(bool Function() done, {Duration limit = const Duration(seconds: 10)}) async {
+    final deadline = DateTime.now().add(limit);
+    while (!done() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+  }
+
   test('sends a file in order, within the window, with its checksum', () async {
     final f = makeFile(window + 3 * chunkSize + 5);
     final t = await phone.send(f);
@@ -111,13 +122,15 @@ void main() {
     computer.reportProgress = false;
     final f = makeFile(window + chunkSize);
     final sending = phone.send(f);
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Reading and sending 4 MiB takes as long as the machine takes, so wait
+    // for the window to fill rather than guessing at a delay.
+    await until(() => computer.received.length >= window);
     expect(computer.received.length, window, reason: 'stops at the window');
     expect(computer.sent.any((m) => m['t'] == 'file_end'), isFalse);
     // The computer catches up.
     computer.reportProgress = true;
     phone.handleMessage({'t': 'file_progress', 'fid': 1, 'received': window});
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await until(() => computer.received.length > window);
     phone.handleMessage({'t': 'file_progress', 'fid': 1, 'received': window + chunkSize});
     expect((await sending).state, TransferState.done);
   });
@@ -138,7 +151,7 @@ void main() {
   test('a lost connection fails what is in flight', () async {
     computer.reportProgress = false;
     final sending = phone.send(makeFile(window * 2));
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await until(() => computer.received.isNotEmpty);
     phone.connectionLost();
     await expectLater(sending, throwsA(isA<TransferException>()));
     expect(phone.items.single.message, 'Disconnected from the computer.');
