@@ -156,6 +156,9 @@ address for the computer at all, its menu on the phone (⋮ next to the computer
 Requirements: [Rust](https://rustup.rs) (stable) and [Flutter](https://flutter.dev) (stable).
 
 ```bash
+# Everything GitHub Actions checks, before you push
+tools/check.sh                 # or: tools/check.sh phone | agent | relay
+
 # Desktop agent
 cd agent
 cargo test

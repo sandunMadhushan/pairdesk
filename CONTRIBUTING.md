@@ -11,9 +11,13 @@ You keep the copyright to your work.
 
 ## Before opening a pull request
 
-- Run the checks for what you changed:
-  - Agent: `cd agent && cargo fmt && cargo clippy && cargo test`
-  - Phone app: `cd mobile && dart format -l 110 lib test && flutter analyze && flutter test`
+- Run `tools/check.sh` before you push: it runs exactly what GitHub Actions
+  runs, so a green run here is a green run there. `tools/check.sh phone`,
+  `agent` or `relay` checks only that part. Two things catch people out:
+  CI fails if `dart format -l 110` would change anything, and `flutter
+  analyze` counts an *info* as a failure, not just a warning.
+  - Agent on its own: `cd agent && cargo fmt && cargo clippy && cargo test`
+  - Phone app on its own: `cd mobile && dart format -l 110 lib test && flutter analyze && flutter test`
 - Start every new source file with a licence header:
   - Rust: `// SPDX-License-Identifier: GPL-3.0-or-later`
   - Dart: `// SPDX-License-Identifier: GPL-3.0-or-later`
