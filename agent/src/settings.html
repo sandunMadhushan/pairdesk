@@ -483,6 +483,17 @@
         <div class="row" style="margin-top:12px"><button id="btn-firewall">Allow PairDesk on all networks</button></div>
       </div>
       <div class="card">
+        <h2>Without Tailscale or the relay</h2>
+        <p class="hint" style="margin-top:0">Your phone and this computer sit on two different private networks, so something has to join them: Tailscale, the PairDesk relay, or your own router. For the last one, give the router a <b>port forward</b> to this computer and tell the phone where to find it. No other company is involved.</p>
+        <ol class="steps">
+          <li>Give this computer a fixed address on your home network (your router calls it a DHCP reservation or static lease). It is <span id="fw-lan">–</span> right now.</li>
+          <li>In the router, forward <b>TCP port <span id="fw-port">47800</span></b> to that address.</li>
+          <li>Your home connection's address changes now and then, so set up a free dynamic DNS name (DuckDNS, No-IP, or your router's own) that follows it.</li>
+          <li>On the phone, open the computer's <b>⋮</b> menu, choose <b>Add an address</b> and type that name. Add <code>:port</code> after it if the router forwards a different outside port.</li>
+        </ol>
+        <p class="hint">This only works if your internet provider gives you a public address. If the address your router shows is different from the one a "what is my IP" page shows, you are behind the provider's own NAT and a port forward can't reach you — use Tailscale or the relay instead.</p>
+      </div>
+      <div class="card">
         <h2>PairDesk relay</h2>
         <div class="status-line" role="status"><span class="dot" id="relay-dot"></span><div id="relay-text"></div></div>
         <p class="hint">When your phone can't reach this computer directly (another network, no Tailscale), it connects through the relay. Everything stays encrypted between your phone and this computer: the relay only passes it along and can't see your screen or what you type.</p>
@@ -778,6 +789,8 @@ function render(s) {
   }
   $("remote-steps").hidden = r.status === "running" || r.status === "checking";
   renderFirewall(s.firewall);
+  $("fw-lan").textContent = (s.addresses || []).join(" or ") || "not on a network";
+  $("fw-port").textContent = s.port;
   $("tile-remote").textContent = { running: "On (Tailscale)", not_connected: "Tailscale is off",
     not_installed: "Same Wi-Fi only", checking: "Checking…" }[r.status] || "Unknown";
   const awake = $("keep-awake");

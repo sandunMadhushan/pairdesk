@@ -10,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'codec.dart';
 import 'host.dart';
 
-export 'host.dart' show isTailscaleAddress, isUsableHost;
+export 'host.dart' show isTailscaleAddress, isTypedHost, isUsableHost, splitHostPort;
 
 class Laptop {
   Laptop({

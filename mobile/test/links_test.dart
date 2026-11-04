@@ -29,6 +29,51 @@ void main() {
     expect(isUsableHost(info.addresses.last), isTrue);
   });
 
+  test('what a computer or a link may tell the phone to dial', () {
+    for (final a in ['192.168.1.5', '100.101.102.103', 'pc.tail1234.ts.net', '203.0.113.9:8443']) {
+      expect(isUsableHost(a), isTrue, reason: a);
+    }
+    // Narrow on purpose: a link can come from someone else.
+    for (final a in [
+      '',
+      '127.0.0.1',
+      'localhost',
+      'bogus',
+      'home.example.org',
+      'evil.example.com',
+      '::1',
+      '2001:db8::1',
+      'has space.ts.net',
+      'home.example.org:0',
+    ]) {
+      expect(isUsableHost(a), isFalse, reason: a.isEmpty ? '(empty)' : a);
+    }
+  });
+
+  test('what the owner may type in, which is wider', () {
+    // A name of your own, for a router that forwards the port.
+    for (final a in [
+      'home.example.org',
+      'home.example.org:47800',
+      'my-pc.duckdns.org',
+      '192.168.1.5',
+      'pc.tail1234.ts.net',
+    ]) {
+      expect(isTypedHost(a), isTrue, reason: a);
+    }
+    for (final a in ['', 'bogus', 'localhost', 'pairdesk.localhost', '127.0.0.1', '-bad.example.org']) {
+      expect(isTypedHost(a), isFalse, reason: a.isEmpty ? '(empty)' : a);
+    }
+  });
+
+  test('an address can carry its own port, for a router that forwards another', () {
+    expect(splitHostPort('home.example.org:47800'), (host: 'home.example.org', port: 47800));
+    expect(splitHostPort('192.168.1.5'), (host: '192.168.1.5', port: null));
+    // Not a port number: the whole thing stays the host.
+    expect(splitHostPort('home.example.org:http'), (host: 'home.example.org:http', port: null));
+    expect(isTailscaleAddress('pc.tail1234.ts.net:47800'), isTrue);
+  });
+
   test('other https links are refused', () {
     expect(() => parsePairingLink('https://evil.example/p#$query'), throwsA(isA<PairingLinkException>()));
     expect(

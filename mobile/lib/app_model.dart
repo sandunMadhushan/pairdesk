@@ -96,7 +96,7 @@ class AppModel extends ChangeNotifier {
   /// PairDesk can dial.
   Future<bool> addAddress(Laptop laptop, String address) async {
     final host = address.trim();
-    if (host.isEmpty || !isUsableHost(host)) return false;
+    if (host.isEmpty || !isTypedHost(host)) return false;
     laptop.rememberAddress(host);
     await _save();
     return true;

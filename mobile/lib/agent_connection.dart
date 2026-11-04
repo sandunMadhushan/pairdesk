@@ -121,6 +121,14 @@ class AgentException implements Exception {
 /// Tailscale addresses (100.64.0.0/10) and MagicDNS names (*.ts.net).
 bool isTailscaleHost(String host) => isTailscaleAddress(host);
 
+/// A home-network address answers in milliseconds or not at all. Anything
+/// else (Tailscale, a name pointing at a home connection, the relay) may
+/// take a few seconds, so it gets the longer timeout.
+bool _isLocal(String host) {
+  if (isTailscaleAddress(host)) return false;
+  return InternetAddress.tryParse(host)?.type == InternetAddressType.IPv4;
+}
+
 /// Opens a WebSocket over TLS that only accepts the pinned certificate.
 /// Exposed for tests.
 @visibleForTesting
@@ -514,11 +522,14 @@ class AgentConnection extends ChangeNotifier {
       Future<void>.delayed(delay, () async {
         if (done.isCompleted || _cancelRequested) return finished();
         try {
+          // An address may carry its own port (a router forwarding a
+          // different one); otherwise the computer's own port is used.
+          final where = relay ? (host: host, port: null) : splitHostPort(host);
           final ch = await openPinnedChannel(
-            host,
-            laptop.port,
+            where.host,
+            where.port ?? laptop.port,
             laptop.fingerprint,
-            timeout: relay || isTailscaleHost(host) ? remoteConnectTimeout : connectTimeout,
+            timeout: relay || !_isLocal(where.host) ? remoteConnectTimeout : connectTimeout,
           );
           if (done.isCompleted || _cancelRequested) {
             unawaited(ch.sink.close().catchError((_) {}));

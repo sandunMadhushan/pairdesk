@@ -118,6 +118,18 @@ is connected). For a direct, private route you can use Tailscale instead:
 The computer must be awake: turn on **Keep this computer awake** on its PairDesk page
 if it tends to sleep.
 
+**Neither Tailscale nor the relay?** Your phone and your computer are on two
+different private networks, so something has to join them. The third way is your
+own router: give the computer a fixed address on your home network, forward TCP
+port 47800 to it, point a free dynamic DNS name (DuckDNS, No-IP, or your router's
+own) at your home connection, then on the phone use **⋮ → Add an address** and
+type that name — `home.example.org`, or `home.example.org:8443` if the router
+forwards a different outside port. Nothing is in the middle, and the phone still
+checks the computer's certificate exactly as on Wi-Fi. This needs a public
+address from your internet provider: if your router's address differs from what a
+"what is my IP" page shows, you are behind the provider's NAT and a port forward
+can't reach you. **Remote access** on the computer walks through the steps.
+
 **Works on Wi-Fi but not through Tailscale?** On Windows that is almost always the
 firewall. Windows asks which networks an app may be reached on and leaves "public" ones
 out, and it usually files the Tailscale adapter as public. Open **Remote access** on the

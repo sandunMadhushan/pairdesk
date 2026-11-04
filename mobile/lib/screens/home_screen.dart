@@ -352,9 +352,11 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Open PairDesk on ${laptop.name} and copy an address from its Remote access '
-              'page \u2014 the Tailscale one (100.x.x.x or a name ending in .ts.net) works '
-              'from anywhere.',
+              'An address this computer can be reached at. Its Remote access page shows them: '
+              'the Tailscale one (100.x.x.x, or a name ending in .ts.net) works from anywhere '
+              'with Tailscale on. A name of your own that points at your home connection works '
+              'without it, if your router forwards the port \u2014 add ":port" if the router '
+              'uses a different one.',
               style: Theme.of(ctx).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -381,8 +383,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!ok) {
       await _showMessage(
         'Not an address PairDesk can use',
-        'Type the computer\'s IP address (like 192.168.1.5 or 100.101.102.103) or its '
-            'Tailscale name ending in .ts.net.',
+        'Type an IP address (like 192.168.1.5 or 100.101.102.103) or a name '
+            '(like pc.tail1234.ts.net or home.example.org), and ":port" after it if '
+            'the port is not the usual one.',
       );
     }
   }
