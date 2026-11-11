@@ -1,0 +1,2 @@
+• Connecting from another network now works with nothing to set up: the PairDesk relay is live and used by default
+• "Add an address" accepts a name and an optional :port, for reaching a computer through your own router

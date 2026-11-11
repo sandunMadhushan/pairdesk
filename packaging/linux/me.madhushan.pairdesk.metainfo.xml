@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.11.2" date="2026-11-11">
+      <description>
+        <p>Connecting from another network now works with nothing to set up: the PairDesk relay is live and used by default. You can also reach a computer through a port forward on your own router by typing its name or address into the phone.</p>
+      </description>
+    </release>
     <release version="0.11.1" date="2026-11-04">
       <description>
         <p>Computers stay reachable away from home: PairDesk now tells phones straight away when its addresses change, so turning Tailscale on reaches a phone that was paired before it. On Windows it can write firewall rules for every kind of network, which is what stopped Tailscale connections getting through. The phone app also installs its own updates now.</p>
