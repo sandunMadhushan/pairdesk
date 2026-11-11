@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.11.3" date="2026-11-11">
+      <description>
+        <p>The phone no longer drops a connection that is still alive: it waits longer for the computer, does not mistake its own sleep for a silent computer, and reconnects by itself when the link really breaks.</p>
+      </description>
+    </release>
     <release version="0.11.2" date="2026-11-11">
       <description>
         <p>Connecting from another network now works with nothing to set up: the PairDesk relay is live and used by default. You can also reach a computer through a port forward on your own router by typing its name or address into the phone.</p>

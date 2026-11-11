@@ -285,7 +285,7 @@ class AgentConnection extends ChangeNotifier {
     this.relayHeadStart = const Duration(milliseconds: 1500),
     this.replyTimeout = const Duration(seconds: 8),
     this.pingInterval = const Duration(seconds: 3),
-    this.deadAfter = const Duration(seconds: 10),
+    this.deadAfter = const Duration(seconds: 25),
     Future<SavedFile> Function(File temp, String name)? saveFile,
     Directory? tempDir,
   }) {
@@ -316,6 +316,16 @@ class AgentConnection extends ChangeNotifier {
   final Duration replyTimeout;
   final Duration pingInterval;
   final Duration deadAfter;
+
+  /// How often the connection may rebuild itself after the computer goes
+  /// quiet, before it gives up and tells the owner.
+  static const maxReconnects = 3;
+
+  /// Set by [connect]: what [_reconnect] needs to come back on its own.
+  (Laptop, PhoneIdentity, String)? _session;
+  int _reconnects = 0;
+  DateTime _lastTick = DateTime.now();
+  DateTime _connectedAt = DateTime.now();
 
   IOWebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
@@ -409,13 +419,40 @@ class AgentConnection extends ChangeNotifier {
   /// Connects to a paired computer. Tries the addresses that worked
   /// before, then looks for it on the network. Updates [laptop] with the
   /// address that worked and the computer's current name.
-  Future<void> connect(Laptop laptop, PhoneIdentity me, {required String phoneName}) {
-    return _connectAny(
+  Future<void> connect(Laptop laptop, PhoneIdentity me, {required String phoneName}) async {
+    _session = null;
+    _reconnects = 0;
+    await _connectAny(
       laptop,
       me,
       first: {'t': 'hello', 'v': protocolVersion, 'id': me.id, 'name': phoneName},
       useDiscovery: true,
     );
+    _session = (laptop, me, phoneName);
+  }
+
+  /// The connection went quiet (a sleeping phone, a Wi-Fi hiccup, a
+  /// moved route): connect again without sending the owner back to the
+  /// list. Gives up after [maxReconnects] in a row.
+  Future<void> _reconnect() async {
+    final s = _session;
+    if (s == null) return;
+    _reconnects++;
+    final (laptop, me, phoneName) = s;
+    await disconnect(notify: false);
+    _status = ConnectionStatus.connecting;
+    _progress = 'Reconnecting to ${laptop.name}…';
+    notifyListeners();
+    try {
+      await _connectAny(
+        laptop,
+        me,
+        first: {'t': 'hello', 'v': protocolVersion, 'id': me.id, 'name': phoneName},
+        useDiscovery: true,
+      );
+    } on AgentException {
+      // _connectAny has recorded the error and marked us disconnected.
+    }
   }
 
   Future<void> _connectAny(
@@ -457,8 +494,18 @@ class AgentConnection extends ChangeNotifier {
     _status = ConnectionStatus.connected;
     _progress = null;
     _lastHeard = DateTime.now();
+    _lastTick = _connectedAt = DateTime.now();
     _pingTimer = Timer.periodic(pingInterval, (_) {
-      if (DateTime.now().difference(_lastHeard) > deadAfter) {
+      final now = DateTime.now();
+      // A timer that fires long after it was due means the phone itself was
+      // frozen (screen off, app in the background), not that the computer
+      // went quiet. Give the computer a fresh window to answer a ping.
+      if (now.difference(_lastTick) > pingInterval * 4 + const Duration(seconds: 1)) {
+        _lastHeard = now;
+      }
+      _lastTick = now;
+      if (_reconnects > 0 && now.difference(_connectedAt) > const Duration(minutes: 2)) _reconnects = 0;
+      if (now.difference(_lastHeard) > deadAfter) {
         _lost(AgentException(FailureKind.unreachable, 'The computer stopped answering.'));
         return;
       }
@@ -698,6 +745,7 @@ class AgentConnection extends ChangeNotifier {
   }
 
   Future<void> disconnect({bool notify = true}) async {
+    if (notify) _session = null; // the owner closed it: don't come back
     transfers.connectionLost();
     for (final r in _requests.values) {
       if (!r.isCompleted) {
@@ -751,6 +799,10 @@ class AgentConnection extends ChangeNotifier {
     }
     if (_status != ConnectionStatus.connected) {
       _handshakeLost ??= e;
+      return;
+    }
+    if (e.kind == FailureKind.unreachable && _session != null && _reconnects < maxReconnects) {
+      _reconnect();
       return;
     }
     disconnect(notify: false);

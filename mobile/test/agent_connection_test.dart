@@ -340,6 +340,35 @@ void main() {
     expect(conn.status, ConnectionStatus.disconnected);
   });
 
+  test('reconnects by itself when the computer goes quiet', () async {
+    final conn = AgentConnection(
+      pingInterval: const Duration(milliseconds: 50),
+      deadAfter: const Duration(milliseconds: 200),
+    );
+    final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
+    await conn.disconnect();
+    await conn.connect(laptop, me, phoneName: 'p');
+    expect(conn.status, ConnectionStatus.connected);
+    final first = agent.socket!;
+    // The computer's socket stops answering, then the phone comes back.
+    agent.subscription!.pause();
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    expect(conn.status, ConnectionStatus.connected);
+    expect(identical(agent.socket, first), isFalse);
+    expect(conn.lastError, isNull);
+    await conn.disconnect();
+  });
+
+  test('closing it yourself does not reconnect', () async {
+    final conn = AgentConnection(pingInterval: const Duration(milliseconds: 50));
+    final laptop = await conn.pair(infoFor(agent), me, phoneName: 'p');
+    await conn.disconnect();
+    await conn.connect(laptop, me, phoneName: 'p');
+    await conn.disconnect();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(conn.status, ConnectionStatus.disconnected);
+  });
+
   group('phase 2 requests', () {
     late AgentConnection conn;
     setUp(() async {

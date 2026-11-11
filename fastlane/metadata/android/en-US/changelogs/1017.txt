@@ -1,0 +1,2 @@
+• No more false "The computer stopped answering": the phone waits longer and no longer mistakes its own sleep for a silent computer
+• If the connection really breaks, the phone reconnects by itself
