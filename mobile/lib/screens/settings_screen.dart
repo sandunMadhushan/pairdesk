@@ -9,6 +9,8 @@ import '../settings/app_lock.dart';
 import '../update_check.dart';
 import 'remote_help_screen.dart';
 import '../settings/app_settings.dart';
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
@@ -17,6 +19,7 @@ class SettingsScreen extends StatelessWidget {
     this.updates,
     this.authenticate = deviceAuthenticate,
     this.canAuthenticate = deviceCanAuthenticate,
+    this.embedded = false,
   });
 
   final AppSettings settings;
@@ -25,6 +28,9 @@ class SettingsScreen extends StatelessWidget {
   final UpdateChecker? updates;
   final Authenticator authenticate;
   final Future<bool> Function() canAuthenticate;
+
+  /// Shown as a tab of the home screen (room left for its bottom bar).
+  final bool embedded;
 
   Future<void> _toggleLock(BuildContext context, bool on) async {
     if (!on) {
@@ -52,81 +58,141 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget header(String t) => Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
-      child: Text(t, style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
-    );
+    final c = PdColors.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListenableBuilder(
-        listenable: settings,
-        builder: (context, _) => ListView(
-          children: [
-            header('Security'),
-            SwitchListTile(
-              secondary: const Icon(Icons.fingerprint),
-              title: const Text('App lock'),
-              subtitle: const Text('Ask for fingerprint, face or screen lock to open PairDesk'),
-              value: settings.appLock,
-              onChanged: (on) => _toggleLock(context, on),
-            ),
-            if (settings.appLock)
-              ListTile(
-                leading: const SizedBox(width: 24),
-                title: const Text('Lock again'),
-                trailing: DropdownButton<LockAfter>(
-                  value: settings.lockAfter,
-                  underline: const SizedBox.shrink(),
-                  onChanged: (v) => settings.setLockAfter(v!),
-                  items: [for (final v in LockAfter.values) DropdownMenuItem(value: v, child: Text(v.label))],
+      backgroundColor: c.bg,
+      body: SafeArea(
+        bottom: false,
+        child: ListenableBuilder(
+          listenable: settings,
+          builder: (context, _) => ListView(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, embedded ? 120 : 24),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+                child: Row(
+                  children: [
+                    if (!embedded && Navigator.of(context).canPop()) ...[
+                      RoundButton(
+                        icon: Icons.arrow_back_rounded,
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    const Text(
+                      'Settings',
+                      style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -0.6),
+                    ),
+                  ],
                 ),
               ),
-            header('Connection'),
-            ListTile(
-              leading: const Icon(Icons.public),
-              title: const Text('Connect from anywhere'),
-              subtitle: const Text('Use PairDesk away from home with Tailscale'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () =>
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteHelpScreen())),
-            ),
-            header('Touchpad'),
-            ListTile(
-              leading: const Icon(Icons.speed),
-              title: const Text('Pointer speed'),
-              subtitle: Slider(
-                value: settings.pointerSpeed,
-                min: AppSettings.minSpeed,
-                max: AppSettings.maxSpeed,
-                divisions: 8,
-                label: '${settings.pointerSpeed.toStringAsFixed(2)}×',
-                onChanged: settings.setPointerSpeed,
-              ),
-            ),
-            SwitchListTile(
-              secondary: const Icon(Icons.swap_vert),
-              title: const Text('Natural scrolling'),
-              subtitle: const Text('Content moves with your fingers, like on a phone'),
-              value: settings.naturalScroll,
-              onChanged: settings.setNaturalScroll,
-            ),
-            const SmoothVideoTile(),
-            header('About'),
-            if (updates != null) _CheckForUpdates(updates: updates!),
-            FutureBuilder<PackageInfo>(
-              future: PackageInfo.fromPlatform(),
-              builder: (_, snap) => ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('PairDesk'),
-                subtitle: Text(
-                  '${snap.hasData ? 'Version ${snap.data!.version} · ' : ''}Free software, GPL-3.0-or-later\n'
-                  'github.com/sandunMadhushan/pairdesk',
+              PdCard(
+                child: Column(
+                  children: [
+                    PdRow(
+                      icon: Icons.fingerprint_rounded,
+                      title: 'App lock',
+                      subtitle: 'Fingerprint, face or screen lock to open PairDesk',
+                      onTap: () => _toggleLock(context, !settings.appLock),
+                      trailing: Switch(value: settings.appLock, onChanged: (on) => _toggleLock(context, on)),
+                    ),
+                    if (settings.appLock) ...[
+                      const PdDivider(),
+                      PdRow(
+                        icon: Icons.lock_clock_outlined,
+                        title: 'Lock again',
+                        minHeight: 56,
+                        subtitle: 'When PairDesk has been in the background',
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 52, bottom: 10),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: DropdownButton<LockAfter>(
+                            isExpanded: true,
+                            value: settings.lockAfter,
+                            underline: const SizedBox.shrink(),
+                            borderRadius: BorderRadius.circular(18),
+                            onChanged: (v) => settings.setLockAfter(v!),
+                            items: [
+                              for (final v in LockAfter.values)
+                                DropdownMenuItem(value: v, child: Text(v.label)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                isThreeLine: true,
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              PdCard(
+                child: PdRow(
+                  icon: Icons.public_rounded,
+                  title: 'Connect from anywhere',
+                  subtitle: 'Relay, Tailscale or your router',
+                  trailing: Icon(Icons.chevron_right_rounded, color: c.sub),
+                  onTap: () =>
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteHelpScreen())),
+                ),
+              ),
+              const SizedBox(height: 12),
+              PdCard(
+                child: Column(
+                  children: [
+                    PdRow(
+                      icon: Icons.speed_rounded,
+                      title: 'Pointer speed',
+                      trailing: Text(
+                        '${settings.pointerSpeed.toStringAsFixed(2)}×',
+                        style: TextStyle(fontSize: 15, color: c.sub),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 36, bottom: 6),
+                      child: Slider(
+                        value: settings.pointerSpeed,
+                        min: AppSettings.minSpeed,
+                        max: AppSettings.maxSpeed,
+                        divisions: 8,
+                        label: '${settings.pointerSpeed.toStringAsFixed(2)}×',
+                        onChanged: settings.setPointerSpeed,
+                      ),
+                    ),
+                    const PdDivider(),
+                    PdRow(
+                      icon: Icons.swap_vert_rounded,
+                      title: 'Natural scrolling',
+                      subtitle: 'Content moves with your fingers, like on a phone',
+                      onTap: () => settings.setNaturalScroll(!settings.naturalScroll),
+                      trailing: Switch(value: settings.naturalScroll, onChanged: settings.setNaturalScroll),
+                    ),
+                    const PdDivider(),
+                    const SmoothVideoTile(),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              PdCard(
+                child: Column(
+                  children: [
+                    if (updates != null) ...[_CheckForUpdates(updates: updates!), const PdDivider()],
+                    FutureBuilder<PackageInfo>(
+                      future: PackageInfo.fromPlatform(),
+                      builder: (_, snap) => PdRow(
+                        icon: Icons.info_outline_rounded,
+                        title: 'PairDesk',
+                        subtitle:
+                            '${snap.hasData ? 'Version ${snap.data!.version} · ' : ''}Free software, GPL-3.0-or-later\n'
+                            'github.com/sandunMadhushan/pairdesk',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -170,13 +236,11 @@ class _CheckForUpdatesState extends State<_CheckForUpdates> {
   }
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    leading: const Icon(Icons.system_update_outlined),
-    title: const Text('Check for updates'),
-    subtitle: Text(_answer ?? 'PairDesk also checks by itself once a day'),
-    trailing: _busy
-        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-        : null,
+  Widget build(BuildContext context) => PdRow(
+    icon: Icons.system_update_alt_rounded,
+    title: 'Check for updates',
+    subtitle: _answer ?? 'PairDesk also checks by itself once a day',
+    trailing: _busy ? PdSpinner(color: PdColors.of(context).ink) : null,
     onTap: _busy ? null : _check,
   );
 }
@@ -203,19 +267,18 @@ class _SmoothVideoTileState extends State<SmoothVideoTile> {
 
   @override
   Widget build(BuildContext context) {
-    return SwitchListTile(
-      secondary: const Icon(Icons.slow_motion_video_outlined),
-      title: const Text('Smooth screen view'),
-      subtitle: const Text(
-        'Video instead of pictures: smoother and uses less data. Turns itself off if this phone can\'t show it',
-      ),
-      value: _on ?? true,
-      onChanged: _on == null
-          ? null
-          : (on) async {
-              setState(() => _on = on);
-              on ? await VideoSupport.reset() : await VideoSupport.markBroken();
-            },
+    Future<void> set(bool on) async {
+      setState(() => _on = on);
+      on ? await VideoSupport.reset() : await VideoSupport.markBroken();
+    }
+
+    return PdRow(
+      icon: Icons.slow_motion_video_rounded,
+      title: 'Smooth screen view',
+      subtitle:
+          'Video instead of pictures: smoother, less data. Turns itself off if this phone can\'t show it',
+      onTap: _on == null ? null : () => set(!_on!),
+      trailing: Switch(value: _on ?? true, onChanged: _on == null ? null : set),
     );
   }
 }

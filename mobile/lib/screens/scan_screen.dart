@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_code_scanner_plus/qr_code_scanner_plus.dart';
 
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
+
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
 
@@ -97,20 +100,12 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = PdColors.of(context);
     final size = MediaQuery.sizeOf(context);
-    final cutOut = (size.shortestSide * 0.7).clamp(200.0, 320.0);
+    final cutOut = (size.shortestSide * 0.68).clamp(200.0, 300.0);
+    const glass = Color(0x26FFFFFF);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan pairing code'),
-        actions: [
-          IconButton(
-            tooltip: 'Paste link instead',
-            icon: const Icon(Icons.content_paste),
-            onPressed: _pasteLink,
-          ),
-        ],
-      ),
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           QRView(
@@ -119,47 +114,88 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             formatsAllowed: const [BarcodeFormat.qrcode],
             onPermissionSet: (_, granted) => setState(() => _permission = granted),
             overlay: QrScannerOverlayShape(
-              borderColor: scheme.primary,
-              borderRadius: 12,
-              borderLength: 32,
-              borderWidth: 8,
+              borderColor: PdColors.lime,
+              borderRadius: 34,
+              borderLength: 48,
+              borderWidth: 6,
               cutOutSize: cutOut,
+              overlayColor: const Color(0x99000000),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      RoundButton(
+                        icon: Icons.arrow_back_rounded,
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        background: glass,
+                        foreground: Colors.white,
+                      ),
+                      const Spacer(),
+                      RoundButton(
+                        icon: Icons.flashlight_on_outlined,
+                        tooltip: 'Torch',
+                        onPressed: () => _controller?.toggleFlash(),
+                        background: glass,
+                        foreground: Colors.white,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Scan the code',
+                    style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'On your computer, open PairDesk and choose "Pair a phone".',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFFC9CBC4), fontSize: 15),
+                  ),
+                ],
+              ),
             ),
           ),
           if (_permission == false)
             Container(
-              color: scheme.surface,
+              color: c.bg,
               padding: const EdgeInsets.all(24),
               alignment: Alignment.center,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.no_photography_outlined, size: 48, color: scheme.onSurfaceVariant),
+                  Icon(Icons.no_photography_outlined, size: 48, color: c.sub),
                   const SizedBox(height: 16),
                   const Text(
                     'PairDesk needs the camera to scan the code on your computer. '
                     'Allow camera access in Android settings, or paste the link instead.',
                     textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, height: 1.45),
                   ),
                   const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _pasteLink,
-                    icon: const Icon(Icons.content_paste),
-                    label: const Text('Paste link'),
-                  ),
+                  SecondaryButton(label: 'Paste link', icon: Icons.add_link_rounded, onPressed: _pasteLink),
                 ],
               ),
             )
           else
             Positioned(
-              left: 24,
-              right: 24,
-              bottom: 32,
-              child: Text(
-                'On your computer, open PairDesk and choose "Pair a phone".',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge
-                    ?.copyWith(color: Colors.white, shadows: const [Shadow(blurRadius: 6)]),
+              left: 20,
+              right: 20,
+              bottom: 36,
+              child: SafeArea(
+                top: false,
+                child: SecondaryButton(
+                  label: 'Paste a link instead',
+                  icon: Icons.add_link_rounded,
+                  onPressed: _pasteLink,
+                  background: glass,
+                  foreground: Colors.white,
+                ),
               ),
             ),
         ],

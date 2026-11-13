@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../../agent_connection.dart';
 import '../../buttons/custom_button.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
 
 class AppsBrowser extends StatefulWidget {
   const AppsBrowser({super.key, required this.connection, required this.onTap, this.laptopKey});
@@ -80,18 +82,18 @@ class _AppsBrowserState extends State<AppsBrowser> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final c = PdColors.of(context);
     final error = _error;
     if (error != null) {
       return _Message(
-        icon: error.code == 'not_allowed' ? Icons.block : Icons.error_outline,
+        icon: error.code == 'not_allowed' ? Icons.block_rounded : Icons.error_outline_rounded,
         text: error.message,
         action: error.code == 'not_allowed' || error.code == 'unsupported' ? null : _load,
       );
     }
     final list = _list;
     if (list == null) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: PdSpinner(color: c.ink, size: 28));
     }
 
     bool matches(RemoteApp a) => _query.isEmpty || a.name.toLowerCase().contains(_query);
@@ -100,58 +102,104 @@ class _AppsBrowserState extends State<AppsBrowser> {
     final shortcuts = list.shortcuts.where(matches).toList();
     final apps = list.apps.where(matches).toList();
 
-    Widget header(String text) => Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(text, style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
-    );
-    Widget tile(RemoteApp a) => ListTile(
-      leading: CircleAvatar(
-        backgroundColor: theme.colorScheme.secondaryContainer,
-        foregroundColor: theme.colorScheme.onSecondaryContainer,
-        child: _busyId == a.id
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(_kindIcon(a.kind), size: 20),
-      ),
-      title: Text(a.name, overflow: TextOverflow.ellipsis),
-      onTap: () => _tap(a),
-      trailing: widget.laptopKey == null
-          ? null
-          : IconButton(
-              tooltip: _favs.contains(a.id) ? 'Remove from favourites' : 'Add to favourites',
-              icon: Icon(_favs.contains(a.id) ? Icons.star : Icons.star_border),
-              onPressed: () => _toggleFav(a),
+    Widget tile(RemoteApp a) {
+      final fav = _favs.contains(a.id);
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _tap(a),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 60),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(color: c.s2, borderRadius: BorderRadius.circular(12)),
+                  child: _busyId == a.id
+                      ? Center(child: PdSpinner(color: c.ink, size: 18))
+                      : Icon(_kindIcon(a.kind), size: 20, color: c.ink),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    a.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                if (widget.laptopKey != null)
+                  IconButton(
+                    tooltip: fav ? 'Remove from favourites' : 'Add to favourites',
+                    icon: Icon(
+                      fav ? Icons.star_rounded : Icons.star_outline_rounded,
+                      color: fav ? (c.dark ? PdColors.lime : c.ink) : c.sub,
+                    ),
+                    onPressed: () => _toggleFav(a),
+                  ),
+              ],
             ),
+          ),
+        ),
+      );
+    }
+
+    Widget group(String title, List<RemoteApp> items) => Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+            child: Text(title, style: TextStyle(fontSize: 14, color: c.sub)),
+          ),
+          PdCard(
+            padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
+            child: Column(
+              children: [
+                for (final (i, a) in items.indexed) ...[if (i > 0) const PdDivider(), tile(a)],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
           child: SearchBar(
             controller: _search,
             hintText: 'Search apps',
-            leading: const Icon(Icons.search),
+            leading: Icon(Icons.search_rounded, color: c.sub),
             elevation: const WidgetStatePropertyAll(0),
+            constraints: const BoxConstraints(minHeight: 52),
             onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-            trailing: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _load)],
+            trailing: [
+              IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded), onPressed: _load),
+            ],
           ),
         ),
         Expanded(
           child: all.isEmpty
               ? const _Message(
-                  icon: Icons.apps_outlined,
+                  icon: Icons.apps_rounded,
                   text: 'No apps found on the computer. Add shortcuts in PairDesk settings there.',
                 )
               : ListView(
-                  padding: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   children: [
-                    if (favs.isNotEmpty) ...[header('Favourites'), ...favs.map(tile)],
-                    if (shortcuts.isNotEmpty) ...[header('Shortcuts'), ...shortcuts.map(tile)],
-                    if (apps.isNotEmpty) ...[header('All apps'), ...apps.map(tile)],
+                    if (favs.isNotEmpty) group('Favourites', favs),
+                    if (shortcuts.isNotEmpty) group('Shortcuts', shortcuts),
+                    if (apps.isNotEmpty) group('All apps', apps),
                     if (favs.isEmpty && shortcuts.isEmpty && apps.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: Text('No matches')),
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Text('No matches', style: TextStyle(color: c.sub)),
+                        ),
                       ),
                   ],
                 ),
@@ -162,11 +210,11 @@ class _AppsBrowserState extends State<AppsBrowser> {
 }
 
 IconData _kindIcon(String kind) => switch (kind) {
-  'url' => Icons.public,
+  'url' => Icons.public_rounded,
   'folder' => Icons.folder_outlined,
   'file' => Icons.description_outlined,
-  'program' => Icons.terminal,
-  _ => Icons.apps,
+  'program' => Icons.terminal_rounded,
+  _ => Icons.apps_rounded,
 };
 
 class _Message extends StatelessWidget {
@@ -177,19 +225,19 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final c = PdColors.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 40, color: theme.colorScheme.onSurfaceVariant),
+            Icon(icon, size: 40, color: c.sub),
             const SizedBox(height: 12),
-            Text(text, textAlign: TextAlign.center),
+            Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, height: 1.4)),
             if (action != null) ...[
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: action, child: const Text('Try again')),
+              SecondaryButton(label: 'Try again', height: 46, onPressed: action),
             ],
           ],
         ),
@@ -233,7 +281,10 @@ class AppPickerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Choose an app')),
-      body: AppsBrowser(connection: connection, onTap: (app) async => Navigator.of(context).pop(app)),
+      body: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: AppsBrowser(connection: connection, onTap: (app) async => Navigator.of(context).pop(app)),
+      ),
     );
   }
 }

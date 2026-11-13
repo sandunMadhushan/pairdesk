@@ -47,7 +47,6 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(app(m));
     expect(find.text('Windows · here or away'), findsOneWidget);
-    expect(find.text('Scan pairing code'), findsOneWidget);
 
     await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();

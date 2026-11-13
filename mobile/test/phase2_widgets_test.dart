@@ -62,11 +62,11 @@ void phoneSize(WidgetTester tester) {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  group('power tab', () {
+  group('power sheet', () {
     testWidgets('greys out what the owner turned off', (tester) async {
       phoneSize(tester);
       final conn = FakeConnection(allow: const Allowed(power: true, session: false, apps: true));
-      await tester.pumpWidget(host(PowerTab(connection: conn)));
+      await tester.pumpWidget(host(PowerSheet(connection: conn)));
       await tester.tap(find.text('Shut down'));
       await tester.pumpAndSettle();
       expect(conn.calls, isEmpty);
@@ -79,7 +79,7 @@ void main() {
     testWidgets('asks before shutting down', (tester) async {
       phoneSize(tester);
       final conn = FakeConnection();
-      await tester.pumpWidget(host(PowerTab(connection: conn)));
+      await tester.pumpWidget(host(PowerSheet(connection: conn)));
       await tester.tap(find.text('Shut down'));
       await tester.pumpAndSettle();
       expect(find.text('Shut down Test-PC?'), findsOneWidget);

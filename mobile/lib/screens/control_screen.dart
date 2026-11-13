@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Connected to a computer. Top: ✕ disconnect, the computer's name and how
+// it's connected, ⏻ power. Bottom: Touchpad · Screen · Shortcuts · Files ·
+// Sound. A lime "Type" button opens the keyboard on Touchpad and Screen.
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,16 +10,19 @@ import 'package:flutter/material.dart';
 import '../agent_connection.dart';
 import '../audio/audio_controller.dart';
 import '../audio/native_audio.dart';
-import '../audio/sound_sheet.dart';
 import '../files/share_inbox.dart';
 import '../files/transfers.dart';
-import 'exchange_sheet.dart';
+import '../pairing/relay_route.dart';
 import '../settings/app_settings.dart';
 import '../touchpad.dart';
-import 'tabs/apps_tab.dart';
-import 'tabs/buttons_tab.dart';
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
+import 'exchange_sheet.dart';
+import 'tabs/files_tab.dart';
 import 'tabs/power_tab.dart';
 import 'tabs/screen_tab.dart';
+import 'tabs/shortcuts_tab.dart';
+import 'tabs/sound_tab.dart';
 
 class ControlScreen extends StatefulWidget {
   const ControlScreen({
@@ -25,6 +32,7 @@ class ControlScreen extends StatefulWidget {
     this.settings,
     this.inbox,
     this.audioBackend,
+    this.helping = false,
   });
 
   /// The phone's sound hardware (tests use a stand-in).
@@ -39,6 +47,9 @@ class ControlScreen extends StatefulWidget {
   final String laptopKey;
   final AppSettings? settings;
 
+  /// Temporary access from a "Get help" link: a banner says so.
+  final bool helping;
+
   @override
   State<ControlScreen> createState() => _ControlScreenState();
 }
@@ -49,6 +60,8 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
   bool _showKeyboard = false;
   bool _closing = false;
   int _tab = 0;
+  final Set<int> _visited = {0};
+  bool _fullscreen = false;
 
   AgentConnection get _conn => widget.connection;
   StreamSubscription<String>? _notices;
@@ -56,6 +69,9 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
   late final Exchange _exchange = Exchange(_conn, _say);
   late final AudioController _audio = AudioController(_conn, backend: widget.audioBackend);
   ShareInbox get _inbox => widget.inbox ?? ShareInbox.instance;
+
+  static const _kTouchpad = 0, _kScreen = 1, _kFiles = 3, _kSound = 4;
+  bool get _keyboardTab => _tab == _kTouchpad || _tab == _kScreen;
 
   void _say(String text, {SnackBarAction? action}) {
     if (!mounted) return;
@@ -67,6 +83,8 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
           duration: Duration(seconds: action == null ? 5 : 8),
           showCloseIcon: action == null,
           action: action,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.fromLTRB(12, 0, 12, _fullscreen || _showKeyboard ? 12 : 96),
         ),
       );
   }
@@ -102,15 +120,6 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
     if (mounted) setState(() {});
   }
 
-  void _openSound() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => SoundSheet(audio: _audio),
-    );
-  }
-
   /// "Share → PairDesk" from another app: files go to the computer, text
   /// to its clipboard.
   void _takeShared() {
@@ -122,15 +131,6 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
     } else if (items.text != null) {
       _exchange.sendText(items.text!);
     }
-  }
-
-  void _openExchange() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => ExchangeSheet(exchange: _exchange),
-    );
   }
 
   @override
@@ -148,10 +148,13 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
   }
 
   void _onConnectionChanged() {
-    if (_conn.status == ConnectionStatus.disconnected && !_closing && mounted) {
+    if (!mounted) return;
+    if (_conn.status == ConnectionStatus.disconnected && !_closing) {
       _closing = true;
       Navigator.of(context).pop();
+      return;
     }
+    setState(() {});
   }
 
   void _sendText() {
@@ -171,23 +174,185 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
     }
   }
 
+  void _openPower() => showPdSheet<void>(context, (_) => PowerSheet(connection: _conn));
+
+  void _select(int i) {
+    if (_showKeyboard && i != _kTouchpad && i != _kScreen) _toggleKeyboard();
+    setState(() {
+      _tab = i;
+      _visited.add(i);
+    });
+  }
+
+  String _route() {
+    final a = _conn.address;
+    if (a != null && RelayRoute.looksLike(a)) return 'Relay';
+    if (_conn.viaTailscale) return 'Tailscale';
+    return 'Wi-Fi';
+  }
+
+  Widget _header() {
+    final c = PdColors.of(context);
+    final reconnecting = _conn.status == ConnectionStatus.connecting;
+    final ms = _conn.latency?.inMilliseconds;
+    final status = reconnecting ? 'Reconnecting…' : (ms == null ? _route() : '${_route()} · $ms ms');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      child: Row(
+        children: [
+          RoundButton(
+            icon: Icons.close_rounded,
+            tooltip: 'Disconnect',
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  _conn.agentName ?? 'Computer',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 3),
+                AnimatedContainer(
+                  duration: PdMotion.fade,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(color: c.s1, borderRadius: BorderRadius.circular(999)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      PulseDot(color: reconnecting ? c.sub : c.accent),
+                      const SizedBox(width: 6),
+                      Text(status, style: TextStyle(fontSize: 13, color: c.sub)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          RoundButton(icon: Icons.power_settings_new_rounded, tooltip: 'Power', onPressed: _openPower),
+        ],
+      ),
+    );
+  }
+
+  Widget _banners() {
+    final c = PdColors.of(context);
+    final reconnecting = _conn.status == ConnectionStatus.connecting;
+    final transfers = _conn.transfers.items.where((t) => !t.finished).toList();
+    return Column(
+      children: [
+        AnimatedSize(
+          duration: PdMotion.move,
+          curve: PdMotion.curve,
+          child: reconnecting
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(color: c.inv, borderRadius: BorderRadius.circular(22)),
+                    child: Row(
+                      children: [
+                        PdSpinner(
+                          size: 22,
+                          color: c.dark ? PdColors.onAccent : PdColors.lime,
+                          track: c.subInv,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Connection dropped',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.onInv),
+                              ),
+                              Text(
+                                'Getting it back by itself. Stay here.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: c.dark ? const Color(0xFF55565B) : c.subInv,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+        if (widget.helping)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+              decoration: BoxDecoration(
+                color: c.accent,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: c.glow,
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.support_agent_rounded, color: PdColors.onAccent),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'You\'re helping · temporary access, up to 2 hours',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: PdColors.onAccent),
+                    ),
+                  ),
+                  SecondaryButton(
+                    label: 'Leave',
+                    height: 40,
+                    background: PdColors.onAccent,
+                    foreground: Colors.white,
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (transfers.isNotEmpty && _tab != _kFiles)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                minHeight: 4,
+                value: () {
+                  final size = transfers.fold<int>(0, (a, t) => a + t.size);
+                  final done = transfers.fold<int>(0, (a, t) => a + t.done);
+                  return size == 0 ? null : done / size;
+                }(),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _touchpadTab() {
     final settings = widget.settings;
+    final typeButton = _showKeyboard ? null : _TypeButton(onPressed: _toggleKeyboard);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Column(
         children: [
-          _MediaRow(connection: _conn),
-          const SizedBox(height: 8),
           Expanded(
             child: settings == null
-                ? Touchpad(connection: _conn)
+                ? Touchpad(connection: _conn, corner: typeButton)
                 : ListenableBuilder(
                     listenable: settings,
                     builder: (_, _) => Touchpad(
                       connection: _conn,
                       speed: settings.pointerSpeed,
                       naturalScroll: settings.naturalScroll,
+                      corner: typeButton,
                     ),
                   ),
           ),
@@ -195,11 +360,11 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
           Row(
             children: [
               Expanded(
-                child: HoldButton(connection: _conn, button: MouseBtn.left, label: 'Left'),
+                child: HoldButton(connection: _conn, button: MouseBtn.left, label: 'Left click'),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: HoldButton(connection: _conn, button: MouseBtn.right, label: 'Right'),
+                child: HoldButton(connection: _conn, button: MouseBtn.right, label: 'Right click'),
               ),
             ],
           ),
@@ -209,38 +374,84 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
   }
 
   Widget _keyboardPanel() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 8),
-          _KeyRow(connection: _conn),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _text,
-            focusNode: _textFocus,
-            autocorrect: false,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _sendText(),
-            decoration: InputDecoration(
-              hintText: 'Type, then send to the computer',
-              border: const OutlineInputBorder(),
-              isDense: true,
-              suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: _sendText),
+    final c = PdColors.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: c.s1,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Keyboard', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                ),
+                SecondaryButton(label: 'Hide', height: 38, onPressed: _toggleKeyboard),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            KeyRow(connection: _conn),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _text,
+                    focusNode: _textFocus,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendText(),
+                    decoration: const InputDecoration(hintText: 'Type, then send to the computer'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                RoundButton(
+                  icon: Icons.send_rounded,
+                  tooltip: 'Send to computer',
+                  onPressed: _sendText,
+                  background: c.accent,
+                  foreground: PdColors.onAccent,
+                  size: 54,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  static const _kTouchpad = 0, _kScreen = 1, _kApps = 3;
-  bool get _keyboardTab => _tab == _kTouchpad || _tab == _kScreen;
+  static const _items = [
+    PillNavItem(icon: Icons.touch_app_rounded, label: 'Touchpad'),
+    PillNavItem(icon: Icons.desktop_windows_rounded, label: 'Screen'),
+    PillNavItem(icon: Icons.grid_view_rounded, label: 'Shortcuts'),
+    PillNavItem(icon: Icons.swap_vert_rounded, label: 'Files', tooltip: 'Clipboard and files'),
+    PillNavItem(icon: Icons.headphones_rounded, label: 'Sound', tooltip: 'Sound and media'),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final c = PdColors.of(context);
+    final talking = _audio.talking;
+    final hearing = _audio.sound || _audio.mic;
+    final busyFiles = _conn.transfers.items.any((t) => !t.finished);
+    final items = [
+      for (final (i, it) in _items.indexed)
+        PillNavItem(
+          icon: it.icon,
+          label: it.label,
+          tooltip: it.tooltip,
+          badge: (i == _kSound && (talking || hearing)) || (i == _kFiles && busyFiles),
+        ),
+    ];
+    final showNav = !_fullscreen && !(_showKeyboard && _keyboardTab);
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
@@ -249,154 +460,106 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
         }
       },
       child: Scaffold(
-        appBar: _fullscreen
-            ? null
-            : AppBar(
-                title: ListenableBuilder(
-                  listenable: _conn,
-                  builder: (context, _) {
-                    final ms = _conn.latency?.inMilliseconds;
-                    final route = _conn.viaTailscale ? 'Tailscale' : 'Wi-Fi';
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        backgroundColor: _fullscreen ? Colors.black : c.bg,
+        resizeToAvoidBottomInset: true,
+        body: Stack(
+          children: [
+            SafeArea(
+              bottom: false,
+              top: !_fullscreen,
+              child: Column(
+                children: [
+                  if (!_fullscreen) _header(),
+                  if (!_fullscreen) _banners(),
+                  Expanded(
+                    child: FadeIndexedStack(
+                      index: _tab,
                       children: [
-                        Text(_conn.agentName ?? 'Computer', overflow: TextOverflow.ellipsis),
-                        Text(
-                          ms == null ? 'Connected via $route' : 'Connected via $route · $ms ms',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        _touchpadTab(),
+                        // Built on first visit; streams only while visible.
+                        _visited.contains(_kScreen)
+                            ? ScreenTab(
+                                connection: _conn,
+                                settings: widget.settings,
+                                active: _tab == _kScreen,
+                                fullscreen: _fullscreen,
+                                onFullscreen: (on) => setState(() => _fullscreen = on),
+                                onKeyboard: _toggleKeyboard,
+                              )
+                            : const SizedBox.shrink(),
+                        ShortcutsTab(connection: _conn, laptopKey: widget.laptopKey),
+                        FilesTab(exchange: _exchange),
+                        SoundTab(audio: _audio, connection: _conn),
                       ],
-                    );
-                  },
-                ),
-                bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(2),
-                  child: ListenableBuilder(
-                    listenable: _conn.transfers,
-                    builder: (context, _) {
-                      final active = _conn.transfers.items.where((t) => !t.finished).toList();
-                      if (active.isEmpty) return const SizedBox(height: 2);
-                      final size = active.fold<int>(0, (a, t) => a + t.size);
-                      final done = active.fold<int>(0, (a, t) => a + t.done);
-                      return LinearProgressIndicator(minHeight: 2, value: size == 0 ? null : done / size);
-                    },
-                  ),
-                ),
-                actions: [
-                  if (_audio.talking)
-                    IconButton(
-                      tooltip: 'Stop talking',
-                      color: Theme.of(context).colorScheme.error,
-                      icon: const Icon(Icons.mic),
-                      onPressed: _audio.stopTalking,
                     ),
-                  IconButton(
-                    tooltip: 'Sound',
-                    isSelected: _audio.sound || _audio.mic,
-                    icon: const Icon(Icons.headphones_outlined),
-                    selectedIcon: const Icon(Icons.headphones),
-                    onPressed: _openSound,
                   ),
-                  IconButton(
-                    tooltip: 'Clipboard and files',
-                    icon: const Icon(Icons.swap_vert),
-                    onPressed: _openExchange,
+                  AnimatedSize(
+                    duration: PdMotion.move,
+                    curve: PdMotion.curve,
+                    alignment: Alignment.topCenter,
+                    child: _showKeyboard && _keyboardTab
+                        ? _keyboardPanel()
+                        : const SizedBox(width: double.infinity),
                   ),
-                  if (_keyboardTab)
-                    IconButton(
-                      tooltip: _showKeyboard ? 'Hide keyboard' : 'Keyboard',
-                      icon: Icon(_showKeyboard ? Icons.keyboard_hide_outlined : Icons.keyboard_outlined),
-                      onPressed: _toggleKeyboard,
-                    ),
-                  IconButton(
-                    tooltip: 'Disconnect',
-                    icon: const Icon(Icons.link_off),
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
+                  if (showNav) const SizedBox(height: 96),
                 ],
               ),
-        body: SafeArea(
-          bottom: false,
-          top: !_fullscreen,
-          child: Column(
-            children: [
-              Expanded(
-                child: IndexedStack(
-                  index: _tab,
-                  children: [
-                    _touchpadTab(),
-                    // Built on first visit; streams only while visible.
-                    _visited.contains(_kScreen)
-                        ? ScreenTab(
-                            connection: _conn,
-                            settings: widget.settings,
-                            active: _tab == _kScreen,
-                            fullscreen: _fullscreen,
-                            onFullscreen: (on) => setState(() => _fullscreen = on),
-                          )
-                        : const SizedBox.shrink(),
-                    ButtonsTab(connection: _conn),
-                    // Built on first visit, so the app list loads only when wanted.
-                    _visited.contains(_kApps)
-                        ? AppsTab(connection: _conn, laptopKey: widget.laptopKey)
-                        : const SizedBox.shrink(),
-                    PowerTab(connection: _conn),
-                  ],
+            ),
+            if (showNav)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 16,
+                child: SafeArea(
+                  top: false,
+                  child: PillNav(items: items, selected: _tab, onSelected: _select),
                 ),
               ),
-              if (_showKeyboard && _keyboardTab) _keyboardPanel(),
-            ],
-          ),
+          ],
         ),
-        bottomNavigationBar: _fullscreen
-            ? null
-            : NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: (i) {
-                  if (_showKeyboard && i != _kTouchpad && i != _kScreen) _toggleKeyboard();
-                  setState(() {
-                    _tab = i;
-                    _visited.add(i);
-                  });
-                },
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.touch_app_outlined),
-                    selectedIcon: Icon(Icons.touch_app),
-                    label: 'Touchpad',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.desktop_windows_outlined),
-                    selectedIcon: Icon(Icons.desktop_windows),
-                    label: 'Screen',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.grid_view_outlined),
-                    selectedIcon: Icon(Icons.grid_view_rounded),
-                    label: 'Buttons',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.apps_outlined),
-                    selectedIcon: Icon(Icons.apps),
-                    label: 'Apps',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.power_settings_new_outlined),
-                    selectedIcon: Icon(Icons.power_settings_new),
-                    label: 'Power',
-                  ),
-                ],
-              ),
       ),
     );
   }
-
-  final Set<int> _visited = {0};
-  bool _fullscreen = false;
 }
 
-class _KeyRow extends StatelessWidget {
-  const _KeyRow({required this.connection});
+class _TypeButton extends StatelessWidget {
+  const _TypeButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Keyboard',
+      child: Pressable(
+        onTap: onPressed,
+        child: Container(
+          height: 50,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            color: PdColors.lime,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: const [BoxShadow(color: Color(0x2E000000), blurRadius: 24, offset: Offset(0, 10))],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.keyboard_rounded, color: PdColors.onAccent),
+              SizedBox(width: 8),
+              Text(
+                'Type',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: PdColors.onAccent),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Enter, Esc, arrows and the other keys a phone keyboard lacks.
+class KeyRow extends StatelessWidget {
+  const KeyRow({super.key, required this.connection});
 
   final AgentConnection connection;
 
@@ -418,44 +581,27 @@ class _KeyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = PdColors.of(context);
     return SizedBox(
-      height: 40,
+      height: 44,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: _keys.length,
         separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (_, i) {
           final (label, key) = _keys[i];
-          return OutlinedButton(
-            onPressed: () => connection.key(key),
-            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14)),
-            child: Text(label),
+          return Pressable(
+            onTap: () => connection.key(key),
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 48),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: c.s2, borderRadius: BorderRadius.circular(14)),
+              child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
           );
         },
       ),
-    );
-  }
-}
-
-class _MediaRow extends StatelessWidget {
-  const _MediaRow({required this.connection});
-
-  final AgentConnection connection;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget btn(IconData icon, String tip, AgentKey key) =>
-        IconButton(tooltip: tip, icon: Icon(icon), onPressed: () => connection.key(key));
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        btn(Icons.volume_down, 'Volume down', AgentKey.volumeDown),
-        btn(Icons.volume_off, 'Mute', AgentKey.mute),
-        btn(Icons.volume_up, 'Volume up', AgentKey.volumeUp),
-        btn(Icons.skip_previous, 'Previous', AgentKey.prev),
-        btn(Icons.play_arrow, 'Play / pause', AgentKey.playPause),
-        btn(Icons.skip_next, 'Next', AgentKey.next),
-      ],
     );
   }
 }

@@ -19,6 +19,8 @@ import '../../screen/video.dart';
 import '../../screen/viewport.dart';
 import '../../settings/app_settings.dart';
 import '../../touchpad_gestures.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
 
 class ScreenTab extends StatefulWidget {
   const ScreenTab({
@@ -28,6 +30,7 @@ class ScreenTab extends StatefulWidget {
     this.settings,
     this.fullscreen = false,
     this.onFullscreen,
+    this.onKeyboard,
     this.videoDecoder,
     this.videoAvailable,
   });
@@ -41,6 +44,9 @@ class ScreenTab extends StatefulWidget {
   final AppSettings? settings;
   final bool fullscreen;
   final ValueChanged<bool>? onFullscreen;
+
+  /// Opens the keyboard (the lime "Type" button).
+  final VoidCallback? onKeyboard;
 
   /// Tests replace the phone's video decoder and its availability check.
   final VideoDecoder Function()? videoDecoder;
@@ -365,56 +371,113 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
     _conn.click(button);
   }
 
-  Widget _toolbar(ThemeData theme) {
+  Future<void> _chooseDisplay() async {
     final monitors = _info?.monitors ?? const <MonitorInfo>[];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: SegmentedButton<String>(
-                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: 'low', label: Text('Low')),
-                    ButtonSegment(value: 'medium', label: Text('Medium')),
-                    ButtonSegment(value: 'high', label: Text('High')),
+    final c = PdColors.of(context);
+    final picked = await showPdSheet<int>(
+      context,
+      (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const PdTitle('Choose display', size: 22),
+            const SizedBox(height: 12),
+            PdCard(
+              color: c.s2,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Column(
+                children: [
+                  for (final (i, m) in monitors.indexed) ...[
+                    if (i > 0) const PdDivider(),
+                    PdRow(
+                      icon: Icons.monitor_rounded,
+                      title: m.name,
+                      subtitle: '${m.width} × ${m.height}',
+                      iconBackground: m.index == _monitor ? c.accent : c.s1,
+                      iconColor: m.index == _monitor ? PdColors.onAccent : c.ink,
+                      trailing: m.index == _monitor ? Icon(Icons.check_rounded, color: c.ink) : null,
+                      onTap: () => Navigator.pop(ctx, m.index),
+                    ),
                   ],
-                  selected: {_quality},
-                  onSelectionChanged: (s) => setState(() => _restart(quality: s.first)),
-                ),
+                ],
               ),
             ),
-          ),
-          IconButton(
-            tooltip: _touchpad
-                ? 'Pointer: touchpad (tap to switch to tap-to-point)'
-                : 'Pointer: tap to point (tap to switch to touchpad)',
-            icon: Icon(_touchpad ? Icons.mouse_outlined : Icons.touch_app_outlined),
-            onPressed: () => _setTouchpad(!_touchpad),
-          ),
-          if (monitors.length > 1)
-            PopupMenuButton<int>(
-              tooltip: 'Choose display',
-              icon: const Icon(Icons.monitor_outlined),
-              onSelected: (i) => _restart(monitor: i),
-              itemBuilder: (_) => [
-                for (final m in monitors)
-                  CheckedPopupMenuItem(
-                    value: m.index,
-                    checked: m.index == _monitor,
-                    child: Text('${m.name} · ${m.width}×${m.height}'),
-                  ),
-              ],
+          ],
+        ),
+      ),
+    );
+    if (picked != null) _restart(monitor: picked);
+  }
+
+  Widget _modeButton({Color? background, Color? foreground}) => RoundButton(
+    tooltip: _touchpad
+        ? 'Pointer: touchpad (tap to switch to tap-to-point)'
+        : 'Pointer: tap to point (tap to switch to touchpad)',
+    icon: _touchpad ? Icons.mouse_outlined : Icons.touch_app_outlined,
+    onPressed: () => _setTouchpad(!_touchpad),
+    background: background,
+    foreground: foreground,
+  );
+
+  Widget _typeButton() => Tooltip(
+    message: 'Keyboard',
+    child: Pressable(
+      onTap: widget.onKeyboard,
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(color: PdColors.lime, borderRadius: BorderRadius.circular(999)),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.keyboard_rounded, color: PdColors.onAccent, size: 20),
+            SizedBox(width: 6),
+            Text(
+              'Type',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: PdColors.onAccent),
             ),
-          IconButton(
-            tooltip: 'Full screen',
-            icon: const Icon(Icons.fullscreen),
-            onPressed: _toggleFullscreen,
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _toolbar() {
+    final c = PdColors.of(context);
+    final monitors = _info?.monitors ?? const <MonitorInfo>[];
+    return PdCard(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        children: [
+          PdSegmented<String>(
+            options: const [('low', 'Low'), ('medium', 'Medium'), ('high', 'High')],
+            selected: _quality,
+            onChanged: (q) => setState(() => _restart(quality: q)),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _modeButton(background: c.s2),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _touchpad ? 'Touchpad mode' : 'Tap mode',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (monitors.length > 1) ...[
+                RoundButton(
+                  icon: Icons.monitor_rounded,
+                  tooltip: 'Choose display',
+                  onPressed: _chooseDisplay,
+                  background: c.s2,
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (widget.onKeyboard != null) _typeButton(),
+            ],
           ),
         ],
       ),
@@ -423,7 +486,6 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final picture = _picture;
     final image = _videoMode ? null : _compositor.image;
     final texture = _texture;
@@ -436,7 +498,11 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
             ? _Message(text: error, onRetry: _start)
             : const Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Getting the screen…')],
+                children: [
+                  PdSpinner(size: 28),
+                  SizedBox(height: 16),
+                  Text('Getting the screen…', style: TextStyle(color: Colors.white70)),
+                ],
               ),
       );
     } else if (_touchpad) {
@@ -498,53 +564,118 @@ class _ScreenTabState extends State<ScreenTab> with WidgetsBindingObserver {
       );
     }
 
-    return Column(
+    final view = Stack(
       children: [
-        if (!widget.fullscreen) _toolbar(theme),
-        Expanded(
-          child: Container(
-            color: Colors.black,
-            child: Stack(
-              children: [
-                Positioned.fill(child: content),
-                if (picture != null && error != null)
-                  Positioned.fill(
-                    child: ColoredBox(
-                      color: Colors.black54,
-                      child: Center(
-                        child: _Message(text: error, onRetry: _start),
-                      ),
-                    ),
-                  ),
-                if (picture != null && _showHint && _streaming)
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    top: 12,
-                    child: _Hint(
-                      text: _touchpad
-                          ? 'Move with one finger · tap to click · tap, then drag to drag\n'
-                                'Two fingers: scroll · two-finger tap: right-click · pinch to zoom'
-                          : 'Tap to click there · press and hold to right-click · pinch to zoom',
-                    ),
-                  ),
-                if (_stats.isNotEmpty)
-                  Positioned(left: 8, bottom: 8, child: _Hint(text: _stats, small: true)),
-                if (widget.fullscreen)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: IconButton.filledTonal(
-                      tooltip: 'Exit full screen',
-                      icon: const Icon(Icons.fullscreen_exit),
-                      onPressed: _toggleFullscreen,
-                    ),
-                  ),
-              ],
+        Positioned.fill(child: content),
+        if (picture != null && error != null)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black54,
+              child: Center(
+                child: _Message(text: error, onRetry: _start),
+              ),
             ),
           ),
-        ),
+        if (picture != null && _streaming && !widget.fullscreen)
+          Positioned(
+            left: 12,
+            top: 12,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0x33FFFFFF),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PulseDot(color: PdColors.lime),
+                    SizedBox(width: 6),
+                    Text(
+                      'Live',
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (picture != null && _showHint && _streaming)
+          Positioned(
+            left: 12,
+            right: 12,
+            top: widget.fullscreen ? 12 : 48,
+            child: _Hint(
+              text: _touchpad
+                  ? 'Move with one finger · tap to click · tap, then drag to drag\n'
+                        'Two fingers: scroll · two-finger tap: right-click · pinch to zoom'
+                  : 'Tap to click there · press and hold to right-click · pinch to zoom',
+            ),
+          ),
+        if (_stats.isNotEmpty) Positioned(left: 8, bottom: 8, child: _Hint(text: _stats, small: true)),
+        if (!widget.fullscreen)
+          Positioned(
+            right: 10,
+            bottom: 10,
+            child: RoundButton(
+              icon: Icons.fullscreen_rounded,
+              tooltip: 'Full screen',
+              onPressed: _toggleFullscreen,
+              background: const Color(0x33FFFFFF),
+              foreground: Colors.white,
+              size: 44,
+            ),
+          ),
+        if (widget.fullscreen)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xD91E1E20),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RoundButton(
+                        icon: Icons.fullscreen_exit_rounded,
+                        tooltip: 'Exit full screen',
+                        onPressed: _toggleFullscreen,
+                        background: Colors.transparent,
+                        foreground: Colors.white,
+                      ),
+                      _modeButton(background: Colors.transparent, foreground: Colors.white),
+                      if (widget.onKeyboard != null) ...[const SizedBox(width: 4), _typeButton()],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
+    );
+    if (widget.fullscreen) return ColoredBox(color: Colors.black, child: view);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      child: Column(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: ColoredBox(color: Colors.black, child: view),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _toolbar(),
+        ],
+      ),
     );
   }
 }

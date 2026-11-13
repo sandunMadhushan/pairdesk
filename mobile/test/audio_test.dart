@@ -8,7 +8,7 @@ import 'package:pairdesk/agent_connection.dart';
 import 'package:pairdesk/audio/audio_controller.dart';
 import 'package:pairdesk/audio/audio_packet.dart';
 import 'package:pairdesk/audio/native_audio.dart';
-import 'package:pairdesk/audio/sound_sheet.dart';
+import 'package:pairdesk/screens/tabs/sound_tab.dart';
 import 'package:pairdesk/audio/ulaw.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -202,7 +202,9 @@ void main() {
     final audio = AudioController(conn, backend: backend);
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: SoundSheet(audio: audio)),
+        home: Scaffold(
+          body: SoundTab(audio: audio, connection: conn),
+        ),
       ),
     );
     expect(find.text('Computer sound'), findsOneWidget);
@@ -212,8 +214,11 @@ void main() {
     expect(audio.sound, isTrue);
 
     // Hold to talk.
+    await tester.ensureVisible(find.bySemanticsLabel('Hold to talk'));
+    await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(find.bySemanticsLabel('Hold to talk')));
-    await tester.pump();
+    // The tab scrolls, so a press counts once it has lasted the tap timeout.
+    await tester.pump(const Duration(milliseconds: 150));
     expect(audio.talking, isTrue);
     expect(find.text('Talking…'), findsOneWidget);
     await gesture.up();
@@ -223,14 +228,17 @@ void main() {
   });
 
   testWidgets('the Sound panel when the computer is too old', (tester) async {
-    final audio = AudioController(FakeAudioConnection(feature: false), backend: FakeBackend());
+    final conn = FakeAudioConnection(feature: false);
+    final audio = AudioController(conn, backend: FakeBackend());
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: SoundSheet(audio: audio)),
+        home: Scaffold(
+          body: SoundTab(audio: audio, connection: conn),
+        ),
       ),
     );
     expect(find.textContaining('Update PairDesk on the computer'), findsOneWidget);
-    final sw = tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Computer sound'));
+    final sw = tester.widget<Switch>(find.byType(Switch).first);
     expect(sw.onChanged, isNull);
     audio.dispose();
   });

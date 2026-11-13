@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// How to use PairDesk away from home, with Tailscale.
+// How to use PairDesk when the phone and the computer are on different
+// networks: the relay (on by itself), Tailscale, or your own router.
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../ui/theme.dart';
+import '../ui/widgets.dart';
 
 class RemoteHelpScreen extends StatelessWidget {
   const RemoteHelpScreen({super.key});
@@ -20,83 +24,125 @@ class RemoteHelpScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget step(int n, String title, String body, [List<Widget> actions = const []]) => Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(radius: 14, child: Text('$n')),
-          const SizedBox(width: 14),
-          Expanded(
+    final c = PdColors.of(context);
+    Widget option(int n, String title, String body, {String? badge, List<Widget> actions = const []}) =>
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: PdCard(
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(body, style: theme.textTheme.bodyMedium),
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: badge != null ? c.accent : c.s2,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '$n',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: badge != null ? PdColors.onAccent : c.ink,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    ),
+                    if (badge != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: c.inv, borderRadius: BorderRadius.circular(999)),
+                        child: Text(
+                          badge,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.onInv),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(body, style: TextStyle(fontSize: 15, color: c.sub, height: 1.45)),
                 if (actions.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Wrap(spacing: 8, runSpacing: 8, children: actions),
                 ],
               ],
             ),
           ),
-        ],
-      ),
-    );
+        );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Connect from anywhere')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          Text(
-            'At home, PairDesk connects over your Wi-Fi. To reach your computer from anywhere else, '
-            'PairDesk uses Tailscale: a free private network between your own devices. '
-            'Your PairDesk connection stays encrypted and paired as before; Tailscale only carries it.',
-            style: theme.textTheme.bodyLarge,
-          ),
-          const SizedBox(height: 24),
-          step(
-            1,
-            'On the computer',
-            'Install Tailscale and sign in. The PairDesk page on the computer shows "Tailscale is on" when it\'s ready.',
-            [
-              OutlinedButton(
-                onPressed: () => _open(context, _download),
-                child: const Text('tailscale.com/download'),
+      backgroundColor: c.bg,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: RoundButton(
+                icon: Icons.arrow_back_rounded,
+                tooltip: 'Back',
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
-            ],
-          ),
-          step(2, 'On this phone', 'Install Tailscale and sign in with the same account.', [
-            FilledButton.tonal(onPressed: () => _open(context, _playStore), child: const Text('Google Play')),
-            OutlinedButton(onPressed: () => _open(context, _fdroid), child: const Text('F-Droid')),
-          ]),
-          step(
-            3,
-            'Connect once at home',
-            'Open PairDesk while the phone and computer share Wi-Fi. The phone then learns the computer\'s '
-                'Tailscale address and shows "Wi-Fi or Tailscale" under its name.',
-          ),
-          step(
-            4,
-            'Away from home',
-            'Turn Tailscale on, on the phone, and open PairDesk. It picks the fastest route by itself. '
-                'The title bar shows whether you\'re connected via Wi-Fi or Tailscale.',
-          ),
-          Card(
-            child: Padding(
+            ),
+            const SizedBox(height: 14),
+            const PdTitle(
+              'Connect from anywhere',
+              subtitle:
+                  'When the phone and the computer are on different networks, PairDesk reaches it '
+                  'one of these ways. Your connection stays encrypted end to end.',
+              size: 30,
+            ),
+            const SizedBox(height: 18),
+            option(
+              1,
+              'PairDesk relay',
+              'Works by itself. Both meet at the relay, which only passes encrypted data along. '
+                  'Nothing to set up: on the computer, Remote access → PairDesk relay should say "Online".',
+              badge: 'On',
+            ),
+            option(
+              2,
+              'Tailscale',
+              'A free private network between your own devices. Install it on the computer and on this '
+                  'phone and sign in with the same account. PairDesk finds the address by itself.',
+              actions: [
+                SecondaryButton(
+                  label: 'Google Play',
+                  height: 44,
+                  onPressed: () => _open(context, _playStore),
+                ),
+                SecondaryButton(label: 'F-Droid', height: 44, onPressed: () => _open(context, _fdroid)),
+                SecondaryButton(
+                  label: 'For the computer',
+                  height: 44,
+                  onPressed: () => _open(context, _download),
+                ),
+              ],
+            ),
+            option(
+              3,
+              'Your router',
+              'Forward port 47800 on your home router to the computer, then on this phone use ⋯ → '
+                  'Add an address with your home address or a name that points to it.',
+            ),
+            PdCard(
+              color: c.s2,
               padding: const EdgeInsets.all(16),
               child: Text(
                 'The computer must be on and awake. To stop it sleeping, turn on "Keep this computer awake" '
-                'on its PairDesk page. Android allows one VPN at a time, so Tailscale replaces any other VPN '
-                'while it\'s on.',
-                style: theme.textTheme.bodyMedium,
+                'on its PairDesk page.',
+                style: TextStyle(fontSize: 14, color: c.sub, height: 1.45),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

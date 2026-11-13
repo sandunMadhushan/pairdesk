@@ -8,23 +8,59 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'app_model.dart';
 import 'files/share_inbox.dart';
 import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'settings/app_lock.dart';
 import 'update_check.dart';
 import 'update_install.dart';
+import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final model = await AppModel.load();
   ShareInbox.instance.start();
-  final updates = await _updateChecker();
-  runApp(
-    PairDeskApp(
+  runApp(const PairDeskLoader());
+}
+
+/// Shows the splash while the saved computers and settings load, then fades
+/// into the app. The splash stays at least long enough to be seen.
+class PairDeskLoader extends StatefulWidget {
+  const PairDeskLoader({super.key});
+
+  @override
+  State<PairDeskLoader> createState() => _PairDeskLoaderState();
+}
+
+class _PairDeskLoaderState extends State<PairDeskLoader> {
+  AppModel? _model;
+  UpdateChecker? _updates;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final shown = Future<void>.delayed(const Duration(milliseconds: 1500));
+    final model = await AppModel.load();
+    final updates = await _updateChecker();
+    await shown;
+    if (!mounted) return;
+    setState(() {
+      _model = model;
+      _updates = updates;
+    });
+    updates?.checkIfDue();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = _model;
+    return PairDeskApp(
       model: model,
-      updates: updates,
-      installer: updates == null ? null : UpdateInstaller(cacheDir: _updateCache),
-    ),
-  );
-  updates?.checkIfDue();
+      updates: _updates,
+      installer: _updates == null ? null : UpdateInstaller(cacheDir: _updateCache),
+    );
+  }
 }
 
 /// Where a downloaded APK waits until Android installs it: the app's own
@@ -57,7 +93,8 @@ Future<UpdateChecker?> _updateChecker() async {
 class PairDeskApp extends StatelessWidget {
   const PairDeskApp({super.key, required this.model, this.updates, this.installer});
 
-  final AppModel model;
+  /// Null while it loads: the splash shows.
+  final AppModel? model;
   final UpdateChecker? updates;
 
   /// Downloads and installs an update; made only when [updates] is.
@@ -65,20 +102,24 @@ class PairDeskApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF2457D6);
+    final model = this.model;
     return MaterialApp(
       title: 'PairDesk',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: seed)),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
-      ),
+      theme: pdTheme(Brightness.light),
+      darkTheme: pdTheme(Brightness.dark),
       builder: (context, child) {
-        final settings = model.settings;
+        final settings = model?.settings;
         if (settings == null || child == null) return child ?? const SizedBox.shrink();
         return AppLockGate(settings: settings, child: child);
       },
-      home: HomeScreen(model: model, updates: updates, installer: installer),
+      home: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        switchInCurve: Curves.easeOutCubic,
+        child: model == null
+            ? const SplashScreen(key: ValueKey('splash'))
+            : HomeScreen(key: const ValueKey('home'), model: model, updates: updates, installer: installer),
+      ),
     );
   }
 }

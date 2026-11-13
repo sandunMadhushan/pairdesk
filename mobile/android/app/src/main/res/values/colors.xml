@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#2A5FDC</color>
+    <color name="ic_launcher_background">#111111</color>
+    <!-- The splash ground, so the first frame matches the app. -->
+    <color name="pd_launch">#EEEEEA</color>
 </resources>

@@ -10,6 +10,7 @@ import 'package:pairdesk/files/native_files.dart';
 import 'package:pairdesk/files/share_inbox.dart';
 import 'package:pairdesk/files/transfers.dart';
 import 'package:pairdesk/screens/control_screen.dart';
+import 'package:pairdesk/ui/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeConnection extends AgentConnection {
@@ -167,6 +168,6 @@ void main() {
     await tester.pump(const Duration(seconds: 10));
     await openSheet(tester);
     expect(find.text('Saved in Download/PairDesk/report.pdf'), findsOneWidget);
-    expect(find.descendant(of: find.byType(ListTile), matching: find.text('Open')), findsOneWidget);
+    expect(find.descendant(of: find.byType(SecondaryButton), matching: find.text('Open')), findsOneWidget);
   });
 }

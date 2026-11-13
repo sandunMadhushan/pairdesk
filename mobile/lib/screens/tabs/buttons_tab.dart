@@ -9,6 +9,8 @@ import '../../agent_connection.dart';
 import '../../buttons/custom_button.dart';
 import '../button_editor.dart';
 import 'power_tab.dart';
+import '../../ui/theme.dart';
+import '../../ui/widgets.dart';
 
 class ButtonsTab extends StatefulWidget {
   const ButtonsTab({super.key, required this.connection, this.store});
@@ -79,28 +81,43 @@ class _ButtonsTabState extends State<ButtonsTab> {
 
   Future<void> _menu(CustomButton b) async {
     HapticFeedback.mediumImpact();
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
+    final choice = await showPdSheet<String>(
+      context,
+      (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ListTile(title: Text(b.label, style: Theme.of(ctx).textTheme.titleMedium)),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit'),
-              onTap: () => Navigator.pop(ctx, 'edit'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.arrow_upward),
-              title: const Text('Move to start'),
-              onTap: () => Navigator.pop(ctx, 'first'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Remove'),
-              onTap: () => Navigator.pop(ctx, 'remove'),
+            PdTitle(b.label, subtitle: _subtitle(b.action), size: 22),
+            const SizedBox(height: 14),
+            PdCard(
+              color: PdColors.of(ctx).s2,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Column(
+                children: [
+                  PdRow(
+                    icon: Icons.edit_outlined,
+                    title: 'Edit',
+                    iconBackground: PdColors.of(ctx).s1,
+                    onTap: () => Navigator.pop(ctx, 'edit'),
+                  ),
+                  const PdDivider(),
+                  PdRow(
+                    icon: Icons.arrow_upward_rounded,
+                    title: 'Move to start',
+                    iconBackground: PdColors.of(ctx).s1,
+                    onTap: () => Navigator.pop(ctx, 'first'),
+                  ),
+                  const PdDivider(),
+                  PdRow(
+                    icon: Icons.delete_outline_rounded,
+                    title: 'Remove',
+                    iconBackground: PdColors.of(ctx).s1,
+                    onTap: () => Navigator.pop(ctx, 'remove'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -142,11 +159,18 @@ class _ButtonsTabState extends State<ButtonsTab> {
     PowerButtonAction(:final action) => powerLabel(action),
   };
 
+  IconData _icon(ButtonAction a) => switch (a) {
+    ComboAction() => Icons.keyboard_command_key_rounded,
+    TextAction() => Icons.text_fields_rounded,
+    AppAction() => Icons.open_in_new_rounded,
+    PowerButtonAction(:final action) => powerIcon(action),
+  };
+
   @override
   Widget build(BuildContext context) {
+    final c = PdColors.of(context);
     final buttons = _buttons;
-    if (buttons == null) return const Center(child: CircularProgressIndicator());
-    final theme = Theme.of(context);
+    if (buttons == null) return Center(child: PdSpinner(color: c.ink, size: 28));
     if (!widget.connection.features.contains('combo')) {
       return Center(
         child: Padding(
@@ -160,66 +184,63 @@ class _ButtonsTabState extends State<ButtonsTab> {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 4, 0),
+            padding: const EdgeInsets.fromLTRB(20, 0, 8, 4),
             child: Row(
               children: [
-                Expanded(child: Text('Long-press a button to change it.', style: theme.textTheme.bodySmall)),
+                Expanded(
+                  child: Text('Hold a tile to edit or move it', style: TextStyle(fontSize: 14, color: c.sub)),
+                ),
                 TextButton(onPressed: _reset, child: const Text('Reset')),
               ],
             ),
           ),
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           sliver: SliverGrid.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 180,
-              mainAxisExtent: 76,
+              maxCrossAxisExtent: 200,
+              mainAxisExtent: 108,
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
             ),
-            itemCount: buttons.length + 1,
+            itemCount: buttons.length,
             itemBuilder: (context, i) {
-              if (i == buttons.length) {
-                return OutlinedButton.icon(
-                  onPressed: () => _edit(null),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add'),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                );
-              }
               final b = buttons[i];
-              return Material(
-                color: theme.colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(16),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
+              return FadeRise(
+                delay: Duration(milliseconds: (40 * i).clamp(0, 400)),
+                child: Pressable(
                   onTap: () => _press(b),
                   onLongPress: () => _menu(b),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: c.s1, borderRadius: BorderRadius.circular(24)),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          b.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
-                          ),
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(color: c.s2, shape: BoxShape.circle),
+                          child: Icon(_icon(b.action), size: 18, color: c.ink),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _subtitle(b.action),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer.withValues(alpha: 0.75),
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              b.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              _subtitle(b.action),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 13, color: c.sub),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -227,6 +248,16 @@ class _ButtonsTabState extends State<ButtonsTab> {
                 ),
               );
             },
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: PrimaryButton(
+              label: 'New shortcut',
+              icon: Icons.add_rounded,
+              onPressed: () => _edit(null),
+            ),
           ),
         ),
       ],
