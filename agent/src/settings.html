@@ -530,6 +530,17 @@
         <div class="row"><button id="btn-wl-allow" class="primary">Allow control</button></div>
       </div>
 
+      <div class="card" id="mac-perms" hidden>
+        <div class="card-head"><span class="ico"><svg><use href="#i-shield"/></svg></span>
+          <div class="grow"><h2>Allow PairDesk on this Mac</h2><div class="hint">macOS asks for these once, in System Settings → Privacy &amp; Security.</div></div></div>
+        <div class="setting"><span class="ico" id="mp-acc-ico"><svg><use href="#i-apps"/></svg></span>
+          <span class="what"><b>Accessibility</b><small>Move the pointer and type from your phone.</small></span>
+          <span class="badge" id="mp-acc"></span><button id="btn-mp-acc" class="small">Open Settings</button></div>
+        <div class="setting"><span class="ico" id="mp-scr-ico"><svg><use href="#i-screen"/></svg></span>
+          <span class="what"><b>Screen Recording</b><small>See the screen and hear the Mac's sound. Quit and reopen PairDesk after allowing it.</small></span>
+          <span class="badge" id="mp-scr"></span><button id="btn-mp-scr" class="small">Open Settings</button></div>
+      </div>
+
       <div class="card">
         <div class="wide-row">
           <span class="ico big"><svg><use href="#i-help"/></svg></span>
@@ -983,6 +994,18 @@ function render(s) {
 
   if (s.os !== agentOs) { agentOs = s.os; updateKind(); }
 
+  // Mac: macOS's own permissions
+  const mac = s.mac;
+  $("mac-perms").hidden = !mac || (mac.accessibility && mac.screen);
+  if (mac) {
+    for (const [key, id] of [["accessibility", "acc"], ["screen", "scr"]]) {
+      $("mp-" + id).textContent = mac[key] ? "Allowed" : "Not allowed";
+      $("mp-" + id).className = "badge" + (mac[key] ? " on" : "");
+      $("mp-" + id + "-ico").className = "ico" + (mac[key] ? " on" : "");
+      $("btn-mp-" + id).hidden = mac[key];
+    }
+  }
+
   // Wayland: the desktop's remote desktop permission
   const wl = s.wayland;
   $("wayland").hidden = !wl;
@@ -1169,13 +1192,18 @@ async function refresh() {
     if (!res.ok) throw new Error(res.statusText);
     render(await res.json());
   } catch (e) {
-    $("status").textContent = "Start PairDesk again from the Start menu to use your phone.";
+    $("status").textContent = "Open PairDesk again to use your phone.";
     $("hero-title").textContent = "PairDesk isn't running";
     $("side-status").textContent = "Not running";
     $("side-dot").className = "dot warn";
   }
 }
 
+for (const [id, which] of [["btn-mp-acc", "accessibility"], ["btn-mp-scr", "screen"]]) {
+  $(id).onclick = async () => {
+    try { render(await post("mac-permission", { which })); } catch (e) { showBanner(e.message, true); }
+  };
+}
 $("btn-firewall").onclick = async () => {
   try { render(await post("allow-firewall")); } catch (err) { showBanner(err.message, true); }
 };
@@ -1374,6 +1402,7 @@ function renderFiles(s) {
   $("downloads").textContent = s.downloads;
   $("sendto-hint").textContent = s.os === "windows"
     ? "Tip: right-click files in File Explorer \u2192 Send to \u2192 PairDesk phone (on Windows 11, Show more options first)."
+    : s.os === "macos" ? "Tip: drag files from Finder onto the drop area above."
     : "Tip: in your file manager, right-click files \u2192 Scripts \u2192 Send to phone (PairDesk) (GNOME Files), or Send to phone (PairDesk) (Dolphin).";
 
   const list = $("transfers");
@@ -1458,10 +1487,15 @@ const kindHelpLinux = {
   path: ["File or folder", "/home/you/Documents", "Opens with its default app."],
   program: ["Program", "/usr/bin/firefox", "The program file itself. It runs directly, without a shell."],
 };
+const kindHelpMac = {
+  url: kindHelp.url,
+  path: ["File, folder or app", "/Applications/Safari.app", "Opens with its default app; an .app starts that app."],
+  program: ["Program", "/usr/local/bin/code", "The program file itself, run directly without a shell. For apps, choose File, folder or app."],
+};
 let agentOs = "windows";
 function updateKind() {
   const kind = $("sc-kind").value;
-  const help = agentOs === "windows" ? kindHelp : kindHelpLinux;
+  const help = agentOs === "windows" ? kindHelp : agentOs === "macos" ? kindHelpMac : kindHelpLinux;
   const [label, placeholder, hint] = help[kind];
   $("sc-target-label").textContent = label;
   $("sc-target").placeholder = placeholder;
@@ -1554,7 +1588,7 @@ $("autostart").onchange = async (e) => {
 $("btn-quit").onclick = async () => {
   const yes = await ask({
     title: "Stop PairDesk?",
-    text: "Phones can't connect until you start it again from the Start menu.",
+    text: "Phones can't connect until you open PairDesk again.",
     ok: "Stop PairDesk", danger: true,
   });
   if (!yes) return;

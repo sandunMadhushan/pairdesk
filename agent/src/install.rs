@@ -24,6 +24,9 @@ pub enum Kind {
     SystemPackage,
     /// Flatpak (Flathub). Flathub updates it.
     Flatpak,
+    /// Mac app bundle (PairDesk.app). For now it only tells the user about
+    /// new releases; installing one means replacing the bundle.
+    MacApp(PathBuf),
     /// The Windows helper service's own copy in Program Files. Updates by
     /// swapping the file and letting the service manager restart it.
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -40,6 +43,7 @@ impl Kind {
             Kind::AppImage(_) => "appimage",
             Kind::SystemPackage => "package",
             Kind::Flatpak => "flatpak",
+            Kind::MacApp(_) => "mac-app",
             Kind::Service => "service",
         }
     }
@@ -54,9 +58,14 @@ impl Kind {
         match self {
             Kind::WindowsSetup => Some("windows-x64-setup"),
             Kind::Portable | Kind::Service if cfg!(windows) => Some("windows-x64"),
-            Kind::Portable => Some("linux-x64"),
+            Kind::Portable if cfg!(target_os = "linux") => Some("linux-x64"),
             Kind::AppImage(_) => Some("linux-x64-appimage"),
-            Kind::SystemPackage | Kind::Store | Kind::Flatpak | Kind::Service => None,
+            Kind::Portable
+            | Kind::MacApp(_)
+            | Kind::SystemPackage
+            | Kind::Store
+            | Kind::Flatpak
+            | Kind::Service => None,
         }
     }
 }
@@ -87,6 +96,14 @@ fn detect(exe: &Path, env: impl Fn(&str) -> Option<PathBuf>, packaged: bool) -> 
         return Kind::AppImage(image);
     }
     let dir = exe.parent().unwrap_or(Path::new("."));
+    // …/PairDesk.app/Contents/MacOS/pairdesk-agent
+    if let Some(bundle) = dir
+        .ancestors()
+        .nth(2)
+        .filter(|b| dir.ends_with("Contents/MacOS") && b.extension().is_some_and(|e| e == "app"))
+    {
+        return Kind::MacApp(bundle.to_path_buf());
+    }
     if cfg!(windows) {
         if dir.join(WINDOWS_UNINSTALLER).is_file() {
             return Kind::WindowsSetup;
@@ -187,8 +204,20 @@ mod tests {
             assert_eq!(Kind::WindowsSetup.asset_key(), Some("windows-x64-setup"));
         } else {
             assert_eq!(detect(&exe, none, false), Kind::Portable);
-            assert_eq!(Kind::Portable.asset_key(), Some("linux-x64"));
+            if cfg!(target_os = "linux") {
+                assert_eq!(Kind::Portable.asset_key(), Some("linux-x64"));
+            }
         }
+    }
+
+    #[test]
+    fn mac_app_bundles_are_recognised() {
+        let exe = Path::new("/Applications/PairDesk.app/Contents/MacOS/pairdesk-agent");
+        assert_eq!(
+            detect(exe, none, false),
+            Kind::MacApp("/Applications/PairDesk.app".into())
+        );
+        assert_eq!(Kind::MacApp("/x.app".into()).asset_key(), None);
     }
 
     #[test]

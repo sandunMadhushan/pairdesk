@@ -133,7 +133,7 @@ mod platform {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use super::*;
 
@@ -183,6 +183,39 @@ mod platform {
             }
             PowerAction::Restart => command("systemctl", &["reboot"]),
             PowerAction::ShutDown => command("systemctl", &["poweroff"]),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+
+    /// AppleScript for System Events or the login window. The first use
+    /// asks the owner to let PairDesk control them (Automation).
+    fn script(source: &str) -> Result<(), String> {
+        command("osascript", &["-e", source])
+    }
+
+    pub fn run(action: PowerAction) -> Result<(), String> {
+        match action {
+            // Control-Command-Q, the Mac's own "Lock Screen".
+            PowerAction::Lock => first_working(&[
+                (
+                    "osascript",
+                    &[
+                        "-e",
+                        "tell application \"System Events\" to keystroke \"q\" using {control down, command down}",
+                    ],
+                ),
+                ("pmset", &["displaysleepnow"]),
+            ]),
+            PowerAction::ScreenOff => command("pmset", &["displaysleepnow"]),
+            PowerAction::Sleep => command("pmset", &["sleepnow"]),
+            // The login window's own events, without its "Are you sure?".
+            PowerAction::SignOut => script("tell application \"loginwindow\" to «event aevtrlgo»"),
+            PowerAction::Restart => script("tell application \"System Events\" to restart"),
+            PowerAction::ShutDown => script("tell application \"System Events\" to shut down"),
         }
     }
 }

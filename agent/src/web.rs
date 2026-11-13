@@ -369,6 +369,30 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/mac-permission") => {
+            #[derive(Deserialize)]
+            struct Body {
+                which: String,
+            }
+            let Some(b) = serde_json::from_str::<Body>(&body).ok() else {
+                return status(request, 400, "bad request");
+            };
+            #[cfg(target_os = "macos")]
+            {
+                if b.which == "screen" {
+                    crate::macsys::request_screen_recording();
+                }
+                match crate::macsys::open_settings(&b.which) {
+                    Ok(()) => send_state(request, state),
+                    Err(e) => status(request, 400, &e),
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = b.which;
+                status(request, 404, "only on a Mac")
+            }
+        }
         (Method::Post, "/api/keep-awake") => {
             #[derive(Deserialize)]
             struct Body {
@@ -677,12 +701,25 @@ fn send_state(request: Request, state: &AppState) {
         "autostart_managed": crate::autostart::managed_by(),
         "secure_desktop": crate::winsys::settings_state(),
         "firewall": firewall_state(),
+        "mac": mac_state(),
     });
     respond(
         request,
         Response::from_string(body.to_string()),
         "application/json",
     );
+}
+
+/// Mac: which of macOS's permissions PairDesk has.
+fn mac_state() -> serde_json::Value {
+    #[cfg(target_os = "macos")]
+    {
+        crate::macsys::status()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        serde_json::Value::Null
+    }
 }
 
 /// Whether phones can reach this computer through Windows Firewall on
@@ -791,7 +828,14 @@ fn reveal(path: &std::path::Path) {
             .raw_arg(format!("/select,\"{}\"", path.display()))
             .spawn();
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("/usr/bin/open")
+            .arg("-R")
+            .arg(path)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
     {
         let uri = format!("file://{}", path.display());
         let shown = crate::install::host_command("dbus-send")

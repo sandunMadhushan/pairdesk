@@ -22,6 +22,8 @@ mod identity;
 mod input;
 mod install;
 mod instance;
+#[cfg(target_os = "macos")]
+mod macsys;
 mod net;
 mod pairing;
 mod power;

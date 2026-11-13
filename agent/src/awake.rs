@@ -89,7 +89,7 @@ mod platform {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use std::process::{Child, Stdio};
 
@@ -122,6 +122,35 @@ mod platform {
                     "This computer didn't allow PairDesk to keep it awake (systemd-inhibit {status})."
                 ));
             }
+            Ok(Self { child })
+        }
+
+        pub fn stop(mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use std::process::{Child, Stdio};
+
+    /// `caffeinate`, built into macOS: no idle sleep (and none on mains
+    /// power) while it runs. `-w` ends it with PairDesk.
+    pub struct Hold {
+        child: Child,
+    }
+
+    impl Hold {
+        pub fn start() -> Result<Self, String> {
+            let child = std::process::Command::new("/usr/bin/caffeinate")
+                .args(["-i", "-s", "-w", &std::process::id().to_string()])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| format!("This Mac can't be kept awake (caffeinate: {e})."))?;
             Ok(Self { child })
         }
 

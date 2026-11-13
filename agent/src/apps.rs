@@ -9,6 +9,8 @@
 //!   Store apps such as Calculator), falling back to Start menu shortcuts.
 //! - Linux: `.desktop` files in the usual XDG folders, including Flatpak
 //!   and Snap.
+//! - Mac: the `.app` bundles in /Applications (and its subfolders such as
+//!   Utilities), /System/Applications and ~/Applications.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -341,15 +343,60 @@ fn sort_and_dedupe(apps: &mut Vec<App>) {
     apps.dedup_by(|a, b| a.name.eq_ignore_ascii_case(&b.name));
 }
 
+// ----------------------------------------------------------------- Mac scan
+
+#[cfg(target_os = "macos")]
+fn scan_installed() -> Vec<App> {
+    let mut roots = vec![
+        PathBuf::from("/Applications"),
+        PathBuf::from("/System/Applications"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(PathBuf::from(home).join("Applications"));
+    }
+    let mut apps = Vec::new();
+    for root in roots {
+        collect_app_bundles(&root, 0, &mut apps);
+    }
+    sort_and_dedupe(&mut apps);
+    apps
+}
+
+/// `.app` bundles in `dir`, and one folder level down (Utilities…).
+#[cfg(target_os = "macos")]
+fn collect_app_bundles(dir: &Path, depth: usize, out: &mut Vec<App>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if let Some(name) = file.strip_suffix(".app") {
+            if !name.starts_with('.') && !is_noise(name) {
+                out.push(App {
+                    id: app_id(&format!("mac:{}", path.display())),
+                    name: name.to_string(),
+                    kind: "app",
+                    target: Target::OpenPath(path.clone()),
+                });
+            }
+        } else if depth == 0 && entry.file_type().is_ok_and(|t| t.is_dir()) {
+            collect_app_bundles(&path, depth + 1, out);
+        }
+    }
+}
+
 // --------------------------------------------------------------- Linux scan
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn scan_installed() -> Vec<App> {
     scan_desktop_dirs(&desktop_dirs())
 }
 
 /// XDG application folders, most specific first.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn desktop_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut dirs = Vec::new();
@@ -384,7 +431,7 @@ fn desktop_dirs() -> Vec<PathBuf> {
 
 /// Reads `.desktop` files. An entry in an earlier folder hides one with
 /// the same ID in a later folder, as the XDG spec says.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn scan_desktop_dirs(dirs: &[PathBuf]) -> Vec<App> {
     let mut seen = std::collections::HashSet::new();
     let mut apps = Vec::new();
@@ -413,7 +460,7 @@ pub fn scan_desktop_dirs(dirs: &[PathBuf]) -> Vec<App> {
     apps
 }
 
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn collect_desktop_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(String, PathBuf)>) {
     if depth > 3 {
         return;
@@ -436,13 +483,13 @@ fn collect_desktop_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(S
     }
 }
 
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 struct DesktopEntry {
     name: String,
     argv: Vec<String>,
 }
 
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn parse_desktop_entry(text: &str) -> Option<DesktopEntry> {
     let mut in_main = false;
     let (mut name, mut exec, mut kind) = (None, None, None);
@@ -482,7 +529,7 @@ fn parse_desktop_entry(text: &str) -> Option<DesktopEntry> {
 
 /// Turns a `.desktop` `Exec=` value into argv: handles quoting and drops
 /// the `%f`/`%u`… placeholders (PairDesk opens apps without files).
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn parse_exec(exec: &str, name: &str) -> Option<Vec<String>> {
     // String-level escapes first (\\ → \, \s → space).
     let mut unescaped = String::new();
