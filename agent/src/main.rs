@@ -184,7 +184,10 @@ fn init_logging(data_dir: &Path) {
     );
     // Without a console (Windows release, or started at sign-in) log to a
     // file. A Mac app opened from Finder has no terminal either.
-    let to_file = cfg!(all(any(windows, target_os = "macos"), not(debug_assertions)));
+    let to_file = cfg!(all(
+        any(windows, target_os = "macos"),
+        not(debug_assertions)
+    ));
     // Appended to (starting PairDesk again mustn't wipe the running copy's
     // log), and started afresh once it gets big.
     let path = data_dir.join("agent.log");

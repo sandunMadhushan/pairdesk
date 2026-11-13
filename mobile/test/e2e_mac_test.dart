@@ -97,7 +97,44 @@ void main() {
           expect(screen.width, greaterThan(0));
           final frames = StreamIterator(conn.screenFrames);
           expect(await frames.moveNext().timeout(const Duration(seconds: 15)), isTrue);
+          conn.ackScreen(frames.current.seq);
           debugPrint('e2e mac: got a ${screen.width}×${screen.height} picture');
+          if (env['PAIRDESK_E2E_INPUT'] == '1') {
+            // Accessibility is allowed on the runner: the pointer really
+            // moves, and its new place comes back with the pictures.
+            final (w, h) = (screen.width, screen.height);
+            conn.moveTo(0.25, 0.5);
+            final want = ((w - 1) * 0.25).round();
+            final deadline = DateTime.now().add(const Duration(seconds: 10));
+            var seen = '';
+            while (DateTime.now().isBefore(deadline)) {
+              expect(await frames.moveNext().timeout(const Duration(seconds: 5)), isTrue);
+              final f = frames.current;
+              conn.ackScreen(f.seq);
+              seen = '${f.cursorX},${f.cursorY}';
+              if (f.cursorX != null &&
+                  (f.cursorX! - want).abs() <= 2 &&
+                  (f.cursorY! - ((h - 1) * 0.5).round()).abs() <= 2) {
+                seen = 'ok';
+                break;
+              }
+            }
+            expect(seen, 'ok', reason: 'pointer at ${(want, ((h - 1) * 0.5).round())} on a ${w}x$h screen');
+            debugPrint('e2e mac: the pointer moved');
+          }
+          conn.stopScreen();
+
+          final video = await conn.startScreen(quality: 'medium', codecs: const ['h264']);
+          expect(video.codec, 'h264');
+          while (true) {
+            expect(await frames.moveNext().timeout(const Duration(seconds: 10)), isTrue);
+            final f = frames.current;
+            conn.ackScreen(f.seq);
+            if (!f.isVideo || f.video!.isEmpty) continue;
+            expect(f.keyframe, isTrue, reason: 'video starts with a key frame');
+            break;
+          }
+          debugPrint('e2e mac: H.264 video from the Mac');
           conn.stopScreen();
           await frames.cancel();
         } on AgentException catch (e) {

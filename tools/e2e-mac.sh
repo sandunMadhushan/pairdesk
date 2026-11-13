@@ -32,8 +32,10 @@ curl -sf -o /dev/null "${SETTINGS}fonts/urbanist-700.ttf"
 LINK=$(curl -sf -X POST -H 'X-PairDesk: 1' "${SETTINGS}api/pair" |
   python3 -c 'import json,sys; print(json.load(sys.stdin)["pairing"]["link"])')
 
+# The pointer check needs Accessibility (given on GitHub's Mac runners).
+INPUT=$(curl -sf "${SETTINGS}api/state" | python3 -c 'import json,sys; print(int(json.load(sys.stdin)["mac"]["accessibility"]))')
 (cd "$ROOT/mobile" && PAIRDESK_E2E_LINK="$LINK" PAIRDESK_E2E_SETTINGS="$SETTINGS" \
-  PAIRDESK_E2E_DOWNLOADS="$DATA/downloads" flutter test test/e2e_mac_test.dart) || {
+  PAIRDESK_E2E_DOWNLOADS="$DATA/downloads" PAIRDESK_E2E_INPUT="$INPUT" flutter test test/e2e_mac_test.dart) || {
   echo "--- agent log ---"; tail -40 "$DATA/agent.log" "$DATA/out.txt" 2>/dev/null; exit 1; }
 
 curl -sf -X POST -H 'X-PairDesk: 1' "${SETTINGS}api/quit" >/dev/null || true
