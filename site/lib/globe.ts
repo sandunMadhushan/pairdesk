@@ -51,7 +51,7 @@ export class Globe {
     // a pale disc so back dots read as "behind"
     const ball = new THREE.Mesh(
       new THREE.SphereGeometry(0.985, 64, 48),
-      new THREE.MeshBasicMaterial({ color: 0xf3f6fd, transparent: true, opacity: 0.92 }),
+      new THREE.MeshBasicMaterial({ color: 0xf6f6f2, transparent: true, opacity: 0.92 }),
     );
     this.world.add(ball);
 
@@ -67,7 +67,7 @@ export class Globe {
       depthWrite: false,
       uniforms: {
         uSize: { value: 3.9 * Math.min(window.devicePixelRatio, 2) },
-        uColor: { value: new THREE.Color(0x3d6ff5) },
+        uColor: { value: new THREE.Color(0x34352f) },
         uReveal: { value: reduced ? 1 : 0 },
       },
       vertexShader: /* glsl */ `
@@ -129,10 +129,10 @@ export class Globe {
       const tube = new THREE.TubeGeometry(curve, 96, 0.0075, 8, false);
       const total = tube.index ? tube.index.count : 0;
       tube.setDrawRange(0, reduced ? total : 0);
-      this.world.add(new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: 0xff7a1a })));
+      this.world.add(new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: 0xb4dc1e })));
       this.arcs.push({ geo: tube, total });
       for (let k = 0; k < 2; k++) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(0.022, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.022, 16, 12), new THREE.MeshBasicMaterial({ color: 0xb4dc1e }));
         m.visible = false;
         this.world.add(m);
         this.packets.push({ mesh: m, curve, offset: k * 0.5 + i * 0.25 });

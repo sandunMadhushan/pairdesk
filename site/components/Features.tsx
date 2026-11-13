@@ -73,12 +73,12 @@ export function Touchpad() {
   return (
     <Feature
       id="touchpad"
-      title="Touchpad, keyboard and your own buttons"
-      body="Move, click, drag and scroll with the gestures you already know. Type with your phone's keyboard, voice typing included, and keep shortcuts and media keys one tap away."
+      title="Touchpad, keyboard and your own shortcuts"
+      body="Move, click, drag and scroll with the gestures you already know. Type with your phone's keyboard, voice typing included, and keep shortcuts one tap away, with the media keys on the Sound tab."
       points={[
         "Two fingers scroll, a two-finger tap right-clicks",
-        "Make buttons for the shortcuts you use every day",
-        "Volume, play and skip are always at the top",
+        "Make tiles for the shortcuts you use every day",
+        "Volume, play and skip are on the Sound tab",
       ]}
       note="feels like a real laptop touchpad"
     >
@@ -86,7 +86,7 @@ export function Touchpad() {
       <div data-pop-item className="absolute top-1/2 left-1/2 w-[46%] max-w-[230px] -translate-x-1/2 -translate-y-1/2 rotate-[4deg]">
         <Phone>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/screenshots/3_shortcuts.png" alt="PairDesk's shortcut buttons screen" width={540} height={1170} loading="lazy" className="h-full w-full object-cover" />
+          <img src="/screenshots/3_shortcuts.png" alt="PairDesk's shortcuts screen" width={540} height={1170} loading="lazy" className="h-full w-full object-cover" />
         </Phone>
       </div>
       <div data-pop-item className="absolute top-[10%] left-[2%] flex items-center gap-2 sm:left-[6%]">

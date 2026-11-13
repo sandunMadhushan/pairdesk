@@ -7,7 +7,7 @@ import Downloads from "@/components/Downloads";
 import Anywhere from "@/components/Anywhere";
 import Help from "@/components/Help";
 import { Files, Screen, Touchpad } from "@/components/Features";
-import { Questions, Setup, Stats, Tour, Trust } from "@/components/Sections";
+import { DesktopApp, Questions, Setup, Stats, Tour, Trust } from "@/components/Sections";
 import { AUTHOR, DESCRIPTION, NAME, SITE } from "@/lib/seo";
 
 // What search engines read about the app (schema.org).
@@ -76,6 +76,7 @@ export default function Home() {
         <div className="py-14 sm:py-20">
           <Tour />
         </div>
+        <DesktopApp />
         <Downloads />
         <Questions />
       </main>

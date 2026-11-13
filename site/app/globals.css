@@ -3,21 +3,23 @@
 @import "lenis/dist/lenis.css";
 
 /*
-  PairDesk, light: a pale sky page with white sheets laid on it.
-  Pair blue is the brand (bands, footer, primary actions); marker orange is
-  the pen that draws on the page (pins, doodles, notes, focus).
+  PairDesk, light: a soft grey page with white sheets laid on it, the same
+  colours as the apps. Ink is the brand (bands, footer); lime is the accent
+  (primary actions, highlights); olive is the pen that draws on the page
+  (pins, doodles, notes, focus).
 */
 @theme {
-  --color-sky: #eef3fb;
-  --color-sky-deep: #e2e9f6;
+  --color-sky: #eeeeea;
+  --color-sky-deep: #e3e3de;
   --color-sheet: #ffffff;
-  --color-ink: #141a2e;
-  --color-slate: #566180;
-  --color-line: #d9e1ef;
-  --color-pair: #1f5bff;
-  --color-pair-deep: #1546cc;
-  --color-pair-soft: #e3ebff;
-  --color-marker: #ff7a1a;
+  --color-ink: #111111;
+  --color-slate: #62655e;
+  --color-line: #e3e3de;
+  --color-pair: #111111;
+  --color-lime: #d2f34c;
+  --color-pair-deep: #000000;
+  --color-pair-soft: #eaf8ae;
+  --color-marker: #6f8f00;
   --color-go: #19b46b;
 
   --font-sans: "Outfit Variable", ui-sans-serif, system-ui, sans-serif;
@@ -109,18 +111,18 @@
 .btn-ink {
   background: var(--color-ink);
   color: white;
-  box-shadow: 0 10px 24px -12px rgba(20, 26, 46, 0.7);
+  box-shadow: 0 10px 24px -12px rgba(17, 17, 17, 0.7);
 }
 .btn-ink:hover {
-  background: #26304f;
+  background: #2b2c28;
 }
 .btn-pair {
-  background: var(--color-pair);
-  color: white;
-  box-shadow: 0 12px 26px -12px var(--color-pair);
+  background: var(--color-lime);
+  color: var(--color-ink);
+  box-shadow: 0 12px 26px -12px #8aa800;
 }
 .btn-pair:hover {
-  background: var(--color-pair-deep);
+  background: #c6e63f;
 }
 .btn-line {
   border: 1.5px solid color-mix(in oklab, var(--color-ink) 22%, transparent);
@@ -131,11 +133,11 @@
   border-color: var(--color-ink);
 }
 .btn-white {
-  background: white;
-  color: var(--color-pair-deep);
+  background: var(--color-lime);
+  color: var(--color-ink);
 }
 .btn-white:hover {
-  background: var(--color-pair-soft);
+  background: #e2f87a;
 }
 
 /* A white sheet laid on the sky: the page is a stack of these. */

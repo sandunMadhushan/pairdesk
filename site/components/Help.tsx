@@ -8,7 +8,7 @@ import { Squiggle } from "@/components/Devices";
 function Avatar({ skin, hair, shirt, long = false }: { skin: string; hair: string; shirt: string; long?: boolean }) {
   return (
     <svg viewBox="0 0 80 80" className="h-full w-full" aria-hidden="true">
-      <circle cx="40" cy="40" r="40" fill="#eef3fb" />
+      <circle cx="40" cy="40" r="40" fill="#eeeeea" />
       <clipPath id={`c-${shirt.slice(1)}`}>
         <circle cx="40" cy="40" r="40" />
       </clipPath>
@@ -18,9 +18,9 @@ function Avatar({ skin, hair, shirt, long = false }: { skin: string; hair: strin
         <rect x="34" y="46" width="12" height="12" rx="5" fill={skin} />
         <ellipse cx="40" cy="36" rx="15" ry="17" fill={skin} />
         <path d="M24 34 Q24 16 40 16 Q57 16 56 34 Q50 24 40 25 Q30 24 24 34 Z" fill={hair} />
-        <circle cx="34" cy="37" r="1.8" fill="#1d2235" />
-        <circle cx="46" cy="37" r="1.8" fill="#1d2235" />
-        <path d="M35 44 Q40 48 45 44" stroke="#1d2235" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+        <circle cx="34" cy="37" r="1.8" fill="#111111" />
+        <circle cx="46" cy="37" r="1.8" fill="#111111" />
+        <path d="M35 44 Q40 48 45 44" stroke="#111111" strokeWidth="1.8" fill="none" strokeLinecap="round" />
       </g>
     </svg>
   );
@@ -73,15 +73,15 @@ export default function Help() {
           </div>
 
           <div data-pop className="relative mx-auto aspect-[1/1.3] w-full max-w-[560px] text-[0.85rem] sm:aspect-[1/0.9] sm:text-[0.95rem]">
-            <div aria-hidden="true" className="absolute inset-[8%_4%_6%_10%] rounded-[36px] bg-[linear-gradient(160deg,#e7eeff,#f3f6fd)]" />
-            <svg aria-hidden="true" viewBox="0 0 500 450" className="absolute inset-0 h-full w-full text-[#b9c8ea]" fill="none">
+            <div aria-hidden="true" className="absolute inset-[8%_4%_6%_10%] rounded-[36px] bg-[linear-gradient(160deg,#e9eadf,#f4f4ef)]" />
+            <svg aria-hidden="true" viewBox="0 0 500 450" className="absolute inset-0 h-full w-full text-[#cfd1c6]" fill="none">
               <path data-draw d="M120 130 C 200 160, 260 140, 330 210 S 380 330, 300 360" stroke="currentColor" strokeWidth="2.5" strokeDasharray="2 10" strokeLinecap="round" />
             </svg>
 
             {/* the friend */}
             <div data-pop-item className="absolute top-[4%] left-[2%] w-[26%]">
               <div className="aspect-square overflow-hidden rounded-full shadow-[0_18px_40px_-16px_rgba(31,58,120,.5)] ring-4 ring-white">
-                <Avatar skin="#e8b796" hair="#3b2a20" shirt="#ff7a1a" long />
+                <Avatar skin="#e8b796" hair="#3b2a20" shirt="#d2f34c" long />
               </div>
             </div>
             <div data-pop-item className="absolute top-[6%] left-[30%] max-w-[62%]">
@@ -93,7 +93,7 @@ export default function Help() {
             {/* you */}
             <div data-pop-item className="absolute top-[30%] right-[2%] w-[22%]">
               <div className="aspect-square overflow-hidden rounded-full shadow-[0_18px_40px_-16px_rgba(31,58,120,.5)] ring-4 ring-white">
-                <Avatar skin="#b9805a" hair="#141a2e" shirt="#1f5bff" />
+                <Avatar skin="#b9805a" hair="#111111" shirt="#111111" />
               </div>
             </div>
             <div data-pop-item className="absolute top-[36%] right-[26%] max-w-[64%] sm:top-[38%] sm:max-w-[58%]">

@@ -113,6 +113,41 @@ const MORE = [
   { title: "Wayland and X11", body: "Works on GNOME and KDE, on Wayland or X11, and on Windows 10 and 11." },
 ];
 
+const DESKTOP = [
+  { src: "/screenshots/desktop-home.jpg", alt: "PairDesk's window on the computer: the home page, with a phone connected", caption: "Home: who is connected, and one click to send files" },
+  { src: "/screenshots/desktop-files-dark.jpg", alt: "PairDesk's window on the computer, dark: files going to and from a phone", caption: "Files, in light or dark" },
+  { src: "/screenshots/desktop-pair.jpg", alt: "PairDesk's window on the computer: the dialog with the pairing code", caption: "Pair a phone with a code or a link" },
+];
+
+export function DesktopApp() {
+  return (
+    <section aria-labelledby="desktop-title" className="px-3 sm:px-6">
+      <div className="mx-auto max-w-7xl">
+        <h2 id="desktop-title" className="display max-w-3xl text-[clamp(2.4rem,5vw,4.2rem)]">
+          And the app on your computer
+        </h2>
+        <p className="mt-5 max-w-2xl text-lg text-slate">
+          It sits in the tray and stays out of the way. Open it to pair a phone, see who is connected, send files, change shortcuts and decide what a phone may do.
+        </p>
+        <div data-pop className="mt-12 grid gap-x-6 gap-y-10 lg:grid-cols-[1.5fr_1fr]">
+          <figure data-pop-item className="lg:row-span-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={DESKTOP[0].src} alt={DESKTOP[0].alt} width={1300} height={925} loading="lazy" className="w-full rounded-[22px] border border-line bg-white shadow-[0_40px_70px_-40px_rgba(17,17,17,.55)]" />
+            <figcaption className="mt-4 text-center font-medium text-slate">{DESKTOP[0].caption}</figcaption>
+          </figure>
+          {DESKTOP.slice(1).map((d) => (
+            <figure key={d.src} data-pop-item>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={d.src} alt={d.alt} width={1300} height={925} loading="lazy" className="w-full rounded-[18px] border border-line bg-white shadow-[0_30px_60px_-40px_rgba(17,17,17,.55)]" />
+              <figcaption className="mt-4 text-center font-medium text-slate">{d.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function Tour() {
   return (
     <section aria-labelledby="tour-title" className="overflow-hidden">
@@ -132,7 +167,7 @@ export function Tour() {
                 width={540}
                 height={1170}
                 loading="lazy"
-                className="w-full rounded-[30px] border-[6px] border-[#10131d] bg-white shadow-[0_40px_70px_-40px_rgba(20,30,70,.6)] transition-transform duration-500 ease-[var(--ease-out-quint)] hover:-translate-y-2 hover:rotate-[-1.5deg]"
+                className="w-full rounded-[30px] border-[6px] border-[#111111] bg-white shadow-[0_40px_70px_-40px_rgba(17,17,17,.55)] transition-transform duration-500 ease-[var(--ease-out-quint)] hover:-translate-y-2 hover:rotate-[-1.5deg]"
               />
               <figcaption className="mt-4 text-center font-medium text-slate">{s.caption}</figcaption>
             </figure>

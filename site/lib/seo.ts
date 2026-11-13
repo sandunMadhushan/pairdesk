@@ -12,7 +12,7 @@ export const OG_IMAGE = {
   url: "/og.jpg",
   width: 1200,
   height: 630,
-  alt: "PairDesk: an Android phone used as the touchpad for a laptop",
+  alt: "PairDesk: a phone used as the touchpad for a laptop",
 };
 
 /** Metadata for one page: its own title, description and address, with the

@@ -15,20 +15,20 @@ export function Phone({
 }) {
   return (
     <div
-      className={`relative bg-[#10131d] shadow-[0_50px_90px_-40px_rgba(20,30,70,.55),0_0_0_1.5px_#2a3042_inset,0_0_0_4px_#c9d2e3] ${
+      className={`relative bg-[#111111] shadow-[0_50px_90px_-40px_rgba(17,17,17,.5),0_0_0_1.5px_#2a2a2a_inset,0_0_0_4px_#cfd0c8] ${
         landscape ? "aspect-[1170/540] rounded-[6.5%/14%] p-[1.6%]" : "aspect-[540/1170] rounded-[14%/6.5%] p-[3.2%]"
       } ${className}`}
       style={style}
     >
       <div
-        className={`relative h-full w-full overflow-hidden bg-[#f6f6fb] ${
+        className={`relative h-full w-full overflow-hidden bg-[#f3f3ef] ${
           landscape ? "rounded-[5.3%/11.5%]" : "rounded-[11.5%/5.3%]"
         }`}
       >
         {children}
         {/* camera island */}
         <span
-          className={`absolute rounded-full bg-[#10131d] ${
+          className={`absolute rounded-full bg-[#111111] ${
             landscape
               ? "top-1/2 left-[1.6%] h-[28%] w-[3%] -translate-y-1/2"
               : "top-[1.6%] left-1/2 h-[3%] w-[28%] -translate-x-1/2"
@@ -52,14 +52,14 @@ export function Desktop({
 }) {
   return (
     <div className={`absolute inset-0 overflow-hidden [container-type:inline-size] ${className}`}>
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_15%_10%,#c8d8ff_0%,#9fb7f5_35%,#6d8ee8_70%,#4a6fd6_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_15%_10%,#f1fbc4_0%,#d2f34c_32%,#8fae2a_68%,#3a4a12_100%)]" />
       {/* soft hills */}
       <svg className="absolute inset-x-0 bottom-0 h-1/2 w-full" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true">
         <path d="M0 60 C 80 30 140 70 220 45 S 360 40 400 55 V100 H0Z" fill="#ffffff" opacity=".18" />
         <path d="M0 80 C 90 55 170 90 260 68 S 360 70 400 76 V100 H0Z" fill="#ffffff" opacity=".22" />
       </svg>
       {/* notes window */}
-      <div className="absolute top-[9%] left-[7%] w-[46%] rounded-[1.6cqw] bg-white/95 p-[2.2cqw] shadow-[0_2cqw_5cqw_-2cqw_rgba(20,30,80,.45)]">
+      <div className="absolute top-[9%] left-[7%] w-[46%] rounded-[1.6cqw] bg-white/95 p-[2.2cqw] shadow-[0_2cqw_5cqw_-2cqw_rgba(17,17,17,.4)]">
         <div className="flex gap-[0.8cqw]">
           <i className="block size-[1.4cqw] rounded-full bg-[#ff6b5e]" />
           <i className="block size-[1.4cqw] rounded-full bg-[#ffc24a]" />
@@ -67,16 +67,16 @@ export function Desktop({
         </div>
         <p className="mt-[1.8cqw] text-[2.6cqw] leading-tight font-semibold text-ink">Ideas for Monday</p>
         <div className="mt-[1.4cqw] space-y-[1cqw]">
-          <i className="block h-[1cqw] w-[92%] rounded-full bg-[#dfe5f2]" />
-          <i className="block h-[1cqw] w-[78%] rounded-full bg-[#dfe5f2]" />
-          <i className="block h-[1cqw] w-[85%] rounded-full bg-[#dfe5f2]" />
-          <i className="block h-[1cqw] w-[55%] rounded-full bg-[#dfe5f2]" />
+          <i className="block h-[1cqw] w-[92%] rounded-full bg-[#e3e3de]" />
+          <i className="block h-[1cqw] w-[78%] rounded-full bg-[#e3e3de]" />
+          <i className="block h-[1cqw] w-[85%] rounded-full bg-[#e3e3de]" />
+          <i className="block h-[1cqw] w-[55%] rounded-full bg-[#e3e3de]" />
         </div>
       </div>
       {/* music card */}
       <div
         data-target="play"
-        className="absolute right-[7%] bottom-[22%] w-[34%] rounded-[1.8cqw] bg-white/90 p-[1.8cqw] shadow-[0_2cqw_5cqw_-2cqw_rgba(20,30,80,.45)]"
+        className="absolute right-[7%] bottom-[22%] w-[34%] rounded-[1.8cqw] bg-white/90 p-[1.8cqw] shadow-[0_2cqw_5cqw_-2cqw_rgba(17,17,17,.4)]"
       >
         <div className="flex items-center gap-[1.4cqw]">
           <span className="grid size-[6cqw] shrink-0 place-items-center rounded-[1.2cqw] bg-[linear-gradient(135deg,#ffb36b,#ff7a1a)]">
@@ -97,13 +97,13 @@ export function Desktop({
             <span className="block truncate text-[1.8cqw] leading-tight text-slate">Evening mix</span>
           </span>
         </div>
-        <span className="mt-[1.4cqw] block h-[0.7cqw] overflow-hidden rounded-full bg-[#e3e8f3]">
+        <span className="mt-[1.4cqw] block h-[0.7cqw] overflow-hidden rounded-full bg-[#e3e3de]">
           <span className="prog block h-full w-[45%] rounded-full bg-marker" />
         </span>
       </div>
       {/* taskbar */}
       <div className="absolute bottom-[3.5%] left-1/2 flex -translate-x-1/2 gap-[1.2cqw] rounded-[1.6cqw] bg-white/70 px-[1.6cqw] py-[1.1cqw] backdrop-blur-sm">
-        {["#1f5bff", "#ff7a1a", "#19b46b", "#8f5bff", "#ffc24a"].map((c) => (
+        {["#d2f34c", "#ff7a1a", "#19b46b", "#8f5bff", "#ffc24a"].map((c) => (
           <i key={c} className="block size-[3cqw] rounded-[0.8cqw]" style={{ background: c }} />
         ))}
       </div>
@@ -124,13 +124,13 @@ export function Laptop({
 }) {
   return (
     <div className={`relative ${className}`}>
-      <div className="rounded-[2.2%/3.4%] bg-[#151a28] p-[2.2%] pb-[3%] shadow-[0_60px_100px_-50px_rgba(20,30,70,.55),0_0_0_1.5px_#2c3347_inset]">
+      <div className="rounded-[2.2%/3.4%] bg-[#151515] p-[2.2%] pb-[3%] shadow-[0_60px_100px_-50px_rgba(17,17,17,.5),0_0_0_1.5px_#2c2c2c_inset]">
         <div ref={screenRef} className="relative aspect-[16/10] overflow-hidden rounded-[0.8%] bg-sky">
           {children}
         </div>
       </div>
-      <div className="relative mx-[-6%] h-[3.2vmin] max-h-5 min-h-2.5 rounded-b-[40%_100%] bg-[linear-gradient(#e4e9f2,#b9c3d6)] shadow-[0_24px_40px_-20px_rgba(20,30,70,.5)]">
-        <span className="absolute top-0 left-1/2 h-[45%] w-[16%] -translate-x-1/2 rounded-b-xl bg-[#a8b3c8]" />
+      <div className="relative mx-[-6%] h-[3.2vmin] max-h-5 min-h-2.5 rounded-b-[40%_100%] bg-[linear-gradient(#e6e7e0,#bcbeb3)] shadow-[0_24px_40px_-20px_rgba(17,17,17,.45)]">
+        <span className="absolute top-0 left-1/2 h-[45%] w-[16%] -translate-x-1/2 rounded-b-xl bg-[#a9ab9f]" />
       </div>
     </div>
   );

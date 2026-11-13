@@ -8,9 +8,9 @@ import type { Globe } from "@/lib/globe";
 
 /* Home in Sri Lanka, a relay hop, and the phone travelling in Europe. */
 const PINS = [
-  { lat: 7.3, lng: 80.6, color: 0x1f5bff },
-  { lat: 25, lng: 55, color: 0x141a2e },
-  { lat: 48.9, lng: 2.35, color: 0xff7a1a },
+  { lat: 7.3, lng: 80.6, color: 0x111111 },
+  { lat: 25, lng: 55, color: 0x62655e },
+  { lat: 48.9, lng: 2.35, color: 0xb4dc1e },
 ];
 const LABELS = [
   { title: "Your computer", sub: "awake at home" },

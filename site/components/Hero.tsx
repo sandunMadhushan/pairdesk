@@ -200,7 +200,7 @@ export default function Hero() {
 
         {/* The stage */}
         <div className="relative mx-auto w-full max-w-[640px] [perspective:1400px] lg:max-w-none">
-          <svg aria-hidden="true" viewBox="0 0 600 420" className="pointer-events-none absolute -top-[8%] -left-[6%] w-[112%] text-[#b9c8ea]" fill="none">
+          <svg aria-hidden="true" viewBox="0 0 600 420" className="pointer-events-none absolute -top-[8%] -left-[6%] w-[112%] text-[#cfd1c6]" fill="none">
             <path data-draw d="M20 330 C 120 120, 420 40, 580 150" stroke="currentColor" strokeWidth="2" strokeDasharray="1 9" strokeLinecap="round" />
           </svg>
 
