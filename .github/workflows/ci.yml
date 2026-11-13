@@ -148,14 +148,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-          targets: x86_64-apple-darwin
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent
       - run: cargo clippy --release --all-targets -- -D warnings
       - run: cargo test
-      # Intel too: Macs in virtual machines and older Macs.
-      - run: cargo check --release --target x86_64-apple-darwin
+      # PairDesk.app for Apple silicon and Intel (Macs in virtual machines,
+      # older Macs), in a disk image to try from this run's artifacts.
+      - run: ../packaging/macos/build-app.sh 0.0.0-ci ../out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pairdesk-mac
+          path: out/*.dmg
+          if-no-files-found: error
 
   relay:
     name: Relay

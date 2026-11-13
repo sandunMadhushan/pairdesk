@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- PairDesk Mac app icon: the lime-on-ink mark on the Mac's rounded
+     square (824 of 1024, the macOS app icon grid), with its soft shadow. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="s" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#000" filter="url(#s)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#111111"/>
+  <g transform="translate(512 512) scale(2.55) translate(-130 -150)">
+    <rect x="42" y="66" width="140" height="96" rx="13" fill="none" stroke="#d2f34c" stroke-width="13"/>
+    <rect x="24" y="180" width="160" height="13" rx="6.5" fill="#d2f34c"/>
+    <rect x="139" y="93" width="98" height="148" rx="27" fill="#111111"/>
+    <rect x="154" y="108" width="68" height="118" rx="15" fill="#111111" stroke="#d2f34c" stroke-width="12"/>
+    <rect x="180" y="203" width="16" height="6" rx="3" fill="#d2f34c"/>
+  </g>
+</svg>
