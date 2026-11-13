@@ -2545,7 +2545,7 @@ dependencies = [
 
 [[package]]
 name = "pairdesk-agent"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "aec3",
  "arboard",

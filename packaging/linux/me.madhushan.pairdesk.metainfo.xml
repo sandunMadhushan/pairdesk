@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.12.1" date="2026-11-13">
+      <description>
+        <p>A new look for the computer app to match the phone: lime on soft grey with a dark mode, a sidebar with Home, Phones, Files and Shortcuts, and dialogs inside the window instead of browser popups. New black-and-lime icon.</p>
+      </description>
+    </release>
     <release version="0.12.0" date="2026-11-13">
       <description>
         <p>A new look for the phone app: lime on soft grey with a dark mode, a splash screen, and a bottom bar that puts Touchpad, Screen, Shortcuts, Files and Sound one tap away. You can type on the keyboard from the Screen view too.</p>
