@@ -184,6 +184,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
+    fn launch_agents_take_the_path_as_it_is() {
+        assert_eq!(
+            quoted("/Applications/Pair Desk.app/Contents/MacOS/pairdesk-agent"),
+            "/Applications/Pair Desk.app/Contents/MacOS/pairdesk-agent"
+        );
+    }
+
+    #[test]
     #[cfg(target_os = "linux")]
     fn quotes_desktop_entry_paths_only_when_needed() {
         assert_eq!(quoted("/opt/pairdesk/agent"), "/opt/pairdesk/agent");

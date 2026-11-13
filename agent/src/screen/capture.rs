@@ -665,7 +665,7 @@ mod platform {
                 if little {
                     out.extend_from_slice(row);
                 } else {
-                    for px in row.chunks_exact(4) {
+                    for px in row.as_chunks::<4>().0 {
                         if alpha_first {
                             out.extend_from_slice(&[px[3], px[2], px[1], px[0]]); // ARGB
                         } else {
