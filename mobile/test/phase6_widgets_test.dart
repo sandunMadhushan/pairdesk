@@ -128,7 +128,15 @@ void main() {
     final inbox = ShareInbox(take: () async => const SharedItems());
     inbox.put(SharedItems(files: [PickedFile(f.path, 'photo.jpg')]));
     final conn = await show(tester, inbox: inbox);
-    for (var i = 0; i < 5; i++) {
+    // Real file I/O: wait until it lands rather than for a fixed time.
+    for (
+      var i = 0;
+      i < 100 &&
+          (conn.calls.isEmpty ||
+              inbox.pending != null ||
+              find.textContaining('Downloads\\PairDesk').evaluate().isEmpty);
+      i++
+    ) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await tester.pump();
     }

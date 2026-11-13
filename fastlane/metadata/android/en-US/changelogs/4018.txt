@@ -1,0 +1,3 @@
+• New look: lime on soft grey, with a dark mode and a splash screen
+• A bottom bar puts Touchpad, Screen, Shortcuts, Files and Sound one tap away
+• You can type with the keyboard from the Screen view too

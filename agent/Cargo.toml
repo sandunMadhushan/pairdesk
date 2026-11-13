@@ -1,6 +1,6 @@
 [package]
 name = "pairdesk-agent"
-version = "0.11.3"
+version = "0.12.0"
 edition = "2024"
 description = "PairDesk desktop agent: control this computer from your phone"
 license = "GPL-3.0-or-later"
