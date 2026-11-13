@@ -86,7 +86,7 @@ export function Touchpad() {
       <div data-pop-item className="absolute top-1/2 left-1/2 w-[46%] max-w-[230px] -translate-x-1/2 -translate-y-1/2 rotate-[4deg]">
         <Phone>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/screenshots/3_buttons.png" alt="PairDesk's shortcut buttons screen" width={540} height={1170} loading="lazy" className="h-full w-full object-cover" />
+          <img src="/screenshots/3_shortcuts.png" alt="PairDesk's shortcut buttons screen" width={540} height={1170} loading="lazy" className="h-full w-full object-cover" />
         </Phone>
       </div>
       <div data-pop-item className="absolute top-[10%] left-[2%] flex items-center gap-2 sm:left-[6%]">
@@ -188,7 +188,7 @@ export function Files() {
       <div data-pop-item className="absolute top-1/2 left-[2%] w-[40%] max-w-[210px] -translate-y-1/2 -rotate-[5deg]">
         <Phone>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/screenshots/5_clipboard_files.png" alt="PairDesk's clipboard and files sheet" width={540} height={1170} loading="lazy" className="h-full w-full object-cover" />
+          <img src="/screenshots/5_files.png" alt="PairDesk's clipboard and files sheet" width={540} height={1170} loading="lazy" className="h-full w-full object-cover" />
         </Phone>
       </div>
 

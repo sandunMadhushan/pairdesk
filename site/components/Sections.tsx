@@ -99,9 +99,9 @@ export function Setup() {
 const SHOTS = [
   { src: "/screenshots/1_computers.png", caption: "Your computers" },
   { src: "/screenshots/2_touchpad.png", caption: "Touchpad" },
-  { src: "/screenshots/3_buttons.png", caption: "Shortcut buttons" },
+  { src: "/screenshots/3_shortcuts.png", caption: "Shortcuts" },
   { src: "/screenshots/4_apps.png", caption: "The computer's apps" },
-  { src: "/screenshots/5_clipboard_files.png", caption: "Clipboard and files" },
+  { src: "/screenshots/5_files.png", caption: "Clipboard and files" },
 ];
 
 const MORE = [

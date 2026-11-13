@@ -464,8 +464,9 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
+            // Bottom too: after full screen Android lets the window draw
+            // under the navigation bar, and the controls must stay above it.
             SafeArea(
-              bottom: false,
               top: !_fullscreen,
               child: Column(
                 children: [

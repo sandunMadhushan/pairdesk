@@ -28,7 +28,7 @@ const STRUCTURED = {
       downloadUrl: `${SITE}/#download`,
       installUrl: `${SITE}/#download`,
       image: `${SITE}/og.jpg`,
-      screenshot: ["1_computers", "2_touchpad", "3_buttons", "4_apps", "5_clipboard_files"].map(
+      screenshot: ["1_computers", "2_touchpad", "3_shortcuts", "4_apps", "5_files", "6_sound"].map(
         (s) => `${SITE}/screenshots/${s}.png`,
       ),
       featureList: [
