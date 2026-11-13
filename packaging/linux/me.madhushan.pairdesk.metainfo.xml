@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.12.2" date="2026-11-14">
+      <description>
+        <p>Fixes the phone app's layout after leaving full screen: the bottom controls no longer end up behind the tab bar.</p>
+      </description>
+    </release>
     <release version="0.12.1" date="2026-11-13">
       <description>
         <p>A new look for the computer app to match the phone: lime on soft grey with a dark mode, a sidebar with Home, Phones, Files and Shortcuts, and dialogs inside the window instead of browser popups. New black-and-lime icon.</p>
