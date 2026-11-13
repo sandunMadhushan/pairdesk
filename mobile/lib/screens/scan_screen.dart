@@ -2,10 +2,12 @@
 // Scans the pairing QR code shown on the computer. Returns the link text.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_code_scanner_plus/qr_code_scanner_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -171,14 +173,23 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                 children: [
                   Icon(Icons.no_photography_outlined, size: 48, color: c.sub),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'PairDesk needs the camera to scan the code on your computer. '
-                    'Allow camera access in Android settings, or paste the link instead.',
+                    'Allow camera access in ${Platform.isIOS ? 'Settings → PairDesk' : 'Android settings'}, '
+                    'or paste the link instead.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 16, height: 1.45),
                   ),
                   const SizedBox(height: 16),
                   SecondaryButton(label: 'Paste link', icon: Icons.add_link_rounded, onPressed: _pasteLink),
+                  if (Platform.isIOS) ...[
+                    const SizedBox(height: 10),
+                    SecondaryButton(
+                      label: 'Open Settings',
+                      icon: Icons.settings_rounded,
+                      onPressed: () => launchUrl(Uri.parse('app-settings:')),
+                    ),
+                  ],
                 ],
               ),
             )

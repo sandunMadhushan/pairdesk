@@ -6,7 +6,8 @@ import 'package:flutter/services.dart';
 
 import 'audio_packet.dart';
 
-/// The phone's sound hardware (Android: AudioChannel.kt).
+/// The phone's sound hardware (Android: AudioChannel.kt; iPhone:
+/// packages/pairdesk_ios/.../AudioChannel.swift).
 abstract class AudioBackend {
   Future<bool> opusSupported();
   Future<void> startPlayer(AudioInfo info);
@@ -52,7 +53,7 @@ class PlatformAudioBackend implements AudioBackend {
 
   @override
   Future<bool> opusSupported() async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid && !Platform.isIOS) return false;
     try {
       return await _channel.invokeMethod<bool>('opusSupported') ?? false;
     } catch (_) {

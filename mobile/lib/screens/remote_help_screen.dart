@@ -2,6 +2,8 @@
 // How to use PairDesk when the phone and the computer are on different
 // networks: the relay (on by itself), Tailscale, or your own router.
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -13,6 +15,7 @@ class RemoteHelpScreen extends StatelessWidget {
 
   static final _playStore = Uri.parse('https://play.google.com/store/apps/details?id=com.tailscale.ipn');
   static final _fdroid = Uri.parse('https://f-droid.org/packages/com.tailscale.ipn/');
+  static final _appStore = Uri.parse('https://apps.apple.com/app/tailscale/id1470499037');
   static final _download = Uri.parse('https://tailscale.com/download');
 
   Future<void> _open(BuildContext context, Uri uri) async {
@@ -113,12 +116,16 @@ class RemoteHelpScreen extends StatelessWidget {
               'A free private network between your own devices. Install it on the computer and on this '
                   'phone and sign in with the same account. PairDesk finds the address by itself.',
               actions: [
-                SecondaryButton(
-                  label: 'Google Play',
-                  height: 44,
-                  onPressed: () => _open(context, _playStore),
-                ),
-                SecondaryButton(label: 'F-Droid', height: 44, onPressed: () => _open(context, _fdroid)),
+                if (Platform.isIOS)
+                  SecondaryButton(label: 'App Store', height: 44, onPressed: () => _open(context, _appStore))
+                else ...[
+                  SecondaryButton(
+                    label: 'Google Play',
+                    height: 44,
+                    onPressed: () => _open(context, _playStore),
+                  ),
+                  SecondaryButton(label: 'F-Droid', height: 44, onPressed: () => _open(context, _fdroid)),
+                ],
                 SecondaryButton(
                   label: 'For the computer',
                   height: 44,

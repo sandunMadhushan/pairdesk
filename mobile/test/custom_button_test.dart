@@ -70,6 +70,18 @@ void main() {
     expect(a.describe(os: 'windows'), 'Win + Shift + S');
     expect(a.describe(os: 'linux'), 'Super + Shift + S');
     expect(const ComboAction([Modifier.alt], key: AgentKey.f4).describe(), 'Alt + F4');
+    expect(a.describe(os: 'macos'), 'Cmd + Shift + S');
+    expect(const ComboAction([Modifier.alt], key: AgentKey.tab).describe(os: 'macos'), 'Option + Tab');
+  });
+
+  test('Macs get Cmd shortcuts', () {
+    final mac = defaultButtons(os: 'macos');
+    final copy = mac.firstWhere((b) => b.label == 'Copy').action as ComboAction;
+    expect(copy.mods, [Modifier.meta]);
+    expect(mac.map((b) => b.label), containsAll(['Paste', 'Spotlight', 'Force Quit', 'Screenshot']));
+    expect(mac.map((b) => b.label), isNot(contains('Task Manager')));
+    final ids = mac.map((b) => b.id).toList();
+    expect(ids.toSet().length, ids.length, reason: 'ids are unique');
   });
 
   test('default buttons fit the computer', () {

@@ -464,6 +464,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.0"
+  pairdesk_ios:
+    dependency: "direct main"
+    description:
+      path: "packages/pairdesk_ios"
+      relative: true
+    source: path
+    version: "0.1.0"
   path:
     dependency: transitive
     description:

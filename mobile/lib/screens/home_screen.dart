@@ -3,6 +3,8 @@
 // and Settings, under a floating bar with "+" to add a computer. With a
 // single computer the app connects by itself when it opens.
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, HapticFeedback;
 import 'package:url_launcher/url_launcher.dart';
@@ -579,7 +581,11 @@ String _subtitle(Laptop laptop) {
   };
 }
 
-IconData _laptopIcon(Laptop l) => l.helping ? Icons.support_agent_rounded : Icons.laptop_rounded;
+IconData _laptopIcon(Laptop l) => l.helping
+    ? Icons.support_agent_rounded
+    : l.os == 'macos'
+    ? Icons.laptop_mac_rounded
+    : Icons.laptop_rounded;
 
 /// The last-used computer: the big lime card with Connect.
 class _HeroCard extends StatelessWidget {
@@ -1194,12 +1200,26 @@ class _CantReach extends StatelessWidget {
           PdTitle('Can\'t reach ${laptop.name}', subtitle: 'Check these, then try again:'),
           const SizedBox(height: 10),
           check('The computer is on and awake'),
-          check('PairDesk is running on it (look for the tray icon)'),
+          check(
+            laptop.os == 'macos'
+                ? 'PairDesk is running on it (look for its icon in the menu bar)'
+                : 'PairDesk is running on it (look for the tray icon)',
+          ),
           check(
             laptop.reachableAnywhere
                 ? 'Away from home: the relay or Tailscale is on, on the computer'
                 : 'The phone and the computer are on the same Wi-Fi',
           ),
+          if (Platform.isIOS) ...[
+            check('Local Network is on for PairDesk: iPhone needs it to find the computer on Wi-Fi'),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => launchUrl(Uri.parse('app-settings:')),
+                child: const Text('Open Settings'),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           PrimaryButton(
             label: 'Try again',

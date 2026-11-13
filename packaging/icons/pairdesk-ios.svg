@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- PairDesk iPhone app icon: the laptop-and-phone mark, lime on ink.
+     Full-bleed and opaque: iOS draws the rounded corners itself. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="#111111"/>
+  <g transform="translate(128 128) scale(.78) translate(-130 -150)">
+    <rect x="42" y="66" width="140" height="96" rx="13" fill="none" stroke="#d2f34c" stroke-width="13"/>
+    <rect x="24" y="180" width="160" height="13" rx="6.5" fill="#d2f34c"/>
+    <rect x="139" y="93" width="98" height="148" rx="27" fill="#111111"/>
+    <rect x="154" y="108" width="68" height="118" rx="15" fill="#111111" stroke="#d2f34c" stroke-width="12"/>
+    <rect x="180" y="203" width="16" height="6" rx="3" fill="#d2f34c"/>
+  </g>
+</svg>

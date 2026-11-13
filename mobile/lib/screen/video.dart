@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Screen view as H.264 video, decoded by the phone's hardware decoder
-// (Android MediaCodec, see MainActivity.kt) straight onto a Flutter texture.
+// (Android MediaCodec, see VideoChannel.kt; iPhone VideoToolbox, see
+// packages/pairdesk_ios/.../VideoChannel.swift) straight onto a Flutter texture.
 //
 // The app offers H.264 only when the phone has a decoder and video hasn't
 // failed on this phone before; otherwise the computer sends JPEG pictures
@@ -137,7 +138,7 @@ class VideoSupport {
 
   /// True if the phone has an H.264 decoder and video hasn't failed here.
   static Future<bool> available({MethodChannel channel = const MethodChannel('pairdesk/video')}) async {
-    if (!(androidForTest ?? Platform.isAndroid)) return false;
+    if (!(androidForTest ?? (Platform.isAndroid || Platform.isIOS))) return false;
     final prefs = await SharedPreferences.getInstance();
     if (!_checkedCrash) {
       _checkedCrash = true;
