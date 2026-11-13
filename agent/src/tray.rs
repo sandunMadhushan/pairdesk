@@ -78,10 +78,11 @@ fn open(url: &str) {
 
 /// Linux: the page in a window of its own, without tabs or an address bar,
 /// when a Chromium-based browser is installed (its "app" mode). Otherwise
-/// (and inside Flatpak, which can't start them) the default browser.
+/// the default browser.
 #[cfg(target_os = "linux")]
 fn open_app_window(url: &str) -> bool {
-    if std::env::var_os("FLATPAK_ID").is_some() {
+    // Flatpak can't start them; and someone who set $BROWSER chose theirs.
+    if std::env::var_os("FLATPAK_ID").is_some() || std::env::var_os("BROWSER").is_some() {
         return false;
     }
     const BROWSERS: [&str; 7] = [
