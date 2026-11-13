@@ -3,298 +3,525 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>PairDesk</title>
 <style>
+  /* PairDesk's look, the same as the phone app: soft grey and white with
+     one lime accent; in the dark, near-black, lime and white. */
+  @font-face { font-family: "Urbanist"; src: url("fonts/urbanist-400.ttf"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Urbanist"; src: url("fonts/urbanist-500.ttf"); font-weight: 500; font-display: swap; }
+  @font-face { font-family: "Urbanist"; src: url("fonts/urbanist-600.ttf"); font-weight: 600; font-display: swap; }
+  @font-face { font-family: "Urbanist"; src: url("fonts/urbanist-700.ttf"); font-weight: 700; font-display: swap; }
   :root {
-    --bg: #f3f4f7; --side: #eaecf1; --card: #ffffff; --text: #16181d; --muted: #5f6672;
-    --line: #e1e4ea; --accent: #2457d6; --accent-text: #ffffff; --accent-soft: #e4ebfc;
-    --hover: rgba(20, 30, 60, .06); --ok: #17803d; --ok-bg: #e5f5ea; --danger: #b42318;
-    --danger-bg: #fdecec; --warn: #b45309; --warn-bg: #fff6e0;
-    --shadow: 0 1px 2px rgba(16, 24, 40, .05);
+    --bg: #eeeeea; --s1: #ffffff; --s2: #f3f3ef; --s3: #e7e7e2; --ink: #111111; --sub: #62655e;
+    --line: #e3e3de; --lime: #d2f34c; --on-lime: #111111; --inv: #111111; --on-inv: #ffffff;
+    --sub-inv: #b5b7b0; --nav-on: #111111; --nav-on-fg: #ffffff; --nav-on-icon: #d2f34c;
+    --hover: rgba(17, 17, 17, .05); --press: rgba(17, 17, 17, .09);
+    --red: #e5484d; --red-bg: #fbe9e8; --red-ink: #b42318; --amber: #f0a020;
+    --scrim: rgba(17, 17, 17, .38); --pop: 0 28px 70px -16px rgba(17, 17, 17, .32), 0 2px 8px rgba(17, 17, 17, .06);
+    --glow: none; --knob: #ffffff; --knob-off: #ffffff; --track-off: #dcdcd6;
+    --ease: cubic-bezier(.2, .8, .2, 1); --spring: cubic-bezier(.2, .9, .25, 1.05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #15171c; --side: #1c1f25; --card: #20232a; --text: #eceef2; --muted: #9aa1ad;
-      --line: #2e323b; --accent: #6b93ff; --accent-text: #0d1020; --accent-soft: #24304f;
-      --hover: rgba(255, 255, 255, .06); --ok: #5fd38a; --ok-bg: #16301f; --danger: #ff8a7a;
-      --danger-bg: #3a1818; --warn: #f0b252; --warn-bg: #2e2716; --shadow: none;
+      --bg: #0d0d0f; --s1: #19191c; --s2: #232327; --s3: #2d2d32; --ink: #f2f2ee; --sub: #9c9da3;
+      --line: #2a2a2f; --inv: #f2f2ee; --on-inv: #111111; --sub-inv: #4a4b50;
+      --nav-on: #f2f2ee; --nav-on-fg: #111111; --nav-on-icon: #111111;
+      --hover: rgba(242, 242, 238, .06); --press: rgba(242, 242, 238, .1);
+      --red: #ff6b6b; --red-bg: #3a1a1a; --red-ink: #ff9a90; --scrim: rgba(0, 0, 0, .6);
+      --pop: 0 28px 70px -16px rgba(0, 0, 0, .8), 0 0 0 1px #2a2a2f;
+      --glow: 0 16px 40px -18px rgba(210, 243, 76, .7); --knob: #111111; --knob-off: #8b8c92; --track-off: #34343a;
     }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
-    -webkit-user-select: none; user-select: none;
+    margin: 0; background: var(--bg); color: var(--ink); overflow: hidden;
+    font: 500 14px/1.45 "Urbanist", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; cursor: default;
+    -webkit-font-smoothing: antialiased;
   }
+  /* A desktop app: the arrow everywhere, the text cursor only where you type. */
+  button, label, summary, .tile, .drop { cursor: default; }
+  input[type=text] { cursor: text; }
+  a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; cursor: pointer; }
   input, textarea, code, .selectable { -webkit-user-select: text; user-select: text; }
+  img, svg, a { -webkit-user-drag: none; }
+  svg { display: block; }
+  [hidden] { display: none !important; }
+  ::selection { background: var(--lime); color: #111; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 99px; border: 3px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--sub); }
+  ::-webkit-scrollbar-track { background: transparent; }
 
-  /* ---- Layout: sidebar + content ---- */
-  .app { display: grid; grid-template-columns: 248px 1fr; height: 100vh; }
-  nav.side {
-    background: var(--side); border-right: 1px solid var(--line);
-    display: flex; flex-direction: column; padding: 16px 10px 12px; min-height: 0; overflow-y: auto;
+  /* ---- Window layout: sidebar + page ---- */
+  .app { display: grid; grid-template-columns: 244px 1fr; height: 100vh; }
+  nav.side { display: flex; flex-direction: column; padding: 18px 12px 14px 14px; min-height: 0; overflow-y: auto; }
+  .brand { display: flex; align-items: center; gap: 12px; padding: 4px 8px 20px; }
+  .logo { width: 40px; height: 40px; flex: none; border-radius: 13px; background: #111; display: grid; place-items: center; }
+  @media (prefers-color-scheme: dark) { .logo { box-shadow: 0 0 0 1px #2a2a2f; } }
+  .logo svg { width: 26px; height: 26px; }
+  .brand-name { font-weight: 700; font-size: 18px; letter-spacing: -.01em; line-height: 1.1; }
+  .brand-sub { color: var(--sub); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+  .nav-wrap { position: relative; }
+  .nav-ind {
+    position: absolute; left: 0; top: 0; width: 100%; height: 40px; border-radius: 99px; background: var(--nav-on);
+    transition: transform .38s var(--spring), height .2s var(--ease), opacity .2s; z-index: 0; pointer-events: none;
   }
-  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; }
-  .logo { width: 36px; height: 36px; flex: none; display: block; }
-  .brand-name { font-weight: 650; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .brand-sub { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .nav-label { font-size: 12px; font-weight: 600; color: var(--sub); padding: 16px 14px 6px; letter-spacing: .02em; }
   .nav-list { display: grid; gap: 2px; }
   .nav-item {
-    position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
-    padding: 9px 12px; border: 0; border-radius: 6px; background: none; color: var(--text);
-    font: inherit; text-align: left; cursor: pointer;
+    position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; width: 100%; height: 40px;
+    padding: 0 12px 0 14px; border: 0; border-radius: 99px; background: none; color: var(--ink);
+    font: 500 14.5px "Urbanist", "Segoe UI", sans-serif; text-align: left; transition: color .2s, background .15s;
   }
-  .nav-item:hover { background: var(--hover); }
-  .nav-item[aria-current="page"] { background: var(--card); box-shadow: var(--shadow); font-weight: 600; }
-  .nav-item[aria-current="page"]::before {
-    content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px;
-    background: var(--accent);
+  .nav-item:hover:not([aria-current]) { background: var(--hover); }
+  .nav-item:active:not([aria-current]) { background: var(--press); }
+  .nav-item[aria-current="page"] { color: var(--nav-on-fg); font-weight: 600; background: none; }
+  .nav-item svg { width: 19px; height: 19px; flex: none; color: var(--sub); transition: color .2s; }
+  .nav-item[aria-current="page"] svg { color: var(--nav-on-icon); }
+  .count {
+    margin-left: auto; min-width: 22px; height: 20px; padding: 0 7px; border-radius: 99px; font-size: 11.5px;
+    font-weight: 700; display: grid; place-items: center; background: var(--lime); color: #111;
   }
-  .nav-item svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
-  .nav-item[aria-current="page"] svg { color: var(--accent); }
-  .nav-item .count {
-    margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 99px; font-size: 11px;
-    font-weight: 700; text-align: center; background: var(--accent); color: var(--accent-text);
+  .count.alert { background: var(--red); color: #fff; }
+  .side-foot {
+    margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 18px;
+    background: var(--s1);
   }
-  .nav-item .count.alert { background: #e52b2b; color: #fff; }
-  .side-foot { margin-top: auto; padding: 12px 8px 0; color: var(--muted); font-size: 12px; }
+  .side-foot b { display: block; font-weight: 600; font-size: 13.5px; line-height: 1.2; }
+  .side-foot small { display: block; color: var(--sub); font-size: 12px; }
 
-  .content { overflow-y: auto; min-width: 0; }
-  .page { max-width: 820px; padding: 28px 36px 48px; }
-  .page-head { margin-bottom: 20px; }
-  .page-head h1 { font-size: 26px; font-weight: 650; margin: 0 0 4px; letter-spacing: -.01em; }
-  .page-head p { color: var(--muted); margin: 0; }
+  .content { overflow-y: auto; min-width: 0; position: relative; scroll-behavior: smooth; }
+  .page { max-width: 940px; padding: 26px 40px 56px 24px; }
+  .page.enter { animation: rise .26s var(--ease); }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .page-head { display: flex; align-items: flex-end; gap: 16px; margin: 6px 0 22px; }
+  .page-head .grow { min-width: 0; }
+  .page-head h1 { font-size: 32px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.025em; line-height: 1.1; }
+  .page-head p { color: var(--sub); margin: 0; font-size: 15px; }
 
-  /* ---- Cards ---- */
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--shadow);
-  }
-  h2 { font-size: 15px; font-weight: 650; margin: 0 0 4px; }
+  /* ---- Surfaces ---- */
+  .card { background: var(--s1); border-radius: 22px; padding: 20px 22px; margin-bottom: 12px; }
+  h2 { font-size: 17px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
   p { margin: 0 0 12px; }
-  .muted { color: var(--muted); }
-  button {
-    font: inherit; border-radius: 6px; padding: 7px 16px; cursor: pointer; min-height: 34px;
-    border: 1px solid var(--line); background: var(--card); color: var(--text);
-  }
-  button:hover { background: var(--hover); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-  button.primary:hover { filter: brightness(1.08); }
-  button.danger { color: var(--danger); }
-  button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus-visible, .tile:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 2px;
-  }
+  .muted, .hint { color: var(--sub); }
+  .hint { font-size: 13.5px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .grow { flex: 1; min-width: 0; }
+  .card-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .card-head h2 { margin: 0; }
 
-  /* Setting rows (label + control on one line) */
-  .setting { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
-  .setting:first-of-type { border-top: 0; }
-  .card > .setting:first-child { padding-top: 0; }
-  .card > .setting:last-child { padding-bottom: 0; }
+  /* ---- Buttons: pills, like the phone ---- */
+  button {
+    font: 600 14px/1 "Urbanist", "Segoe UI", sans-serif; height: 38px; padding: 0 18px; border-radius: 99px;
+    border: 0; background: var(--s2); color: var(--ink); white-space: nowrap; flex: none;
+    transition: transform .15s var(--ease), background .15s, filter .15s, box-shadow .2s;
+  }
+  button:hover { background: var(--s3); }
+  button:active { transform: scale(.96); }
+  button.primary { background: var(--inv); color: var(--on-inv); }
+  button.primary:hover { filter: brightness(1.25); }
+  @media (prefers-color-scheme: dark) { button.primary:hover { filter: brightness(.9); } }
+  button.lime { background: var(--lime); color: #111; box-shadow: var(--glow); }
+  button.lime:hover { filter: brightness(.95); }
+  button.danger { background: var(--red-bg); color: var(--red-ink); }
+  button.danger:hover { filter: brightness(.96); }
+  button.danger-solid { background: var(--red); color: #fff; }
+  button.danger-solid:hover { filter: brightness(1.08); }
+  button.ghost { background: transparent; }
+  button.ghost:hover { background: var(--hover); }
+  button.small { height: 32px; padding: 0 14px; font-size: 13px; }
+  button.big { height: 46px; padding: 0 24px; font-size: 15px; }
+  button.icon { width: 38px; padding: 0; display: grid; place-items: center; }
+  button svg.lead { width: 18px; height: 18px; display: inline-block; vertical-align: -4px; margin: 0 8px 0 -4px; }
+  button:disabled { opacity: .45; transform: none; filter: none; }
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  button.link { height: auto; padding: 0; background: none; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  button.link:active { transform: none; }
+
+  /* ---- Rows with a control (label + switch or button) ---- */
+  .setting { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+  .setting:first-child { border-top: 0; padding-top: 2px; }
+  .setting:last-child { padding-bottom: 2px; }
   .setting .what { flex: 1; min-width: 0; }
-  .setting .what b { display: block; font-weight: 600; }
-  .setting .what small { display: block; color: var(--muted); font-size: 13px; }
-  /* Toggle switch */
-  .toggle { position: relative; width: 44px; height: 24px; flex: none; }
-  .toggle input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
-  .toggle span {
-    position: absolute; inset: 0; border-radius: 99px; border: 1px solid var(--muted);
-    background: transparent; transition: background .15s, border-color .15s;
+  .setting .what b { display: block; font-weight: 600; font-size: 14.5px; }
+  .setting .what small { display: block; color: var(--sub); font-size: 13px; margin-top: 1px; }
+  .ico {
+    width: 40px; height: 40px; flex: none; border-radius: 13px; background: var(--s2);
+    display: grid; place-items: center; color: var(--ink); transition: background .2s, color .2s;
   }
+  .ico svg { width: 20px; height: 20px; }
+  .ico.on { background: var(--lime); color: #111; }
+  .ico.big { width: 52px; height: 52px; border-radius: 17px; }
+  .ico.big svg { width: 25px; height: 25px; }
+
+  /* Switch: lime when on, like the phone. */
+  .toggle { position: relative; width: 46px; height: 28px; flex: none; }
+  .toggle input { position: absolute; inset: 0; opacity: 0; margin: 0; z-index: 1; }
+  .toggle span { position: absolute; inset: 0; border-radius: 99px; background: var(--track-off); transition: background .2s; }
   .toggle span::after {
-    content: ""; position: absolute; top: 4px; left: 4px; width: 14px; height: 14px; border-radius: 50%;
-    background: var(--muted); transition: transform .15s, background .15s;
+    content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--knob-off); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); transition: transform .25s var(--spring), background .2s;
   }
-  .toggle input:checked + span { background: var(--accent); border-color: var(--accent); }
-  .toggle input:checked + span::after { transform: translateX(20px); background: var(--accent-text); }
+  .toggle input:checked + span { background: var(--lime); }
+  .toggle input:checked + span::after { transform: translateX(18px); background: var(--knob); }
   .toggle input:disabled + span { opacity: .45; }
-  .toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .toggle input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-  /* Home */
-  .hero { display: flex; gap: 18px; align-items: center; padding: 22px 24px; }
-  .hero-icon {
-    width: 56px; height: 56px; border-radius: 14px; flex: none; display: grid; place-items: center;
-    background: var(--accent-soft); color: var(--accent);
+  /* Status dots */
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--sub); }
+  .dot.ok { background: var(--lime); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lime) 35%, transparent); }
+  .dot.warn { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 25%, transparent); }
+  .dot.rec { background: var(--red); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--red) 25%, transparent); } }
+  .status-line { display: flex; gap: 12px; align-items: baseline; margin: 2px 0 12px; }
+  .status-line .dot { transform: translateY(1px); }
+
+  /* ---- Live activity (screen viewed, microphone heard, someone helping) ---- */
+  .banners { position: sticky; top: 0; z-index: 3; padding: 14px 40px 0 24px; max-width: 940px; display: grid; gap: 8px; }
+  .banners:not(:has(:not([hidden]))) { display: none; }
+  .live {
+    display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 18px; border-radius: 99px;
+    background: var(--inv); color: var(--on-inv); font-weight: 600; animation: drop .3s var(--spring);
+    box-shadow: 0 12px 30px -14px rgba(0, 0, 0, .5);
   }
-  .hero-icon.ok { background: var(--ok-bg); color: var(--ok); }
-  .hero-icon svg { width: 28px; height: 28px; }
-  .hero h2 { font-size: 19px; margin-bottom: 2px; }
-  .hero p { margin: 0; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .live span:not(.dot) { flex: 1; min-width: 0; }
+  .live button { background: color-mix(in srgb, var(--on-inv) 14%, transparent); color: var(--on-inv); height: 34px; }
+  .live button:hover { background: color-mix(in srgb, var(--on-inv) 22%, transparent); }
+  @keyframes drop { from { opacity: 0; transform: translateY(-10px); } }
+
+  /* ---- Home ---- */
+  .bento { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 1000px) { .bento { grid-template-columns: repeat(2, 1fr); } .tile { min-height: 120px; } }
+  .hero {
+    grid-column: 1 / -1; position: relative; overflow: hidden; display: flex; align-items: center; gap: 24px;
+    background: var(--lime); color: #111; border-radius: 30px; padding: 28px 30px; min-height: 216px; box-shadow: var(--glow);
+  }
+  .hero .grow { min-width: 0; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 14px 0 12px; border-radius: 99px;
+    background: rgba(17, 17, 17, .08); font-size: 13px; font-weight: 600; max-width: 100%;
+  }
+  .chip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hero .dot { background: rgba(17, 17, 17, .35); box-shadow: none; }
+  .hero .dot.ok { background: #111; box-shadow: 0 0 0 3px rgba(17, 17, 17, .15); }
+  .hero h2 { font-size: 34px; font-weight: 700; letter-spacing: -.03em; line-height: 1.08; margin: 16px 0 8px; }
+  .hero p { color: rgba(17, 17, 17, .68); font-size: 15px; margin: 0 0 18px; max-width: 46ch; }
+  .hero button.primary { background: #111; color: #fff; }
+  .hero button.soft { background: rgba(17, 17, 17, .09); color: #111; }
+  .hero button.soft:hover { background: rgba(17, 17, 17, .15); }
+  .mark {
+    width: 236px; height: 132px; flex: none; border-radius: 32px; background: #111; color: var(--lime);
+    display: flex; align-items: center; gap: 10px; padding: 0 28px; transform: rotate(-4deg);
+    box-shadow: 0 24px 40px -20px rgba(0, 0, 0, .55);
+  }
+  .mark svg { width: 46px; height: 46px; flex: none; }
+  .mark svg.ph { width: 36px; height: 36px; }
+  .mark .line {
+    flex: 1; height: 2px; position: relative;
+    background: repeating-linear-gradient(90deg, #4a4b50 0 5px, transparent 5px 10px);
+  }
+  .mark .line i { position: absolute; top: -5px; left: calc(50% - 6px); width: 12px; height: 12px; border-radius: 50%; background: var(--lime); }
+  .mark.on .line i { animation: travel 1.5s ease-in-out infinite; }
+  @keyframes travel { 0% { left: 0; opacity: 0; } 15%, 85% { opacity: 1; } 100% { left: calc(100% - 12px); opacity: 0; } }
   .tile {
-    display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center; text-align: left;
-    padding: 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
-    box-shadow: var(--shadow); cursor: pointer; color: var(--text); font: inherit;
+    position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 22px;
+    min-height: 150px; padding: 18px; border: 0; border-radius: 24px; background: var(--s1); color: var(--ink);
+    text-align: left; font: inherit; height: auto; white-space: normal;
   }
-  .tile:hover { border-color: var(--accent); background: var(--card); }
-  .tile svg { grid-row: span 2; width: 22px; height: 22px; color: var(--accent); }
-  .tile b { font-weight: 600; }
-  .tile span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile:hover { background: var(--s1); box-shadow: 0 14px 30px -18px rgba(0, 0, 0, .35); transform: translateY(-2px); }
+  .tile:active { transform: scale(.98); }
+  .tile .go { position: absolute; top: 18px; right: 18px; width: 18px; height: 18px; color: var(--sub); transition: transform .2s var(--ease), color .2s; }
+  .tile:hover .go { transform: translate(2px, -2px); color: var(--ink); }
+  .tile small { display: block; color: var(--sub); font-size: 13px; font-weight: 600; }
+  .tile b { display: block; font-size: 19px; font-weight: 500; letter-spacing: -.01em; line-height: 1.2; margin-top: 2px; }
+  .wide-row { display: flex; align-items: center; gap: 16px; }
+  .wide-row .what { flex: 1; min-width: 0; }
+  .wide-row .what b { display: block; font-size: 16px; font-weight: 700; }
+  .wide-row .what small { display: block; color: var(--sub); font-size: 13.5px; }
 
-  /* Pairing */
-  .pair { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
-  .qr { background: #fff; border-radius: 10px; padding: 6px; line-height: 0; flex: none; border: 1px solid var(--line); }
-  .qr svg { width: 240px; height: 240px; max-width: 100%; }
-  .pair > .grow { flex: 1 1 220px; }
-  .pair ol { margin: 0 0 12px; padding-left: 20px; }
-
-  /* Lists */
+  /* ---- Lists (phones, shortcuts) ---- */
   ul.list { list-style: none; margin: 0; padding: 0; }
-  ul.list li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
-  ul.list li:first-child { border-top: 0; padding-top: 4px; }
+  ul.list li { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  ul.list li:first-child { border-top: 0; padding-top: 0; }
   ul.list li:last-child { padding-bottom: 0; }
-  .avatar {
-    width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center;
-    background: var(--accent-soft); color: var(--accent);
+  .item-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-meta { color: var(--sub); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: 99px;
+    font-size: 12.5px; font-weight: 600; background: var(--s2); color: var(--ink); white-space: nowrap;
   }
-  .avatar svg { width: 18px; height: 18px; }
-  .phone-name { font-weight: 600; }
-  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--ok-bg); color: var(--ok); white-space: nowrap; }
-  .badge.view { background: var(--danger-bg); color: var(--danger); }
-  .empty { color: var(--muted); padding: 8px 0; margin: 0; }
+  .badge.on { background: var(--lime); color: #111; }
+  .badge.live { background: var(--red-bg); color: var(--red-ink); }
+  .badge.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  .empty { display: grid; justify-items: center; text-align: center; gap: 6px; padding: 28px 16px 24px; }
+  .empty .ico { margin-bottom: 8px; }
+  .empty b { font-size: 17px; font-weight: 700; }
+  .empty span { color: var(--sub); max-width: 42ch; }
+  .empty button { margin-top: 10px; }
 
-  .banner { padding: 12px 16px; border-radius: 8px; margin: 0 0 14px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
-  .banner.viewing { display: flex; align-items: center; gap: 12px; justify-content: space-between; background: var(--danger-bg); color: var(--danger); }
-  .banner.err { background: var(--warn-bg); color: var(--danger); }
-  .banners { position: sticky; top: 0; z-index: 2; padding: 16px 36px 0; max-width: 820px; }
-  .banners:empty, .banners:not(:has(:not([hidden]))) { display: none; }
-
-  form.add { display: grid; gap: 10px; }
-  form.add .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  form.add label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
-  form.add .wide { grid-column: 1 / -1; }
-  input[type=text], select {
-    font: inherit; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--text); min-width: 0; width: 100%; font-weight: 400;
-  }
-  select { width: auto; }
-  .target { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-  .hint { font-size: 13px; color: var(--muted); }
-  .status-line { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 12px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--muted); }
-  .brand-sub .dot { width: 8px; height: 8px; margin: 0; }
-  .dot.ok { background: var(--ok); }
-  .dot.warn { background: #d97706; }
-  ol.steps { margin: 0 0 4px; padding-left: 20px; }
-  ol.steps li { margin-bottom: 6px; }
-  a { color: var(--accent); }
-  code { font-size: 12px; font-family: "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
-  [hidden] { display: none !important; }
+  /* ---- Files ---- */
   .drop {
-    display: grid; gap: 6px; place-items: center; padding: 36px 16px; border: 2px dashed var(--line);
-    border-radius: 10px; text-align: center; cursor: pointer; background: var(--bg);
+    display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 230px; padding: 28px 18px;
+    border: 2px dashed var(--s3); border-radius: 26px; text-align: center; background: var(--s1);
+    transition: border-color .2s, background .2s, transform .2s var(--ease); margin-bottom: 12px;
   }
-  .drop svg { width: 32px; height: 32px; color: var(--accent); }
-  .drop.over, .drop:hover { border-color: var(--accent); background: var(--accent-soft); }
-  .drop.off { opacity: .6; cursor: not-allowed; }
-  .drop.off:hover { border-color: var(--line); background: var(--bg); }
-  .transfers { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-  .transfers li { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
-  .transfers .name { overflow-wrap: anywhere; }
-  .transfers .meta { font-size: 13px; color: var(--muted); grid-column: 1; }
-  .transfers progress { grid-column: 1 / -1; width: 100%; height: 6px; accent-color: var(--accent); }
-  .transfers .failed { color: var(--danger); }
-  button.link { border: 0; background: none; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
-  dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
-  dl.about dt { color: var(--muted); }
-  dl.about dd { margin: 0; overflow-wrap: anywhere; }
-  .linkbox { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; }
-  .linkbox input { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
-  .warn-note { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 12px; }
-  .help-card { border-color: var(--accent); }
-  .stopped { display: grid; place-items: center; height: 100vh; text-align: center; padding: 24px; }
+  .drop .ico { width: 64px; height: 64px; border-radius: 50%; background: var(--lime); color: #111; margin-bottom: 10px; box-shadow: var(--glow); transition: transform .3s var(--spring); }
+  .drop .ico svg { width: 28px; height: 28px; }
+  .drop b { font-size: 18px; font-weight: 700; }
+  .drop:hover { border-color: var(--sub); }
+  .drop.over { border-color: var(--ink); background: color-mix(in srgb, var(--lime) 22%, var(--s1)); transform: scale(1.01); }
+  .drop.over .ico { transform: translateY(-4px) scale(1.06); }
+  .drop.off .ico { background: var(--s2); color: var(--sub); box-shadow: none; }
+  .drop.off:hover { border-color: var(--s3); }
+  .drop .row { justify-content: center; margin-top: 12px; }
+  select {
+    font: 600 14px "Urbanist", "Segoe UI", sans-serif; height: 38px; padding: 0 36px 0 14px; border-radius: 99px;
+    border: 0; background: var(--s2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2362655e' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center;
+    color: var(--ink); -webkit-appearance: none; appearance: none;
+  }
+  select option { background: var(--s1); color: var(--ink); }
+  .transfers { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+  .transfers li { display: flex; align-items: center; gap: 14px; padding: 8px 0; }
+  .transfers .ico { width: 38px; height: 38px; border-radius: 50%; }
+  .transfers .ico svg { width: 18px; height: 18px; }
+  .transfers .grow > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .transfers .name { font-weight: 600; }
+  .transfers .meta { font-size: 13px; color: var(--sub); }
+  .transfers .failed { color: var(--red-ink); }
+  .bar { height: 6px; border-radius: 99px; background: var(--s2); overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--lime); border-radius: 99px; transition: width .3s var(--ease); }
+  progress { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border: 0; border-radius: 99px; overflow: hidden; background: var(--s2); }
+  progress::-webkit-progress-bar { background: var(--s2); }
+  progress::-webkit-progress-value { background: var(--lime); border-radius: 99px; transition: width .3s; }
+  progress::-moz-progress-bar { background: var(--lime); }
 
-  /* Narrow (a small browser window): the sidebar becomes a bar on top. */
-  @media (max-width: 720px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-    nav.side { flex-direction: row; align-items: center; padding: 8px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-    .brand { padding: 0 8px 0 4px; }
-    .brand > div, .side-foot { display: none; }
-    .nav-list { display: flex; gap: 2px; }
-    .nav-item { flex-direction: column; gap: 2px; padding: 6px 10px; font-size: 11px; white-space: nowrap; }
-    .nav-item[aria-current="page"]::before { left: 10px; right: 10px; top: auto; bottom: 0; width: auto; height: 3px; }
-    .nav-item .count { position: absolute; top: 0; right: 2px; margin: 0; }
-    .page, .banners { padding-left: 16px; padding-right: 16px; }
-    form.add .fields { grid-template-columns: 1fr; }
+  /* ---- Forms ---- */
+  .field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--sub); }
+  input[type=text] {
+    font: 500 14.5px "Urbanist", "Segoe UI", sans-serif; height: 42px; padding: 0 14px; border-radius: 14px;
+    border: 1.5px solid transparent; background: var(--s2); color: var(--ink); min-width: 0; width: 100%;
+    transition: border-color .15s, background .15s;
+  }
+  input[type=text]:focus { border-color: var(--ink); background: var(--s1); outline: none; }
+  input[type=text]::placeholder { color: var(--sub); opacity: .7; }
+  input[readonly] { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 12.5px; }
+  .linkbox { display: flex; gap: 8px; align-items: center; }
+  .seg { display: inline-flex; padding: 4px; gap: 2px; border-radius: 99px; background: var(--s2); }
+  .seg button { height: 32px; padding: 0 14px; background: transparent; font-size: 13.5px; }
+  .seg button[aria-pressed="true"] { background: var(--s1); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+  @media (prefers-color-scheme: dark) { .seg button[aria-pressed="true"] { background: var(--s3); } }
+  code { font-size: 12.5px; font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; overflow-wrap: anywhere; }
+  ol.steps { margin: 0 0 4px; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 10px; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: baseline; }
+  ol.steps li::before {
+    content: counter(s); width: 26px; height: 26px; border-radius: 50%; background: var(--s2); display: grid;
+    place-items: center; font-size: 12.5px; font-weight: 700; transform: translateY(-2px);
+  }
+  .note { background: var(--s2); border-radius: 16px; padding: 12px 14px; font-size: 13.5px; margin: 0 0 14px; }
+  .note.warn { background: color-mix(in srgb, var(--amber) 16%, var(--s1)); }
+  dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; margin: 0; }
+  dl.about dt { color: var(--sub); }
+  dl.about dd { margin: 0; overflow-wrap: anywhere; }
+  details.fold > summary { list-style: none; display: flex; align-items: center; gap: 14px; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary .chev { width: 20px; height: 20px; color: var(--sub); transition: transform .25s var(--ease); }
+  details.fold[open] > summary .chev { transform: rotate(180deg); }
+  details.fold[open] > summary { margin-bottom: 16px; }
+  details.mini > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; color: var(--sub); font-weight: 600; font-size: 13.5px; }
+  details.mini > summary::-webkit-details-marker { display: none; }
+  details.mini > summary svg { width: 16px; height: 16px; transition: transform .2s; }
+  details.mini[open] > summary svg { transform: rotate(180deg); }
+
+  /* ---- Dialogs: in the window, not the browser's ---- */
+  dialog.dlg {
+    border: 0; padding: 0; border-radius: 28px; background: var(--s1); color: var(--ink);
+    width: min(440px, calc(100vw - 48px)); max-height: calc(100vh - 48px); box-shadow: var(--pop);
+    overflow: auto;
+  }
+  dialog.dlg.wide { width: min(720px, calc(100vw - 48px)); }
+  dialog.dlg[open] { animation: pop .24s var(--spring); }
+  dialog.dlg.closing { animation: unpop .14s ease-in forwards; }
+  dialog.dlg::backdrop { background: var(--scrim); backdrop-filter: blur(3px); animation: fade .2s ease; }
+  dialog.dlg.closing::backdrop { animation: fade .14s ease-in reverse forwards; }
+  @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+  @keyframes unpop { to { opacity: 0; transform: translateY(6px) scale(.97); } }
+  @keyframes fade { from { opacity: 0; } }
+  .dlg-body { padding: 26px 26px 8px; }
+  .dlg-body h2 { font-size: 22px; letter-spacing: -.02em; margin-bottom: 6px; }
+  .dlg-body > p { color: var(--sub); }
+  .dlg-foot { display: flex; gap: 8px; justify-content: flex-end; align-items: center; padding: 14px 20px 20px; }
+  .pair { display: flex; gap: 26px; align-items: flex-start; }
+  .qr { background: #fff; border-radius: 22px; padding: 10px; line-height: 0; flex: none; box-shadow: 0 0 0 1px var(--line); }
+  .qr svg { width: 236px; height: 236px; }
+  .countdown { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--sub); margin: 0 0 16px; }
+  .done { display: grid; justify-items: center; text-align: center; gap: 6px; padding: 40px 26px 30px; }
+  .done .ico { width: 76px; height: 76px; border-radius: 50%; margin-bottom: 12px; animation: pop .4s var(--spring); }
+  .done .ico svg { width: 36px; height: 36px; }
+  .done b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+  .done span { color: var(--sub); }
+
+  /* ---- Toast: bottom centre, like the phone's ---- */
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; z-index: 50; display: flex; align-items: center; gap: 10px;
+    max-width: min(560px, calc(100vw - 48px)); padding: 12px 18px 12px 14px; border-radius: 99px;
+    background: var(--inv); color: var(--on-inv); font-weight: 600; box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .6);
+    transform: translate(-50%, 0); transition: transform .3s var(--spring), opacity .2s;
+  }
+  .toast[hidden] { display: flex !important; opacity: 0; transform: translate(-50%, 20px); pointer-events: none; }
+  .toast .t-ico { width: 24px; height: 24px; border-radius: 50%; background: var(--lime); color: #111; display: grid; place-items: center; flex: none; }
+  .toast .t-ico svg { width: 15px; height: 15px; }
+  .toast.err .t-ico { background: var(--red); color: #fff; }
+
+  .stopped { display: grid; place-items: center; height: 100vh; text-align: center; padding: 24px; }
+  .stopped .card { padding: 40px 44px; max-width: 460px; display: grid; justify-items: center; gap: 8px; }
+  .stopped h1 { margin: 8px 0 0; font-size: 26px; letter-spacing: -.02em; }
+
+  /* A narrow window: the sidebar keeps only its icons. */
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 76px 1fr; }
+    nav.side { padding: 18px 10px 14px; align-items: center; }
+    .brand { padding: 4px 0 18px; }
+    .brand > .grow, .nav-label, .nav-item .label, .side-foot > div { display: none; }
+    .nav-label + .nav-list { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .nav-wrap { width: 46px; }
+    .nav-item { width: 46px; padding: 0; justify-content: center; }
+    .nav-item .count { position: absolute; top: -2px; right: -4px; margin: 0; min-width: 18px; height: 18px; font-size: 10.5px; }
+    .side-foot { padding: 10px; justify-content: center; }
+    .page, .banners { padding-left: 20px; padding-right: 24px; }
+    .pair { flex-direction: column; align-items: center; }
+    .mark { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
-    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18h2"/></symbol>
-    <symbol id="i-files" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
-    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
-    <symbol id="i-shortcut" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M17 14v6M14 17h6"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
-    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
-    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
-    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></symbol>
-    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></symbol>
-    <symbol id="i-update" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4h-4"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="5" width="15" height="10.5" rx="1.8"/><path d="M2.5 19h19"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20V5M4 9l4-4 4 4M16 4v15M12 15l4 4 4-4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
+    <symbol id="i-shortcut" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><path d="M17 14v6M14 17h6"/></symbol>
+    <symbol id="i-program" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18M7 13.5l2 2-2 2M11.5 17.5H15"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-update" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4h-4"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M6 6l3.5 3.5M14.5 14.5 18 18M18 6l-3.5 3.5M9.5 14.5 6 18"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v8M7 6.5a7.5 7.5 0 1 0 10 0"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4h4"/></symbol>
+    <symbol id="i-apps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M9 20.5h6M12 16.5v4"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="4.5" width="13" height="16.5" rx="2.5"/><path d="M9 4.5V3.8a.8.8 0 0 1 .8-.8h4.4a.8.8 0 0 1 .8.8v.7M9 11h6M9 15h4"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+    <symbol id="i-router" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h.01M11 16.5h.01M15.5 9.5a5 5 0 0 0-7 0M18 7a8.5 8.5 0 0 0-12 0"/></symbol>
+    <symbol id="i-relay" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="12" cy="5.5" r="2.2"/><path d="M6.8 10.6 10.3 7M13.7 7l3.5 3.6M7.2 12h9.6"/></symbol>
+    <symbol id="i-tail" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2" opacity=".35"/><circle cx="18" cy="6" r="2" opacity=".35"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2" opacity=".35"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2" opacity=".35"/></symbol>
+    <symbol id="i-wall" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9 4.5v5M15 9.5v5M9 14.5v5"/></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9h12v5.5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z"/><path d="M16.5 10.5h1.5a2.5 2.5 0 0 1 0 5h-1.8M8 3.5v2M12 3.5v2"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-2 1-4 3-4s3 1 3 3-2 3-6 1z"/><path d="M9.5 13.5 13 17c4.5-2 7-6 7-12-6 0-10 2.5-12 7z"/><circle cx="15" cy="9" r="1.5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
+    <symbol id="i-mark" viewBox="18 52 226 196"><rect x="42" y="66" width="140" height="96" rx="13" fill="none" stroke="currentColor" stroke-width="13"/><rect x="24" y="180" width="160" height="13" rx="6.5" fill="currentColor"/><rect x="139" y="93" width="98" height="148" rx="27" fill="#111"/><rect x="154" y="108" width="68" height="118" rx="15" fill="#111" stroke="currentColor" stroke-width="12"/><rect x="180" y="203" width="16" height="6" rx="3" fill="currentColor"/></symbol>
   </defs>
 </svg>
 
 <div class="app" id="app">
   <nav class="side" aria-label="PairDesk">
     <div class="brand">
-      <svg class="logo" aria-hidden="true" viewBox="0 0 256 256"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a74f0"/><stop offset="1" stop-color="#1f4fc4"/></linearGradient></defs><rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/><rect x="40" y="62" width="150" height="100" rx="12" fill="none" stroke="#fff" stroke-width="14"/><rect x="22" y="178" width="186" height="16" rx="8" fill="#fff"/><rect x="150" y="102" width="78" height="128" rx="16" fill="#1f4fc4"/><rect x="158" y="110" width="62" height="112" rx="10" fill="#fff"/><rect x="166" y="122" width="46" height="72" rx="4" fill="#3a74f0"/><circle cx="189" cy="208" r="6" fill="#3a74f0"/></svg>
+      <div class="logo" aria-hidden="true"><svg style="color:#d2f34c"><use href="#i-mark"/></svg></div>
       <div class="grow">
-        <div class="brand-name" id="name">PairDesk</div>
-        <div class="brand-sub"><span class="dot" id="side-dot"></span><span id="side-status">Starting…</span></div>
+        <div class="brand-name">PairDesk</div>
+        <div class="brand-sub" id="name">This computer</div>
       </div>
     </div>
-    <div class="nav-list" role="tablist" aria-orientation="vertical">
-      <button class="nav-item" data-page="home" role="tab"><svg><use href="#i-home"/></svg>Home</button>
-      <button class="nav-item" data-page="phones" role="tab"><svg><use href="#i-phone"/></svg>Phones<span class="count" id="count-phones" hidden></span></button>
-      <button class="nav-item" data-page="files" role="tab"><svg><use href="#i-files"/></svg>Files<span class="count" id="count-files" hidden></span></button>
-      <button class="nav-item" data-page="shortcuts" role="tab"><svg><use href="#i-shortcut"/></svg>Shortcuts</button>
-      <button class="nav-item" data-page="permissions" role="tab"><svg><use href="#i-shield"/></svg>Permissions</button>
-      <button class="nav-item" data-page="remote" role="tab"><svg><use href="#i-globe"/></svg>Remote access</button>
-      <button class="nav-item" data-page="secure" role="tab" id="nav-secure" hidden><svg><use href="#i-lock"/></svg>Sign-in screen</button>
-      <button class="nav-item" data-page="settings" role="tab"><svg><use href="#i-gear"/></svg>Settings<span class="count alert" id="count-settings" hidden>1</span></button>
+    <div class="nav-wrap" id="nav-wrap">
+      <div class="nav-ind" id="nav-ind" aria-hidden="true"></div>
+      <div class="nav-list" role="tablist" aria-orientation="vertical">
+        <button class="nav-item" data-page="home" role="tab"><svg><use href="#i-home"/></svg><span class="label">Home</span></button>
+        <button class="nav-item" data-page="phones" role="tab"><svg><use href="#i-phone"/></svg><span class="label">Phones</span><span class="count" id="count-phones" hidden></span></button>
+        <button class="nav-item" data-page="files" role="tab"><svg><use href="#i-swap"/></svg><span class="label">Files</span><span class="count" id="count-files" hidden></span></button>
+        <button class="nav-item" data-page="shortcuts" role="tab"><svg><use href="#i-shortcut"/></svg><span class="label">Shortcuts</span></button>
+      </div>
+      <div class="nav-label">Settings</div>
+      <div class="nav-list" role="tablist" aria-orientation="vertical">
+        <button class="nav-item" data-page="permissions" role="tab"><svg><use href="#i-shield"/></svg><span class="label">Permissions</span></button>
+        <button class="nav-item" data-page="remote" role="tab"><svg><use href="#i-globe"/></svg><span class="label">Remote access</span></button>
+        <button class="nav-item" data-page="secure" role="tab" id="nav-secure" hidden><svg><use href="#i-lock"/></svg><span class="label">Sign-in screen</span></button>
+        <button class="nav-item" data-page="settings" role="tab"><svg><use href="#i-gear"/></svg><span class="label">General</span><span class="count alert" id="count-settings" hidden>1</span></button>
+      </div>
     </div>
-    <div class="side-foot" id="side-version"></div>
+    <div class="side-foot" title="PairDesk on this computer">
+      <span class="dot" id="side-dot"></span>
+      <div class="grow"><b id="side-status">Starting…</b><small id="side-version"></small></div>
+    </div>
   </nav>
 
   <div class="content" id="content">
     <div class="banners">
-      <div id="banner" class="banner" hidden role="status"></div>
-      <div id="viewing" class="banner viewing" hidden role="status">
-        <span id="viewing-text"></span>
+      <div id="viewing" class="live" hidden role="status">
+        <span class="dot rec"></span><span id="viewing-text"></span>
         <button id="btn-stop-view">Stop</button>
       </div>
-      <div id="helping" class="banner viewing" hidden role="status">
-        <span id="helping-text"></span>
+      <div id="helping" class="live" hidden role="status">
+        <span class="dot rec"></span><span id="helping-text"></span>
         <button id="btn-end-help">End help</button>
       </div>
-      <div id="listening" class="banner viewing" hidden role="status">
-        <span id="listening-text"></span>
+      <div id="listening" class="live" hidden role="status">
+        <span class="dot rec"></span><span id="listening-text"></span>
         <button id="btn-stop-audio">Stop</button>
       </div>
     </div>
 
     <!-- Home -->
-    <section class="page" data-page="home" aria-labelledby="home-title">
-      <div class="page-head">
-        <h1 id="home-title">Home</h1>
-        <p>Use this computer from your phone: touchpad, keyboard, screen, files and more.</p>
-      </div>
-      <div class="card hero">
-        <div class="hero-icon" id="hero-icon"><svg><use href="#i-phone"/></svg></div>
-        <div class="grow">
-          <h2 id="hero-title">Starting…</h2>
-          <p class="muted" id="status">Connecting to PairDesk…</p>
+    <section class="page" data-page="home" aria-labelledby="hero-title">
+      <div class="bento">
+        <div class="hero">
+          <div class="grow">
+            <span class="chip"><span class="dot" id="hero-dot"></span><span id="hero-chip">This computer</span></span>
+            <h2 id="hero-title">Starting…</h2>
+            <p id="status">Connecting to PairDesk…</p>
+            <div class="row">
+              <button class="primary big" id="btn-home-pair"><svg class="lead"><use href="#i-plus"/></svg>Pair a phone</button>
+              <button class="primary big" id="btn-home-files" hidden><svg class="lead"><use href="#i-upload"/></svg>Send files</button>
+              <button class="soft big" id="btn-home-phones" data-go="phones" hidden>Phones</button>
+            </div>
+          </div>
+          <div class="mark" id="hero-mark" aria-hidden="true">
+            <svg><use href="#i-laptop"/></svg>
+            <div class="line"><i></i></div>
+            <svg class="ph"><use href="#i-phone"/></svg>
+          </div>
         </div>
-        <button class="primary" id="btn-home-pair">Pair a phone</button>
+        <button class="tile" data-go="phones"><span class="ico"><svg><use href="#i-phone"/></svg></span><svg class="go"><use href="#i-arrow"/></svg><span><small>Phones</small><b id="tile-phones">–</b></span></button>
+        <button class="tile" data-go="files"><span class="ico"><svg><use href="#i-swap"/></svg></span><svg class="go"><use href="#i-arrow"/></svg><span><small>Files</small><b id="tile-files">–</b></span></button>
+        <button class="tile" data-go="remote"><span class="ico" id="tile-remote-ico"><svg><use href="#i-globe"/></svg></span><svg class="go"><use href="#i-arrow"/></svg><span><small>Reach it from</small><b id="tile-remote">–</b></span></button>
+        <button class="tile" data-go="settings"><span class="ico" id="tile-update-ico"><svg><use href="#i-update"/></svg></span><svg class="go"><use href="#i-arrow"/></svg><span><small>Updates</small><b id="tile-update">–</b></span></button>
       </div>
 
       <div class="card" id="wayland" hidden>
-        <h2>Control on this desktop</h2>
+        <div class="card-head"><span class="ico"><svg><use href="#i-screen"/></svg></span><h2 class="grow">Control on this desktop</h2></div>
         <div class="status-line" role="status"><span class="dot" id="wl-dot"></span><div id="wl-text"></div></div>
         <p class="hint" id="wl-how">This desktop (Wayland) asks before an app may move the pointer, type or see the
           screen. Choose <b>Allow control</b>, then in the window that opens tick <b>Allow Remote Interaction</b> (keep <b>Allow Clipboard Access</b> on),
@@ -303,67 +530,27 @@
         <div class="row"><button id="btn-wl-allow" class="primary">Allow control</button></div>
       </div>
 
-      <div class="card help-card" id="help-active" hidden>
-        <h2>Someone can help you now</h2>
-        <div class="warn-note"><b>Only send this to someone you know and trust.</b> They'll see and control this computer. PairDesk will never ask you for it.</div>
-        <div class="pair">
-          <div class="qr" id="help-qr" aria-label="Help QR code"></div>
-          <div class="grow">
-            <p style="margin:0 0 6px">Send them this link. They open it on their phone with the PairDesk app (or scan the code).</p>
-            <div class="linkbox"><input type="text" id="help-share" readonly aria-label="Help link"><button id="btn-copy-help" class="primary">Copy link</button></div>
-            <p class="muted" id="help-where"></p>
-            <p class="hint" style="margin:0 0 10px">They can see the screen, use the pointer and keyboard, the clipboard and apps. Not: shut down, files or sound. Access ends after 2 hours, when they leave, or when you end it.</p>
-            <button id="btn-help-cancel">Cancel</button>
-          </div>
-        </div>
-      </div>
-      <div class="card" id="help-idle">
-        <div class="setting">
+      <div class="card">
+        <div class="wide-row">
+          <span class="ico big"><svg><use href="#i-help"/></svg></span>
           <div class="what"><b>Get help from someone</b><small>Let a friend see and control this computer from their phone, for a while. Works from anywhere.</small></div>
           <button id="btn-get-help">Get help</button>
         </div>
-      </div>
-      <div class="tiles">
-        <button class="tile" data-go="phones"><svg><use href="#i-phone"/></svg><b>Phones</b><span id="tile-phones">–</span></button>
-        <button class="tile" data-go="files"><svg><use href="#i-upload"/></svg><b>Send files</b><span id="tile-files">–</span></button>
-        <button class="tile" data-go="remote"><svg><use href="#i-globe"/></svg><b>Remote access</b><span id="tile-remote">–</span></button>
-        <button class="tile" data-go="secure" id="tile-secure-wrap" hidden><svg><use href="#i-lock"/></svg><b>Sign-in screen</b><span id="tile-secure">–</span></button>
-        <button class="tile" data-go="settings"><svg><use href="#i-update"/></svg><b>Updates</b><span id="tile-update">–</span></button>
       </div>
     </section>
 
     <!-- Phones -->
     <section class="page" data-page="phones" aria-labelledby="phones-title" hidden>
       <div class="page-head">
-        <h1 id="phones-title">Phones</h1>
-        <p>Pair once, then your phone connects whenever this computer is on.</p>
-      </div>
-      <div class="card" id="pairing">
-        <h2>Pair a phone</h2>
-        <div id="pair-idle" class="row" style="justify-content:space-between">
-          <p class="muted" style="margin:0">Show a code on this screen and scan it with the PairDesk app.</p>
-          <button class="primary" id="btn-pair">Show pairing code</button>
-        </div>
-        <div id="pair-active" class="pair" hidden>
-          <div class="qr" id="qr" aria-label="Pairing QR code"></div>
-          <div class="grow">
-            <ol>
-              <li>Open PairDesk on your phone.</li>
-              <li>Tap <b>Scan pairing code</b> and point the camera at this code.</li>
-            </ol>
-            <p class="muted" id="pair-where"></p>
-            <p class="hint" style="margin:0 0 4px">Or send this link to your phone and open it there (or paste it in the app):</p>
-            <div class="linkbox"><input type="text" id="pair-share" readonly aria-label="Pairing link"><button id="btn-copy-pair">Copy</button></div>
-            <div class="row">
-              <button id="btn-new">New code</button>
-              <button id="btn-cancel">Cancel</button>
-            </div>
-          </div>
-        </div>
+        <div class="grow"><h1 id="phones-title">Phones</h1><p>Pair once, then your phone connects whenever this computer is on.</p></div>
+        <button class="lime big" id="btn-pair"><svg class="lead"><use href="#i-plus"/></svg>Pair a phone</button>
       </div>
       <div class="card">
-        <h2>Paired phones</h2>
-        <p class="empty" id="no-phones">No phones yet.</p>
+        <div class="empty" id="no-phones">
+          <span class="ico big"><svg><use href="#i-phone"/></svg></span>
+          <b>No phones yet</b>
+          <span>Show a pairing code here and scan it with PairDesk on your phone.</span>
+        </div>
         <ul class="list" id="phones"></ul>
       </div>
     </section>
@@ -371,141 +558,129 @@
     <!-- Files -->
     <section class="page" data-page="files" aria-labelledby="files-title" hidden>
       <div class="page-head">
-        <h1 id="files-title">Files</h1>
-        <p>Send files to your phone, and see what phones sent here.</p>
+        <div class="grow"><h1 id="files-title">Files</h1><p>Send files to your phone, and see what phones sent here.</p></div>
+        <button id="btn-open-downloads"><svg class="lead"><use href="#i-folder"/></svg>Files from phones</button>
       </div>
-      <div class="card">
-        <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
-          <svg aria-hidden="true"><use href="#i-upload"/></svg>
-          <b>Send files to your phone</b>
-          <span id="drop-hint" class="hint">Drop files here, or click to choose. They go to the phone's Download/PairDesk folder.</span>
-          <input type="file" id="file-input" multiple hidden>
-        </div>
-        <div class="row" id="send-to-row" hidden style="margin-top:12px">
-          <label for="send-to">Send to</label>
+      <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
+        <span class="ico"><svg aria-hidden="true"><use href="#i-upload"/></svg></span>
+        <b>Drop files to send them to your phone</b>
+        <span id="drop-hint" class="hint">Or click to choose. They go to the phone's Download/PairDesk folder.</span>
+        <div class="row" id="send-to-row" hidden>
+          <label for="send-to" class="hint">Send to</label>
           <select id="send-to"></select>
         </div>
-        <p class="hint" id="sendto-hint" style="margin:12px 0 0"></p>
+        <input type="file" id="file-input" multiple hidden>
       </div>
       <div class="card">
-        <h2>Transfers</h2>
-        <p class="empty" id="no-transfers">Nothing sent or received yet.</p>
+        <div class="card-head"><h2 class="grow">Transfers</h2></div>
+        <p class="muted" id="no-transfers" style="margin:0">Nothing sent or received yet.</p>
         <ul class="transfers" id="transfers"></ul>
       </div>
       <div class="card">
         <div class="setting">
-          <div class="what"><b>Files from phones</b><small class="selectable"><code id="downloads"></code></small></div>
-          <button id="btn-open-downloads">Open folder</button>
+          <span class="ico"><svg><use href="#i-folder"/></svg></span>
+          <div class="what"><b>Files from phones are saved in</b><small class="selectable"><code id="downloads"></code></small></div>
         </div>
+        <p class="hint" id="sendto-hint" style="margin:12px 0 0"></p>
       </div>
     </section>
 
     <!-- Shortcuts -->
     <section class="page" data-page="shortcuts" aria-labelledby="sc-title" hidden>
       <div class="page-head">
-        <h1 id="sc-title">Shortcuts</h1>
-        <p>Websites, folders and programs to open from your phone. Installed apps show up on the phone by themselves.</p>
+        <div class="grow"><h1 id="sc-title">Shortcuts</h1><p>Websites, folders and programs to open from your phone. Installed apps show up on the phone by themselves.</p></div>
+        <button class="lime big" id="btn-sc-new"><svg class="lead"><use href="#i-plus"/></svg>New shortcut</button>
       </div>
       <div class="card">
-        <h2>Your shortcuts</h2>
-        <p class="empty" id="no-shortcuts">None yet. Add one below.</p>
+        <div class="empty" id="no-shortcuts">
+          <span class="ico big"><svg><use href="#i-shortcut"/></svg></span>
+          <b>No shortcuts yet</b>
+          <span>Add a website, a folder or a program, and open it from the Shortcuts tab on your phone.</span>
+        </div>
         <ul class="list" id="shortcuts"></ul>
-      </div>
-      <div class="card">
-        <h2 style="margin-bottom:12px">Add a shortcut</h2>
-        <form class="add" id="sc-form">
-          <div class="fields">
-            <label>Name<input type="text" id="sc-name" maxlength="64" placeholder="e.g. Class notes" required></label>
-            <label>Type
-              <select id="sc-kind" style="width:100%">
-                <option value="url">Website</option>
-                <option value="path">File or folder</option>
-                <option value="program">Program</option>
-              </select>
-            </label>
-            <label class="wide"><span id="sc-target-label">Address</span>
-              <input type="text" id="sc-target" placeholder="https://" required></label>
-            <label class="wide" id="sc-args-row" hidden>Arguments (optional)
-              <input type="text" id="sc-args" placeholder='e.g. --new-window "C:\My Files"'></label>
-          </div>
-          <div class="hint" id="sc-hint"></div>
-          <div class="row"><button class="primary" type="submit">Add shortcut</button></div>
-        </form>
       </div>
     </section>
 
     <!-- Permissions -->
     <section class="page" data-page="permissions" aria-labelledby="perm-title" hidden>
       <div class="page-head">
-        <h1 id="perm-title">Permissions</h1>
-        <p>What paired phones can do. Touchpad and keyboard are always on.</p>
+        <div class="grow"><h1 id="perm-title">Permissions</h1><p>What paired phones can do here. The touchpad and keyboard always work.</p></div>
       </div>
       <div class="card">
-        <label class="setting"><span class="what"><b>Lock, sleep and turn off the screen</b></span>
-          <span class="toggle"><input type="checkbox" id="perm-power"><span></span></span></label>
-        <label class="setting"><span class="what"><b>Sign out, restart and shut down</b><small>Unsaved work in open apps can be lost.</small></span>
-          <span class="toggle"><input type="checkbox" id="perm-session"><span></span></span></label>
-        <label class="setting"><span class="what"><b>Open apps and shortcuts</b><small>Installed apps and your shortcuts.</small></span>
-          <span class="toggle"><input type="checkbox" id="perm-apps"><span></span></span></label>
-        <label class="setting"><span class="what"><b>See the screen</b><small>The PairDesk tray icon shows a red dot while a phone is watching.</small></span>
+        <label class="setting"><span class="ico"><svg><use href="#i-screen"/></svg></span><span class="what"><b>See the screen</b><small>The PairDesk tray icon shows a red dot while a phone is watching.</small></span>
           <span class="toggle"><input type="checkbox" id="perm-screen"><span></span></span></label>
-        <label class="setting"><span class="what"><b>Use the clipboard</b><small>Copy text from this computer, and paste text from the phone.</small></span>
+        <label class="setting"><span class="ico"><svg><use href="#i-apps"/></svg></span><span class="what"><b>Open apps and shortcuts</b><small>Installed apps and your shortcuts.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-apps"><span></span></span></label>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="ico"><svg><use href="#i-clip"/></svg></span><span class="what"><b>Use the clipboard</b><small>Copy text from this computer, and paste text from the phone.</small></span>
           <span class="toggle"><input type="checkbox" id="perm-clipboard"><span></span></span></label>
-        <label class="setting"><span class="what"><b>Send files to this computer</b><small>Saved in your Downloads, in a PairDesk folder.</small></span>
+        <label class="setting"><span class="ico"><svg><use href="#i-down"/></svg></span><span class="what"><b>Send files to this computer</b><small>Saved in your Downloads, in a PairDesk folder.</small></span>
           <span class="toggle"><input type="checkbox" id="perm-files"><span></span></span></label>
-        <label class="setting"><span class="what"><b>Sound and talking</b><small>Hear what this computer plays, and talk through its speakers.</small></span>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="ico"><svg><use href="#i-sound"/></svg></span><span class="what"><b>Sound and talking</b><small>Hear what this computer plays, and talk through its speakers.</small></span>
           <span class="toggle"><input type="checkbox" id="perm-audio"><span></span></span></label>
-        <label class="setting"><span class="what"><b>Hear the microphone</b><small>Hear people near this computer. Off unless you turn it on; the tray icon shows a red dot while a phone listens.</small></span>
+        <label class="setting"><span class="ico"><svg><use href="#i-mic"/></svg></span><span class="what"><b>Hear the microphone</b><small>Hear people near this computer. Off unless you turn it on; the tray icon shows a red dot while a phone listens.</small></span>
           <span class="toggle"><input type="checkbox" id="perm-mic"><span></span></span></label>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="ico"><svg><use href="#i-moon"/></svg></span><span class="what"><b>Lock, sleep and turn off the screen</b></span>
+          <span class="toggle"><input type="checkbox" id="perm-power"><span></span></span></label>
+        <label class="setting"><span class="ico"><svg><use href="#i-power"/></svg></span><span class="what"><b>Sign out, restart and shut down</b><small>Unsaved work in open apps can be lost.</small></span>
+          <span class="toggle"><input type="checkbox" id="perm-session"><span></span></span></label>
       </div>
     </section>
 
     <!-- Remote access -->
     <section class="page" data-page="remote" aria-labelledby="remote-title" hidden>
       <div class="page-head">
-        <h1 id="remote-title">Remote access</h1>
-        <p>Reach this computer from anywhere, not only on the same Wi-Fi.</p>
+        <div class="grow"><h1 id="remote-title">Remote access</h1><p>Reach this computer from anywhere, not only on the same Wi-Fi.</p></div>
       </div>
       <div class="card">
-        <h2>Tailscale</h2>
-        <div class="status-line" role="status"><span class="dot" id="remote-dot"></span><div id="remote-text">Checking for Tailscale…</div></div>
-        <ol class="steps" id="remote-steps" hidden>
-          <li>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</li>
-          <li>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</li>
-          <li>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address. (Already paired phones are told as soon as Tailscale comes up; you can also just scan a new pairing code.)</li>
-        </ol>
-        <div class="row" style="margin-top:12px"><button id="btn-recheck">Check again</button></div>
-      </div>
-      <div class="card" id="card-firewall" hidden>
-        <h2>Windows Firewall</h2>
-        <div class="status-line" role="status"><span class="dot" id="fw-dot"></span><div id="fw-text"></div></div>
-        <p class="hint">Windows asks which networks an app may be reached on, and leaves "public" ones out. It usually files the Tailscale adapter as public, so phones get through on Wi-Fi but not through Tailscale. This writes a rule for every kind of network instead.</p>
-        <div class="row" style="margin-top:12px"><button id="btn-firewall">Allow PairDesk on all networks</button></div>
+        <div class="wide-row">
+          <span class="ico big" id="reach-ico"><svg><use href="#i-globe"/></svg></span>
+          <div class="what"><b id="reach-title">Checking…</b><small id="reach-text"></small></div>
+        </div>
       </div>
       <div class="card">
-        <h2>Without Tailscale or the relay</h2>
-        <p class="hint" style="margin-top:0">Your phone and this computer sit on two different private networks, so something has to join them: Tailscale, the PairDesk relay, or your own router. For the last one, give the router a <b>port forward</b> to this computer and tell the phone where to find it. No other company is involved.</p>
-        <ol class="steps">
-          <li>Give this computer a fixed address on your home network (your router calls it a DHCP reservation or static lease). It is <span id="fw-lan">–</span> right now.</li>
-          <li>In the router, forward <b>TCP port <span id="fw-port">47800</span></b> to that address.</li>
-          <li>Your home connection's address changes now and then, so set up a free dynamic DNS name (DuckDNS, No-IP, or your router's own) that follows it.</li>
-          <li>On the phone, open the computer's <b>⋮</b> menu, choose <b>Add an address</b> and type that name. Add <code>:port</code> after it if the router forwards a different outside port.</li>
-        </ol>
-        <p class="hint">This only works if your internet provider gives you a public address. If the address your router shows is different from the one a "what is my IP" page shows, you are behind the provider's own NAT and a port forward can't reach you — use Tailscale or the relay instead.</p>
-      </div>
-      <div class="card">
-        <h2>PairDesk relay</h2>
+        <div class="card-head"><span class="ico"><svg><use href="#i-relay"/></svg></span><h2 class="grow">PairDesk relay</h2>
+          <span class="toggle" title="Use the relay"><input type="checkbox" id="relay-on" aria-label="Use the relay"><span></span></span></div>
         <div class="status-line" role="status"><span class="dot" id="relay-dot"></span><div id="relay-text"></div></div>
         <p class="hint">When your phone can't reach this computer directly (another network, no Tailscale), it connects through the relay. Everything stays encrypted between your phone and this computer: the relay only passes it along and can't see your screen or what you type.</p>
-        <label class="setting" style="padding-top:4px"><span class="what"><b>Use the relay</b></span>
-          <span class="toggle"><input type="checkbox" id="relay-on"><span></span></span></label>
-        <details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Relay server</summary>
-          <div class="linkbox" style="margin-top:8px"><input type="text" id="relay-address" spellcheck="false" aria-label="Relay server (host:port)"><button id="btn-relay-save">Save</button></div>
-          <p class="hint" style="margin:0">host:port. You can run your own: see docs/RELAY.md in the PairDesk repository.</p>
+        <details class="mini"><summary>Relay server <svg><use href="#i-chev"/></svg></summary>
+          <div class="linkbox" style="margin-top:10px"><input type="text" id="relay-address" spellcheck="false" aria-label="Relay server (host:port)"><button id="btn-relay-save">Save</button></div>
+          <p class="hint" style="margin:8px 0 0">host:port. You can run your own: see docs/RELAY.md in the PairDesk repository.</p>
         </details>
       </div>
       <div class="card">
-        <label class="setting"><span class="what"><b>Keep this computer awake</b><small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span>
+        <div class="card-head"><span class="ico"><svg><use href="#i-tail"/></svg></span><h2 class="grow">Tailscale</h2><button id="btn-recheck" class="small">Check again</button></div>
+        <div class="status-line" role="status"><span class="dot" id="remote-dot"></span><div id="remote-text">Checking for Tailscale…</div></div>
+        <ol class="steps" id="remote-steps" hidden>
+          <li><span>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</span></li>
+          <li><span>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</span></li>
+          <li><span>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address. (Already paired phones are told as soon as Tailscale comes up; you can also just scan a new pairing code.)</span></li>
+        </ol>
+      </div>
+      <div class="card" id="card-firewall" hidden>
+        <div class="card-head"><span class="ico"><svg><use href="#i-wall"/></svg></span><h2 class="grow">Windows Firewall</h2></div>
+        <div class="status-line" role="status"><span class="dot" id="fw-dot"></span><div id="fw-text"></div></div>
+        <p class="hint">Windows asks which networks an app may be reached on, and leaves "public" ones out. It usually files the Tailscale adapter as public, so phones get through on Wi-Fi but not through Tailscale. This writes a rule for every kind of network instead.</p>
+        <div class="row"><button id="btn-firewall">Allow PairDesk on all networks</button></div>
+      </div>
+      <details class="card fold">
+        <summary><span class="ico"><svg><use href="#i-router"/></svg></span><span class="grow"><h2>Your own router instead</h2><span class="hint">No Tailscale and no relay: a port forward to this computer.</span></span><svg class="chev"><use href="#i-chev"/></svg></summary>
+        <p class="hint">Your phone and this computer sit on two different private networks, so something has to join them: Tailscale, the PairDesk relay, or your own router. For the last one, give the router a <b>port forward</b> to this computer and tell the phone where to find it. No other company is involved.</p>
+        <ol class="steps">
+          <li><span>Give this computer a fixed address on your home network (your router calls it a DHCP reservation or static lease). It is <b class="selectable" id="fw-lan">–</b> right now.</span></li>
+          <li><span>In the router, forward <b>TCP port <span id="fw-port">47800</span></b> to that address.</span></li>
+          <li><span>Your home connection's address changes now and then, so set up a free dynamic DNS name (DuckDNS, No-IP, or your router's own) that follows it.</span></li>
+          <li><span>On the phone, open the computer's <b>⋯</b> menu, choose <b>Add an address</b> and type that name. Add <code>:port</code> after it if the router forwards a different outside port.</span></li>
+        </ol>
+        <p class="hint" style="margin:14px 0 0">This only works if your internet provider gives you a public address. If the address your router shows is different from the one a "what is my IP" page shows, you are behind the provider's own NAT and a port forward can't reach you — use Tailscale or the relay instead.</p>
+      </details>
+      <div class="card">
+        <label class="setting"><span class="ico"><svg><use href="#i-coffee"/></svg></span><span class="what"><b>Keep this computer awake</b><small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span>
           <span class="toggle"><input type="checkbox" id="keep-awake"><span></span></span></label>
       </div>
     </section>
@@ -513,50 +688,49 @@
     <!-- Sign-in screen (Windows) -->
     <section class="page" data-page="secure" aria-labelledby="sd-title" id="secure" hidden>
       <div class="page-head">
-        <h1 id="sd-title">Sign-in screen</h1>
-        <p>The lock screen, the sign-in screen and administrator prompts, from your phone.</p>
+        <div class="grow"><h1 id="sd-title">Sign-in screen</h1><p>The lock screen, the sign-in screen and administrator prompts, from your phone.</p></div>
       </div>
       <div class="card">
-        <p>Windows shows the lock screen, the sign-in screen and administrator prompts (UAC) on a protected screen that normal programs can't see or control. Turn this on to use them from your phone too, including at the sign-in screen after a restart.</p>
-        <div class="status-line" role="status"><span class="dot" id="sd-dot"></span><div id="sd-text"></div></div>
-        <div class="row">
+        <div class="wide-row" style="margin-bottom:16px">
+          <span class="ico big" id="sd-ico"><svg><use href="#i-lock"/></svg></span>
+          <div class="what"><div class="status-line" role="status" style="margin:0"><span class="dot" id="sd-dot"></span><b id="sd-text"></b></div></div>
           <button class="primary" id="btn-sd-on" hidden>Turn on</button>
           <button id="btn-sd-off" hidden>Turn off</button>
         </div>
+        <p class="muted" style="margin:0">Windows shows the lock screen, the sign-in screen and administrator prompts (UAC) on a protected screen that normal programs can't see or control. Turn this on to use them from your phone too, including at the sign-in screen after a restart.</p>
       </div>
       <div class="card">
         <h2>How it works</h2>
         <p class="muted">Windows asks for administrator permission. PairDesk then installs a small helper service ("PairDesk helper") and keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.</p>
-        <p class="muted" style="margin:0">Good to know: like any remote control that can answer administrator prompts, this also means a program already running on your account could answer one. Turn it on if you need it, and keep your phone's app lock on.</p>
+        <div class="note warn" style="margin:0">Good to know: like any remote control that can answer administrator prompts, this also means a program already running on your account could answer one. Turn it on if you need it, and keep your phone's app lock on.</div>
       </div>
     </section>
 
-    <!-- Settings -->
+    <!-- General settings -->
     <section class="page" data-page="settings" aria-labelledby="settings-title" hidden>
       <div class="page-head">
-        <h1 id="settings-title">Settings</h1>
-        <p>Start-up, updates and details about this computer.</p>
+        <div class="grow"><h1 id="settings-title">General</h1><p>Start-up, updates and details about this computer.</p></div>
       </div>
       <div class="card">
-        <label class="setting"><span class="what"><b>Start PairDesk when I sign in</b><small id="autostart-note"></small></span>
+        <label class="setting"><span class="ico"><svg><use href="#i-rocket"/></svg></span><span class="what"><b>Start PairDesk when I sign in</b><small id="autostart-note"></small></span>
           <span class="toggle"><input type="checkbox" id="autostart"><span></span></span></label>
       </div>
       <div class="card" id="updates" hidden>
-        <h2>Updates</h2>
-        <p id="up-text" style="margin:0 0 8px"></p>
-        <progress id="up-progress" max="1" value="0" hidden style="width:100%;height:6px;accent-color:var(--accent)"></progress>
-        <div class="row" id="up-actions" style="margin:8px 0 4px">
-          <button class="primary" id="btn-up-install" hidden>Install update</button>
+        <div class="card-head"><span class="ico" id="up-ico"><svg><use href="#i-update"/></svg></span><div class="grow"><h2>Updates</h2><div class="hint" id="up-text"></div></div></div>
+        <progress id="up-progress" max="1" value="0" hidden style="margin:0 0 14px"></progress>
+        <div class="row" id="up-actions">
+          <button class="lime" id="btn-up-install" hidden>Install update</button>
           <a id="up-download" hidden target="_blank" rel="noopener">Download</a>
           <a id="up-notes" hidden target="_blank" rel="noopener">What's new</a>
+          <span class="grow"></span>
           <button id="btn-up-check">Check now</button>
         </div>
-        <label class="setting" id="up-auto-row" style="margin-top:8px;border-top:1px solid var(--line);padding-bottom:0">
+        <label class="setting" id="up-auto-row" style="margin-top:14px;border-top:1px solid var(--line);padding:14px 0 2px">
           <span class="what"><b>Check for updates once a day</b></span>
           <span class="toggle"><input type="checkbox" id="up-auto"><span></span></span></label>
       </div>
       <div class="card">
-        <h2 style="margin-bottom:10px">About this computer</h2>
+        <div class="card-head"><span class="ico"><svg><use href="#i-info"/></svg></span><h2 class="grow">About this computer</h2></div>
         <dl class="about selectable">
           <dt>Version</dt><dd id="version"></dd>
           <dt>Addresses</dt><dd id="addresses"></dd>
@@ -565,6 +739,7 @@
       </div>
       <div class="card">
         <div class="setting">
+          <span class="ico"><svg><use href="#i-stop"/></svg></span>
           <div class="what"><b>Stop PairDesk</b><small>Phones can't connect until you start it again.</small></div>
           <button class="danger" id="btn-quit">Stop PairDesk</button>
         </div>
@@ -572,14 +747,95 @@
     </section>
   </div>
 </div>
+
+<!-- Pair a phone -->
+<dialog class="dlg wide" id="pair-dialog" aria-labelledby="pair-title">
+  <div id="pair-main">
+    <div class="dlg-body pair">
+      <div class="qr" id="qr" aria-label="Pairing QR code"></div>
+      <div class="grow">
+        <h2 id="pair-title">Pair a phone</h2>
+        <div class="countdown"><span class="dot ok"></span><span id="pair-where"></span></div>
+        <ol class="steps" style="margin-bottom:18px">
+          <li><span>Open <b>PairDesk</b> on your phone.</span></li>
+          <li><span>Tap <b>+</b>, then <b>Scan pairing code</b>, and point the camera at this code.</span></li>
+        </ol>
+        <div class="field">Or send this link to your phone and open it there
+          <div class="linkbox"><input type="text" id="pair-share" readonly aria-label="Pairing link"><button id="btn-copy-pair" class="icon" title="Copy link" aria-label="Copy link"><svg style="width:18px;height:18px"><use href="#i-copy"/></svg></button></div>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button id="btn-new" class="ghost">New code</button>
+      <span class="grow"></span>
+      <button id="btn-cancel" class="primary">Cancel</button>
+    </div>
+  </div>
+  <div class="done" id="pair-done" hidden>
+    <span class="ico on"><svg><use href="#i-check"/></svg></span>
+    <b id="pair-done-title">Paired</b>
+    <span>It can now connect any time this computer is on.</span>
+  </div>
+</dialog>
+
+<!-- Get help -->
+<dialog class="dlg wide" id="help-dialog" aria-labelledby="help-title">
+  <div class="dlg-body pair">
+    <div class="qr" id="help-qr" aria-label="Help QR code"></div>
+    <div class="grow">
+      <h2 id="help-title">Someone can help you now</h2>
+      <div class="countdown"><span class="dot ok" id="help-dot"></span><span id="help-where"></span></div>
+      <div class="note warn"><b>Only send this to someone you know and trust.</b> They'll see and control this computer. PairDesk will never ask you for it.</div>
+      <div class="field">Send them this link. They open it on their phone with the PairDesk app (or scan the code).
+        <div class="linkbox"><input type="text" id="help-share" readonly aria-label="Help link"><button id="btn-copy-help" class="primary">Copy link</button></div>
+      </div>
+      <p class="hint" style="margin:14px 0 0">They can see the screen, use the pointer and keyboard, the clipboard and apps. Not: shut down, files or sound. Access ends after 2 hours, when they leave, or when you end it.</p>
+    </div>
+  </div>
+  <div class="dlg-foot"><button id="btn-help-cancel" class="primary">Cancel</button></div>
+</dialog>
+
+<!-- New shortcut -->
+<dialog class="dlg" id="sc-dialog" aria-labelledby="sc-dlg-title">
+  <form id="sc-form" method="dialog">
+    <div class="dlg-body" style="display:grid;gap:14px">
+      <div><h2 id="sc-dlg-title">New shortcut</h2><p class="hint" style="margin:0">Open it from the Shortcuts tab on your phone.</p></div>
+      <div class="seg" role="group" aria-label="Type" id="sc-seg">
+        <button type="button" data-kind="url" aria-pressed="true">Website</button>
+        <button type="button" data-kind="path" aria-pressed="false">File or folder</button>
+        <button type="button" data-kind="program" aria-pressed="false">Program</button>
+      </div>
+      <input type="hidden" id="sc-kind" value="url">
+      <label class="field">Name<input type="text" id="sc-name" maxlength="64" placeholder="e.g. Class notes" required></label>
+      <label class="field"><span id="sc-target-label">Address</span><input type="text" id="sc-target" placeholder="https://" required spellcheck="false"></label>
+      <label class="field" id="sc-args-row" hidden>Arguments (optional)<input type="text" id="sc-args" placeholder='e.g. --new-window "C:\My Files"' spellcheck="false"></label>
+      <div class="hint" id="sc-hint"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" id="btn-sc-cancel">Cancel</button>
+      <button class="primary" type="submit">Add shortcut</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Are you sure? -->
+<dialog class="dlg" id="ask" aria-labelledby="ask-title" aria-describedby="ask-text">
+  <div class="dlg-body"><h2 id="ask-title"></h2><p id="ask-text"></p></div>
+  <div class="dlg-foot"><button id="ask-cancel">Cancel</button><button id="ask-ok" class="primary">OK</button></div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden><span class="t-ico"><svg><use href="#i-check"/></svg></span><span id="toast-text"></span></div>
+
 <script>
 "use strict";
 const api = (path) => location.pathname.replace(/\/$/, "") + "/api/" + path;
 const $ = (id) => document.getElementById(id);
 let lastPhoneIds = null;
 const PERMS = ["power", "session", "apps", "screen", "clipboard", "files", "audio", "mic"];
-let wasPairing = false;
+let lastLink = null;
+let cancelling = false;
 let stopped = false;
+let current = null;
 
 async function post(path, body) {
   const res = await fetch(api(path), {
@@ -591,13 +847,45 @@ async function post(path, body) {
   return path === "quit" ? null : res.json();
 }
 
+// ---- A desktop window, not a web page ----
+document.addEventListener("contextmenu", (e) => {
+  if (!e.target.closest("input[type=text], textarea, .selectable")) e.preventDefault();
+});
+document.addEventListener("dragstart", (e) => { if (!e.target.closest || !e.target.closest("input")) e.preventDefault(); });
+window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+
+// ---- Toast ----
 function showBanner(text, isError) {
-  const b = $("banner");
-  b.textContent = text;
-  b.className = isError ? "banner err" : "banner";
-  b.hidden = false;
+  const t = $("toast");
+  $("toast-text").textContent = text;
+  t.classList.toggle("err", !!isError);
+  t.querySelector("use").setAttribute("href", isError ? "#i-x" : "#i-check");
+  t.hidden = false;
   clearTimeout(showBanner.t);
-  showBanner.t = setTimeout(() => (b.hidden = true), 8000);
+  showBanner.t = setTimeout(() => (t.hidden = true), isError ? 7000 : 4000);
+}
+
+// ---- Dialogs ----
+function openDlg(d) { if (!d.open) { d.classList.remove("closing"); d.showModal(); } }
+function closeDlg(d) {
+  if (!d.open || d.classList.contains("closing")) return;
+  d.classList.add("closing");
+  setTimeout(() => { d.classList.remove("closing"); d.close(); }, 140);
+}
+function ask({ title, text, ok, danger }) {
+  const d = $("ask"), okb = $("ask-ok"), no = $("ask-cancel");
+  $("ask-title").textContent = title;
+  $("ask-text").textContent = text;
+  okb.textContent = ok || "OK";
+  okb.className = danger ? "danger-solid" : "primary";
+  openDlg(d);
+  (danger ? no : okb).focus();
+  return new Promise((resolve) => {
+    const done = (v) => { okb.onclick = no.onclick = d.oncancel = null; closeDlg(d); resolve(v); };
+    okb.onclick = () => done(true);
+    no.onclick = () => done(false);
+    d.oncancel = (e) => { e.preventDefault(); done(false); };
+  });
 }
 
 function ago(secs) {
@@ -608,132 +896,88 @@ function ago(secs) {
   if (d < 86400) return Math.round(d / 3600) + " h ago";
   return new Date(secs * 1000).toLocaleDateString();
 }
+function clock(secs) { return Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0"); }
+function icon(name, cls) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  if (cls) s.setAttribute("class", cls);
+  const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  u.setAttribute("href", "#" + name);
+  s.append(u);
+  return s;
+}
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function badge(text, cls) { return el("span", "badge" + (cls ? " " + cls : ""), text); }
 
 function render(s) {
+  current = s;
   document.title = "PairDesk – " + s.name;
   $("name").textContent = s.name;
   const connected = s.phones.filter((p) => p.connected);
-  $("status").textContent = connected.length
-    ? "Connected: " + connected.map((p) => p.name).join(", ")
-    : s.phones.length ? "Ready. Open PairDesk on your phone to connect." : "Ready to pair.";
+  const names = connected.map((p) => p.name);
+
+  // Home
+  $("hero-chip").textContent = s.name;
+  $("hero-dot").className = "dot" + (connected.length ? " ok" : "");
   $("hero-title").textContent = connected.length
-    ? (connected.length === 1 ? connected[0].name + " is connected" : connected.length + " phones are connected")
+    ? (connected.length === 1 ? names[0] + " is connected" : connected.length + " phones are connected")
     : s.phones.length ? "Ready for your phone" : "Pair your phone to get started";
   $("status").textContent = connected.length
     ? "Use the PairDesk app on your phone to control this computer."
     : s.phones.length ? "Open PairDesk on your phone and it connects by itself."
     : "Show a pairing code here and scan it with the PairDesk app on your phone.";
-  $("hero-icon").className = "hero-icon" + (connected.length ? " ok" : "");
-  $("hero-icon").firstElementChild.innerHTML = '<use href="#' + (connected.length ? "i-check" : "i-phone") + '"/>';
-  $("btn-home-pair").hidden = s.phones.length > 0 && !s.pairing;
-  $("side-status").textContent = connected.length ? "Connected" : "Ready";
+  $("hero-mark").classList.toggle("on", connected.length > 0);
+  $("btn-home-pair").hidden = s.phones.length > 0;
+  $("btn-home-files").hidden = connected.length === 0;
+  $("btn-home-phones").hidden = s.phones.length === 0;
+  $("side-status").textContent = connected.length
+    ? (connected.length === 1 ? names[0] : connected.length + " phones") : "Ready";
   $("side-dot").className = "dot" + (connected.length ? " ok" : "");
   $("tile-phones").textContent = s.phones.length
-    ? s.phones.length + " paired" + (connected.length ? ", " + connected.length + " connected" : "")
-    : "Pair your first phone";
+    ? (connected.length ? connected.length + " connected" : s.phones.length + " paired")
+    : "Pair your first";
   const pc = $("count-phones");
   pc.hidden = connected.length === 0;
   pc.textContent = connected.length;
 
-  // Pairing (a "Get help" code shows on Home instead)
-  const help = s.pairing && s.pairing.help ? s.pairing : null;
-  const pairing = s.pairing && !s.pairing.help ? s.pairing : null;
-  $("pair-idle").hidden = !!pairing;
-  $("pair-active").hidden = !pairing;
-  $("help-active").hidden = !help;
-  $("help-idle").hidden = !!help;
-  if (help) {
-    if ($("help-qr").dataset.link !== help.link) {
-      $("help-qr").innerHTML = help.svg; // generated by this agent, not user input
-      $("help-qr").dataset.link = help.link;
-      $("help-share").value = help.share;
-    }
-    const hm = Math.floor(help.expires_in / 60), hs = help.expires_in % 60;
-    $("help-where").textContent = (help.relay
-      ? "Works from anywhere. "
-      : "Works on this Wi-Fi only: the relay isn't connected (see Remote access). ") +
-      "The link works once and expires in " + hm + ":" + String(hs).padStart(2, "0") + ".";
-  }
-  if (pairing) {
-    $("pair-share").value = pairing.share;
-    $("pair-where").textContent = (pairing.relay ? "" : "Phone and computer must be on the same Wi-Fi. ") +
-      "The code works once and expires in " + Math.floor(pairing.expires_in / 60) + ":" +
-      String(pairing.expires_in % 60).padStart(2, "0") + ".";
-    if ($("qr").dataset.link !== pairing.link) {
-      $("qr").innerHTML = pairing.svg; // generated by this agent, not user input
-      $("qr").dataset.link = pairing.link;
-    }
-
-  }
-
-  // New phone appeared while pairing → success
-  const ids = s.phones.map((p) => p.id);
-  if (lastPhoneIds && wasPairing && !pairing) {
-    const added = s.phones.find((p) => !lastPhoneIds.includes(p.id));
-    if (added) showBanner(added.helping_until
-      ? added.name + " is connected to help you."
-      : "Paired with " + added.name + ". It can now connect any time.");
-  }
-  lastPhoneIds = ids;
-  wasPairing = !!pairing;
+  renderPairing(s);
 
   // Phones
   const list = $("phones");
   list.replaceChildren();
   $("no-phones").hidden = s.phones.length > 0;
   for (const p of s.phones) {
-    const li = document.createElement("li");
-    const av = document.createElement("div");
-    av.className = "avatar";
-    av.innerHTML = '<svg><use href="#i-phone"/></svg>';
-    li.append(av);
-    const info = document.createElement("div");
-    info.className = "grow";
-    const n = document.createElement("div");
-    n.className = "phone-name";
-    n.textContent = p.name;
-    const meta = document.createElement("div");
-    meta.className = "muted";
-    meta.textContent = p.connected ? "Connected from " + p.address : "Last used " + ago(p.last_seen);
-    info.append(n, meta);
-    li.append(info);
+    const li = el("li");
+    const av = el("span", "ico big" + (p.connected ? " on" : ""));
+    av.append(icon("i-phone"));
+    const info = el("div", "grow");
+    info.append(el("div", "item-name", p.name),
+      el("div", "item-meta", p.connected ? "Connected from " + p.address : "Last used " + ago(p.last_seen)));
+    const badges = el("div", "badges");
     if (p.helping_until) {
-      const b = document.createElement("span");
-      b.className = "badge view";
-      b.textContent = "Helping until " + new Date(p.helping_until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      li.append(b);
+      badges.append(badge("Helping until " + new Date(p.helping_until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), "live"));
     }
-    if (p.listening && p.listening.mic) {
-      const b = document.createElement("span");
-      b.className = "badge view";
-      b.textContent = "Hearing microphone";
-      li.append(b);
-    } else if (p.listening) {
-      const b = document.createElement("span");
-      b.className = "badge";
-      b.textContent = "Listening";
-      li.append(b);
-    }
-    if (p.viewing) {
-      const b = document.createElement("span");
-      b.className = "badge view";
-      b.textContent = "Viewing screen";
-      li.append(b);
-    } else if (p.connected && !p.listening) {
-      const b = document.createElement("span");
-      b.className = "badge";
-      b.textContent = "Connected";
-      li.append(b);
-    }
-    const rm = document.createElement("button");
-    rm.className = "danger";
-    rm.textContent = "Remove";
+    if (p.listening && p.listening.mic) badges.append(badge("Hearing microphone", "live"));
+    else if (p.listening) badges.append(badge("Listening"));
+    if (p.viewing) badges.append(badge("Viewing screen", "live"));
+    else if (p.connected && !p.listening) badges.append(badge("Connected", "on"));
+    const rm = el("button", "ghost small", "Remove");
     rm.setAttribute("aria-label", "Remove " + p.name);
     rm.onclick = async () => {
-      if (!confirm("Remove " + p.name + "? It will need to pair again to connect.")) return;
-      try { render(await post("remove", { id: p.id })); } catch (e) { showBanner(e.message, true); }
+      const yes = await ask({
+        title: "Remove " + p.name + "?",
+        text: "It will need to pair again to connect to this computer.",
+        ok: "Remove", danger: true,
+      });
+      if (!yes) return;
+      try { render(await post("remove", { id: p.id })); showBanner(p.name + " removed."); }
+      catch (e) { showBanner(e.message, true); }
     };
-    li.append(rm);
+    li.append(av, info, badges, rm);
     list.append(li);
   }
 
@@ -767,7 +1011,7 @@ function render(s) {
     $("wl-how").hidden = fine;
   }
 
-  // Connect from anywhere
+  // Remote access: Tailscale
   const r = s.remote || { status: "checking" };
   const dot = $("remote-dot"), text = $("remote-text");
   dot.className = "dot" + (r.status === "running" ? " ok" : r.status === "not_connected" ? " warn" : "");
@@ -781,7 +1025,7 @@ function render(s) {
   } else if (r.status === "not_connected") {
     text.textContent = r.reason + " Open Tailscale on this computer to connect from away.";
   } else if (r.status === "not_installed") {
-    text.textContent = "Not set up. Right now your phone can connect only on the same Wi-Fi. PairDesk uses Tailscale, a free private network, to reach this computer from anywhere:";
+    text.textContent = "Not set up. Tailscale is a free private network: an alternative to the relay that joins your phone and this computer directly.";
   } else if (r.status === "checking") {
     text.textContent = "Checking for Tailscale…";
   } else {
@@ -791,12 +1035,11 @@ function render(s) {
   renderFirewall(s.firewall);
   $("fw-lan").textContent = (s.addresses || []).join(" or ") || "not on a network";
   $("fw-port").textContent = s.port;
-  $("tile-remote").textContent = { running: "On (Tailscale)", not_connected: "Tailscale is off",
-    not_installed: "Same Wi-Fi only", checking: "Checking…" }[r.status] || "Unknown";
   const awake = $("keep-awake");
   if (document.activeElement !== awake) awake.checked = s.keep_awake;
+  renderRelay(s.relay);
+  renderReach(s);
 
-  // Permissions
   // Someone is watching the screen
   const viewers = s.phones.filter((p) => p.viewing);
   $("viewing").hidden = viewers.length === 0;
@@ -812,9 +1055,6 @@ function render(s) {
     : "";
   $("btn-end-help").dataset.ids = helpers.map((p) => p.id).join(",");
 
-  // Relay
-  renderRelay(s.relay);
-
   // Someone hears the microphone
   const ears = s.phones.filter((p) => p.listening && p.listening.mic);
   $("listening").hidden = ears.length === 0;
@@ -822,12 +1062,12 @@ function render(s) {
     ? ears.map((p) => p.name).join(", ") + (ears.length > 1 ? " are" : " is") + " hearing this computer's microphone."
     : "";
 
+  // Permissions
   for (const k of PERMS) {
     const box = $("perm-" + k);
     if (document.activeElement !== box) box.checked = s.permissions[k];
   }
 
-  // Files
   renderFiles(s);
 
   // Shortcuts
@@ -836,28 +1076,19 @@ function render(s) {
   $("no-shortcuts").hidden = s.shortcuts.length > 0;
   const kindName = { url: "Website", path: "File or folder", program: "Program" };
   for (const x of s.shortcuts) {
-    const li = document.createElement("li");
-    const av = document.createElement("div");
-    av.className = "avatar";
-    av.innerHTML = '<svg><use href="#' + ({ url: "i-globe", path: "i-files", program: "i-shortcut" }[x.kind] || "i-link") + '"/></svg>';
-    li.append(av);
-    const info = document.createElement("div");
-    info.className = "grow";
-    const n = document.createElement("div");
-    n.className = "phone-name";
-    n.textContent = x.name;
-    const t = document.createElement("div");
-    t.className = "target";
-    t.textContent = kindName[x.kind] + " · " + x.target + (x.args ? " " + x.args : "");
-    info.append(n, t);
-    const rm = document.createElement("button");
-    rm.className = "danger";
-    rm.textContent = "Remove";
+    const li = el("li");
+    const av = el("span", "ico big");
+    av.append(icon({ url: "i-globe", path: "i-folder", program: "i-program" }[x.kind] || "i-link"));
+    const info = el("div", "grow");
+    info.append(el("div", "item-name", x.name),
+      el("div", "item-meta selectable", kindName[x.kind] + " · " + x.target + (x.args ? " " + x.args : "")));
+    const rm = el("button", "ghost small", "Remove");
     rm.setAttribute("aria-label", "Remove " + x.name);
     rm.onclick = async () => {
-      try { render(await post("shortcuts/remove", { id: x.id })); } catch (e) { showBanner(e.message, true); }
+      try { render(await post("shortcuts/remove", { id: x.id })); showBanner(x.name + " removed."); }
+      catch (e) { showBanner(e.message, true); }
     };
-    li.append(info, rm);
+    li.append(av, info, rm);
     sc.append(li);
   }
 
@@ -873,6 +1104,62 @@ function render(s) {
   $("side-version").textContent = "PairDesk " + s.version;
   $("addresses").textContent = s.addresses.join(", ") || "none (is Wi-Fi connected?)";
   $("fp").textContent = s.fingerprint;
+  moveInd();
+}
+
+// Pairing and "Get help" codes show in dialogs over the window.
+function renderPairing(s) {
+  const link = s.pairing || null;
+  const help = link && link.help ? link : null;
+  const pairing = link && !link.help ? link : null;
+  const pd = $("pair-dialog"), hd = $("help-dialog");
+
+  if (pairing) {
+    $("pair-main").hidden = false;
+    $("pair-done").hidden = true;
+    if ($("pair-share").value !== pairing.share) { $("pair-share").value = pairing.share; $("pair-share").scrollLeft = 0; }
+    $("pair-where").textContent = (pairing.relay ? "Works from anywhere" : "Phone and computer must be on the same Wi-Fi") +
+      " · expires in " + clock(pairing.expires_in);
+    if ($("qr").dataset.link !== pairing.link) {
+      $("qr").innerHTML = pairing.svg; // generated by this agent, not user input
+      $("qr").dataset.link = pairing.link;
+    }
+    openDlg(pd);
+  }
+  if (help) {
+    if ($("help-qr").dataset.link !== help.link) {
+      $("help-qr").innerHTML = help.svg; // generated by this agent, not user input
+      $("help-qr").dataset.link = help.link;
+      $("help-share").value = help.share;
+    }
+    $("help-dot").className = "dot " + (help.relay ? "ok" : "warn");
+    $("help-where").textContent = (help.relay ? "Works from anywhere" : "Works on this Wi-Fi only: the relay isn't connected") +
+      " · works once, expires in " + clock(help.expires_in);
+    openDlg(hd);
+  }
+
+  // A code went away: a phone used it, it expired, or it was cancelled.
+  const ids = s.phones.map((p) => p.id);
+  if (lastLink && (!link || link.help !== lastLink.help)) {
+    const added = lastPhoneIds && s.phones.find((p) => !lastPhoneIds.includes(p.id));
+    if (lastLink.help) {
+      closeDlg(hd);
+      if (added) showBanner(added.name + " is connected to help you.");
+      else if (!cancelling) showBanner("The help link expired.", true);
+    } else if (added) {
+      $("pair-done-title").textContent = "Paired with " + added.name;
+      $("pair-main").hidden = true;
+      $("pair-done").hidden = false;
+      openDlg(pd);
+      setTimeout(() => closeDlg(pd), 2200);
+    } else {
+      closeDlg(pd);
+      if (!cancelling) showBanner("The pairing code expired. Make a new one when you're ready.", true);
+    }
+    cancelling = false;
+  }
+  lastPhoneIds = ids;
+  lastLink = link;
 }
 
 async function refresh() {
@@ -882,7 +1169,7 @@ async function refresh() {
     if (!res.ok) throw new Error(res.statusText);
     render(await res.json());
   } catch (e) {
-    $("status").textContent = "PairDesk isn't running.";
+    $("status").textContent = "Start PairDesk again from the Start menu to use your phone.";
     $("hero-title").textContent = "PairDesk isn't running";
     $("side-status").textContent = "Not running";
     $("side-dot").className = "dot warn";
@@ -892,9 +1179,25 @@ async function refresh() {
 $("btn-firewall").onclick = async () => {
   try { render(await post("allow-firewall")); } catch (err) { showBanner(err.message, true); }
 };
-$("btn-pair").onclick = async () => render(await post("pair"));
-$("btn-new").onclick = async () => render(await post("pair"));
-$("btn-cancel").onclick = async () => render(await post("cancel-pair"));
+const startPairing = async () => {
+  try { render(await post("pair")); } catch (e) { showBanner(e.message, true); }
+};
+$("btn-pair").onclick = startPairing;
+$("btn-home-pair").onclick = startPairing;
+$("btn-new").onclick = startPairing;
+const cancelPairing = async () => {
+  cancelling = true;
+  closeDlg($("pair-dialog"));
+  closeDlg($("help-dialog"));
+  try { render(await post("cancel-pair")); } catch (e) { cancelling = false; }
+};
+$("btn-cancel").onclick = cancelPairing;
+$("btn-help-cancel").onclick = cancelPairing;
+$("pair-dialog").oncancel = (e) => {
+  e.preventDefault();
+  if ($("pair-done").hidden) cancelPairing(); else closeDlg($("pair-dialog"));
+};
+$("help-dialog").oncancel = (e) => { e.preventDefault(); cancelPairing(); };
 for (const k of PERMS) {
   $("perm-" + k).onchange = async () => {
     try {
@@ -930,13 +1233,28 @@ function renderRelay(r) {
   if (document.activeElement !== addr && !addr.dataset.edited) addr.value = r.address;
 }
 
+// One line on Home and the top of Remote access: where can a phone reach this computer from?
+function renderReach(s) {
+  const relay = s.relay && s.relay.state ? s.relay.state.status : "off";
+  const tail = s.remote && s.remote.status === "running";
+  const anywhere = relay === "online" || tail;
+  const via = [relay === "online" ? "the PairDesk relay" : "", tail ? "Tailscale" : ""].filter(Boolean).join(" and ");
+  $("tile-remote").textContent = anywhere ? "Anywhere" : relay === "connecting" ? "Connecting…" : "Same Wi-Fi only";
+  $("tile-remote-ico").className = "ico" + (anywhere ? " on" : "");
+  $("reach-ico").className = "ico big" + (anywhere ? " on" : "");
+  $("reach-title").textContent = anywhere ? "Your phone can reach this computer from anywhere"
+    : relay === "connecting" ? "Connecting to the relay…" : "Your phone can reach this computer on the same Wi-Fi only";
+  $("reach-text").textContent = anywhere ? "Through " + via + ", on mobile data or any other Wi-Fi."
+    : "Turn on the PairDesk relay below: it works with nothing else to set up.";
+}
+
 async function copyText(input, button) {
   input.select();
   try { await navigator.clipboard.writeText(input.value); }
   catch (e) { document.execCommand("copy"); }
-  const old = button.textContent;
-  button.textContent = "Copied";
-  setTimeout(() => (button.textContent = old), 1500);
+  input.setSelectionRange(0, 0);
+  input.blur();
+  showBanner("Link copied.");
 }
 
 function renderFirewall(fw) {
@@ -962,7 +1280,7 @@ function renderFirewall(fw) {
 }
 
 function renderSecure(sd) {
-  $("nav-secure").hidden = $("tile-secure-wrap").hidden = !sd;
+  $("nav-secure").hidden = !sd;
   if (!sd) { if (currentPage === "secure") go("home"); return; }
   const text = $("sd-text");
   const on = sd.state === "running" || sd.state === "starting";
@@ -977,19 +1295,21 @@ function renderSecure(sd) {
   } else if (sd.state === "stopped") {
     text.textContent = "The helper is installed but not running. Turn it on again to restart it.";
   } else {
-    text.textContent = "Off.";
+    text.textContent = "Off";
   }
   if (sd.error) text.textContent += " " + sd.error;
   $("sd-dot").className = "dot" + (on && sd.helper ? " ok" : on || sd.working ? " warn" : "");
-  $("tile-secure").textContent = sd.working ? "Waiting for Windows…" : on ? "On" : "Off";
+  $("sd-ico").className = "ico big" + (on && sd.helper ? " on" : "");
 }
 
 function renderUpdate(u) {
   $("updates").hidden = !u;
-  $("count-settings").hidden = !(u && u.latest && !u.store);
+  const available = !!(u && u.latest && !u.store);
+  $("count-settings").hidden = !available;
+  $("tile-update-ico").className = "ico" + (available ? " on" : "");
   $("tile-update").textContent = !u ? "Not available here"
-    : u.store ? "Kept up to date by the store"
-    : u.latest ? "PairDesk " + u.latest + " is available" : "Up to date (" + u.current + ")";
+    : u.store ? "From the store"
+    : u.latest ? u.latest + " is ready" : "Up to date";
   if (!u) return;
   const st = u.state || { status: "idle" };
   const text = $("up-text");
@@ -999,6 +1319,7 @@ function renderUpdate(u) {
   const bar = $("up-progress");
   install.hidden = download.hidden = notes.hidden = bar.hidden = true;
   $("btn-up-check").hidden = $("up-auto-row").hidden = u.store;
+  $("up-ico").className = "ico" + (available ? " on" : "");
   notes.href = download.href = u.notes_url;
   if (u.store) {
     text.textContent = "PairDesk " + u.current + ". " +
@@ -1039,8 +1360,8 @@ function renderFiles(s) {
   const drop = $("drop");
   drop.classList.toggle("off", connectedPhones.length === 0);
   $("drop-hint").textContent = connectedPhones.length
-    ? "Drop files here, or click to choose. They go to the phone's Download/PairDesk folder."
-    : "Open PairDesk on your phone to send it files.";
+    ? "Or click to choose. They go to the phone's Download/PairDesk folder."
+    : "Open PairDesk on your phone first, then drop files here.";
   const sel = $("send-to");
   $("send-to-row").hidden = connectedPhones.length < 2;
   const want = connectedPhones.map((p) => p.id).join();
@@ -1052,8 +1373,8 @@ function renderFiles(s) {
   }
   $("downloads").textContent = s.downloads;
   $("sendto-hint").textContent = s.os === "windows"
-    ? "Or right-click files in File Explorer \u2192 Send to \u2192 PairDesk phone (on Windows 11, Show more options first)."
-    : "Or in your file manager, right-click files \u2192 Scripts \u2192 Send to phone (PairDesk) (GNOME Files), or Send to phone (PairDesk) (Dolphin).";
+    ? "Tip: right-click files in File Explorer \u2192 Send to \u2192 PairDesk phone (on Windows 11, Show more options first)."
+    : "Tip: in your file manager, right-click files \u2192 Scripts \u2192 Send to phone (PairDesk) (GNOME Files), or Send to phone (PairDesk) (Dolphin).";
 
   const list = $("transfers");
   list.replaceChildren();
@@ -1062,36 +1383,32 @@ function renderFiles(s) {
   $("count-files").hidden = active === 0;
   $("count-files").textContent = active;
   $("tile-files").textContent = connectedPhones.length
-    ? (active ? active + " in progress" : "To " + (connectedPhones.length === 1 ? connectedPhones[0].name : "your phones"))
-    : "Connect a phone first";
+    ? (active ? active + " in progress" : "Drop to send")
+    : "Connect a phone";
   for (const t of s.transfers) {
-    const li = document.createElement("li");
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = (t.incoming ? "\u2193 " : "\u2191 ") + t.name;
-    const meta = document.createElement("span");
-    meta.className = "meta" + (t.state === "failed" ? " failed" : "");
+    const li = el("li");
+    const ic = el("span", "ico" + (t.state === "done" ? " on" : ""));
+    ic.append(icon(t.state === "failed" ? "i-x" : t.incoming ? "i-down" : "i-up"));
+    const info = el("div", "grow");
     const way = t.incoming ? "from " + t.phone : "to " + t.phone;
-    meta.textContent = t.state === "failed" ? way + " \u00b7 " + (t.msg || "failed")
+    const meta = el("div", "meta" + (t.state === "failed" ? " failed" : ""),
+      t.state === "failed" ? way + " \u00b7 " + (t.msg || "failed")
       : t.state === "done" ? way + " \u00b7 " + size(t.size)
       : t.state === "waiting" ? way + " \u00b7 waiting\u2026"
-      : way + " \u00b7 " + size(t.done) + " of " + size(t.size);
-    li.append(name);
+      : way + " \u00b7 " + size(t.done) + " of " + size(t.size));
+    info.append(el("div", "name", t.name), meta);
+    if (t.state === "active" || t.state === "waiting") {
+      const bar = el("div", "bar");
+      const fill = el("i");
+      fill.style.width = (t.size ? (100 * t.done) / t.size : 0) + "%";
+      bar.append(fill);
+      info.append(bar);
+    }
+    li.append(ic, info);
     if (t.incoming && t.state === "done") {
-      const b = document.createElement("button");
-      b.className = "link";
-      b.textContent = "Show";
+      const b = el("button", "small", "Show");
       b.onclick = () => post("reveal", { id: t.id }).catch((e) => showBanner(e.message, true));
       li.append(b);
-    } else {
-      li.append(document.createElement("span"));
-    }
-    li.append(meta);
-    if (t.state === "active" || t.state === "waiting") {
-      const bar = document.createElement("progress");
-      bar.max = t.size || 1;
-      bar.value = t.done;
-      li.append(bar);
     }
     list.append(li);
   }
@@ -1100,27 +1417,37 @@ function renderFiles(s) {
 async function sendFiles(fileList) {
   if (!connectedPhones.length) { showBanner("Open PairDesk on your phone first.", true); return; }
   const phone = $("send-to").value;
+  let sent = 0;
   for (const f of fileList) {
     const q = "upload?name=" + encodeURIComponent(f.name) + (phone ? "&phone=" + encodeURIComponent(phone) : "");
     try {
       const res = await fetch(api(q), { method: "POST", headers: { "X-PairDesk": "1" }, body: f });
       if (!res.ok) throw new Error(await res.text());
+      sent++;
       refresh();
     } catch (e) { showBanner(f.name + ": " + e.message, true); }
   }
+  if (sent) showBanner(sent === 1 ? "Sending " + fileList[0].name + "…" : "Sending " + sent + " files…");
 }
 const drop = $("drop");
-drop.onclick = () => connectedPhones.length && $("file-input").click();
-drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drop.onclick(); } };
+drop.onclick = (e) => {
+  if (e.target.closest("#send-to-row")) return;
+  if (connectedPhones.length) $("file-input").click();
+  else showBanner("Open PairDesk on your phone first.", true);
+};
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drop.onclick(e); } };
 $("file-input").onchange = (e) => { sendFiles([...e.target.files]); e.target.value = ""; };
-drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
-drop.ondragleave = () => drop.classList.remove("over");
-drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); sendFiles([...e.dataTransfer.files]); };
-// A file dropped anywhere else shouldn't make the browser leave the page.
+let dragDepth = 0;
+drop.ondragenter = (e) => { e.preventDefault(); dragDepth++; drop.classList.add("over"); };
+drop.ondragover = (e) => e.preventDefault();
+drop.ondragleave = () => { if (--dragDepth <= 0) { dragDepth = 0; drop.classList.remove("over"); } };
+drop.ondrop = (e) => { e.preventDefault(); dragDepth = 0; drop.classList.remove("over"); sendFiles([...e.dataTransfer.files]); };
+// A file dropped anywhere else shouldn't make the window leave the page.
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => e.preventDefault());
 $("btn-open-downloads").onclick = () => post("open-downloads").catch((e) => showBanner(e.message, true));
 
+// ---- Shortcuts ----
 const kindHelp = {
   url: ["Address", "https://", "Opens in your default browser."],
   path: ["File or folder", "C:\\Users\\you\\Documents", "Tip: in File Explorer, Shift + right-click the item and choose Copy as path."],
@@ -1133,15 +1460,26 @@ const kindHelpLinux = {
 };
 let agentOs = "windows";
 function updateKind() {
+  const kind = $("sc-kind").value;
   const help = agentOs === "windows" ? kindHelp : kindHelpLinux;
-  const [label, placeholder, hint] = help[$("sc-kind").value];
+  const [label, placeholder, hint] = help[kind];
   $("sc-target-label").textContent = label;
   $("sc-target").placeholder = placeholder;
   $("sc-hint").textContent = hint;
-  $("sc-args-row").hidden = $("sc-kind").value !== "program";
+  $("sc-args-row").hidden = kind !== "program";
+  for (const b of $("sc-seg").children) b.setAttribute("aria-pressed", b.dataset.kind === kind);
 }
-$("sc-kind").onchange = updateKind;
+for (const b of $("sc-seg").children) b.onclick = () => { $("sc-kind").value = b.dataset.kind; updateKind(); };
 updateKind();
+$("btn-sc-new").onclick = () => {
+  $("sc-form").reset();
+  $("sc-kind").value = "url";
+  updateKind();
+  openDlg($("sc-dialog"));
+  $("sc-name").focus();
+};
+$("btn-sc-cancel").onclick = () => closeDlg($("sc-dialog"));
+$("sc-dialog").oncancel = (e) => { e.preventDefault(); closeDlg($("sc-dialog")); };
 $("sc-form").onsubmit = async (e) => {
   e.preventDefault();
   try {
@@ -1149,17 +1487,15 @@ $("sc-form").onsubmit = async (e) => {
       name: $("sc-name").value, kind: $("sc-kind").value,
       target: $("sc-target").value, args: $("sc-args").value,
     }));
-    $("sc-form").reset();
-    updateKind();
-    showBanner("Shortcut added. It shows up under Apps on your phone.");
+    closeDlg($("sc-dialog"));
+    showBanner("Shortcut added. It shows up under Shortcuts on your phone.");
   } catch (err) { showBanner(err.message, true); }
 };
 
+// ---- Help, live activity, settings ----
 $("btn-get-help").onclick = async () => {
-  go("home");
   try { render(await post("pair", { help: true })); } catch (e) { showBanner(e.message, true); }
 };
-$("btn-help-cancel").onclick = async () => render(await post("cancel-pair"));
 $("btn-copy-help").onclick = () => copyText($("help-share"), $("btn-copy-help"));
 $("btn-copy-pair").onclick = () => copyText($("pair-share"), $("btn-copy-pair"));
 $("btn-end-help").onclick = async () => {
@@ -1194,14 +1530,12 @@ $("btn-recheck").onclick = async () => {
   $("remote-text").textContent = "Checking for Tailscale…";
   try { render(await post("refresh-remote")); } catch (err) { showBanner(err.message, true); }
 };
-
 $("btn-sd-on").onclick = async () => {
   try { render(await post("secure-desktop", { enabled: true })); } catch (err) { showBanner(err.message, true); }
 };
 $("btn-sd-off").onclick = async () => {
   try { render(await post("secure-desktop", { enabled: false })); } catch (err) { showBanner(err.message, true); }
 };
-
 $("btn-up-check").onclick = async () => {
   $("up-text").textContent = "Checking for updates…";
   try { render(await post("update-check")); } catch (err) { showBanner(err.message, true); }
@@ -1213,62 +1547,85 @@ $("up-auto").onchange = async (e) => {
   try { render(await post("check-updates", { enabled: e.target.checked })); }
   catch (err) { showBanner(err.message, true); refresh(); }
 };
-
 $("autostart").onchange = async (e) => {
   try { render(await post("autostart", { enabled: e.target.checked })); }
   catch (err) { showBanner(err.message, true); refresh(); }
 };
 $("btn-quit").onclick = async () => {
-  if (!confirm("Stop PairDesk? Phones can't connect until you start it again.")) return;
+  const yes = await ask({
+    title: "Stop PairDesk?",
+    text: "Phones can't connect until you start it again from the Start menu.",
+    ok: "Stop PairDesk", danger: true,
+  });
+  if (!yes) return;
   stopped = true;
   try { await post("quit"); } catch (e) {}
-  document.body.innerHTML =
-    "<div class='stopped'><div><h1>PairDesk stopped</h1><p class='muted'>Start PairDesk again to let your phone connect. You can close this window.</p></div></div>";
+  $("app").hidden = true;
+  $("toast").hidden = true;
+  const done = el("div", "stopped");
+  done.innerHTML = "<div class='card'><div class='logo' style='width:60px;height:60px;border-radius:19px'>" +
+    "<svg style='color:#d2f34c;width:38px;height:38px'><use href='#i-mark'/></svg></div>" +
+    "<h1>PairDesk stopped</h1><p class='muted' style='margin:0'>Start PairDesk again to let your phone connect. You can close this window.</p></div>";
+  document.body.append(done);
 };
 
-// ---- Screens ----
+// ---- Pages ----
 const PAGES = ["home", "phones", "files", "shortcuts", "permissions", "remote", "secure", "settings"];
 let currentPage = "home";
+function moveInd() {
+  const a = document.querySelector('.nav-item[aria-current="page"]');
+  const ind = $("nav-ind");
+  if (!a || a.hidden) { ind.style.opacity = 0; return; }
+  ind.style.opacity = 1;
+  ind.style.width = a.offsetWidth + "px";
+  ind.style.transform = "translate(" + a.offsetLeft + "px," + a.offsetTop + "px)";
+}
 function go(page, focus) {
   if (!PAGES.includes(page)) page = "home";
   if (page === "secure" && $("nav-secure").hidden) page = "home";
+  const changed = page !== currentPage;
   currentPage = page;
-  for (const el of document.querySelectorAll("section.page")) el.hidden = el.dataset.page !== page;
+  for (const el of document.querySelectorAll("section.page")) {
+    const on = el.dataset.page === page;
+    el.hidden = !on;
+    if (on && changed) { el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter"); }
+  }
   for (const b of document.querySelectorAll(".nav-item")) {
     const on = b.dataset.page === page;
     if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     b.setAttribute("aria-selected", on);
     b.tabIndex = on ? 0 : -1;
   }
+  moveInd();
   if (location.hash !== "#" + page) history.replaceState(null, "", "#" + page);
   $("content").scrollTop = 0;
   if (focus) document.querySelector('.nav-item[data-page="' + page + '"]').focus();
 }
 for (const b of document.querySelectorAll(".nav-item")) b.onclick = () => go(b.dataset.page);
 for (const t of document.querySelectorAll("[data-go]")) t.onclick = () => go(t.dataset.go);
-document.querySelector(".nav-list").onkeydown = (e) => {
+$("btn-home-files").onclick = () => go("files");
+document.querySelector(".nav-wrap").onkeydown = (e) => {
   const items = [...document.querySelectorAll(".nav-item")].filter((b) => !b.hidden);
   const i = items.findIndex((b) => b.dataset.page === currentPage);
   const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
   if (step) { e.preventDefault(); go(items[(i + step + items.length) % items.length].dataset.page, true); }
 };
-// Ctrl+1…8 switch screens, like tabs.
+// Ctrl+1…8 switch pages, like tabs.
 window.addEventListener("keydown", (e) => {
-  if (!e.ctrlKey || e.altKey || e.shiftKey) return;
+  if (!e.ctrlKey || e.altKey || e.shiftKey || document.querySelector("dialog[open]")) return;
   const items = [...document.querySelectorAll(".nav-item")].filter((b) => !b.hidden);
   const n = Number(e.key);
   if (n >= 1 && n <= items.length) { e.preventDefault(); go(items[n - 1].dataset.page, true); }
 });
-$("btn-home-pair").onclick = async () => {
-  go("phones");
-  try { render(await post("pair")); } catch (e) { showBanner(e.message, true); }
-};
+window.addEventListener("resize", moveInd);
+// The indicator only slides once the first page is in place.
+requestAnimationFrame(() => requestAnimationFrame(() => { $("nav-ind").style.transition = ""; }));
+$("nav-ind").style.transition = "none";
 
 (async () => {
   go(location.hash.slice(1) || "home");
   if (new URLSearchParams(location.search).has("pair")) {
-    history.replaceState(null, "", location.pathname + "#phones");
-    go("phones");
+    history.replaceState(null, "", location.pathname + "#" + currentPage);
     try { render(await post("pair")); } catch (e) {}
   }
   await refresh();

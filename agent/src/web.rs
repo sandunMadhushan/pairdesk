@@ -19,6 +19,27 @@ use tiny_http::{Header, Method, Request, Response, Server};
 use crate::state::AppState;
 
 const PAGE: &str = include_str!("settings.html");
+
+/// Urbanist (SIL Open Font License, assets/fonts/Urbanist-OFL.txt): the
+/// phone app's typeface, so the window looks the same.
+const FONTS: [(&str, &[u8]); 4] = [
+    (
+        "/fonts/urbanist-400.ttf",
+        include_bytes!("../assets/fonts/Urbanist-Regular.ttf"),
+    ),
+    (
+        "/fonts/urbanist-500.ttf",
+        include_bytes!("../assets/fonts/Urbanist-Medium.ttf"),
+    ),
+    (
+        "/fonts/urbanist-600.ttf",
+        include_bytes!("../assets/fonts/Urbanist-SemiBold.ttf"),
+    ),
+    (
+        "/fonts/urbanist-700.ttf",
+        include_bytes!("../assets/fonts/Urbanist-Bold.ttf"),
+    ),
+];
 /// Largest request body read, in bytes (file uploads are streamed instead).
 const MAX_BODY: u64 = 64 * 1024;
 
@@ -57,17 +78,27 @@ fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
 
-fn respond<R: Read>(request: Request, mut response: Response<R>, content_type: &str) {
+fn respond<R: Read>(request: Request, response: Response<R>, content_type: &str) {
+    respond_cached(request, response, content_type, "no-store");
+}
+
+fn respond_cached<R: Read>(
+    request: Request,
+    mut response: Response<R>,
+    content_type: &str,
+    cache: &str,
+) {
     for (k, v) in [
         ("Content-Type", content_type),
-        ("Cache-Control", "no-store"),
+        ("Cache-Control", cache),
         ("Referrer-Policy", "no-referrer"),
         ("X-Frame-Options", "DENY"),
         ("X-Content-Type-Options", "nosniff"),
         (
             "Content-Security-Policy",
             "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; \
-             img-src data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'",
+             img-src data:; font-src 'self'; connect-src 'self'; form-action 'none'; \
+             frame-ancestors 'none'",
         ),
     ] {
         response.add_header(header(k, v));
@@ -163,6 +194,17 @@ fn handle(
             Response::from_string(PAGE),
             "text/html; charset=utf-8",
         ),
+        (Method::Get, path) if path.starts_with("/fonts/") => {
+            match FONTS.iter().find(|(p, _)| *p == path) {
+                Some((_, bytes)) => respond_cached(
+                    request,
+                    Response::from_data(*bytes),
+                    "font/ttf",
+                    "max-age=31536000, immutable",
+                ),
+                None => status(request, 404, "not found"),
+            }
+        }
         (Method::Get, "/api/state") => send_state(request, state),
         (Method::Post, "/api/pair") => {
             #[derive(Deserialize, Default)]
@@ -786,6 +828,21 @@ fn valid_relay(address: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_page_asks_for_the_fonts_we_serve() {
+        for (path, bytes) in super::FONTS {
+            assert!(
+                super::PAGE.contains(&format!("url(\"{}\")", &path[1..])),
+                "{path}"
+            );
+            assert_eq!(&bytes[..4], &[0, 1, 0, 0], "{path} is a TrueType font");
+        }
+        // No browser popups in the app window.
+        for popup in ["alert(", "confirm(", "prompt("] {
+            assert!(!super::PAGE.contains(popup), "{popup}");
+        }
+    }
+
     #[test]
     fn relay_addresses() {
         assert!(super::valid_relay("relay.example.org:443"));

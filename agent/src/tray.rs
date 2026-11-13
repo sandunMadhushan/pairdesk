@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use crate::state::AppState;
 
-/// 32×32 RGBA tray icon: a phone outline on a blue rounded square, with a
-/// red dot while a phone is viewing the screen.
+/// 32×32 RGBA tray icon: a lime phone outline on an ink rounded square (the
+/// app's colours), with a red dot while a phone is viewing the screen.
 fn icon_rgba(viewing: bool) -> (Vec<u8>, u32) {
     const N: i32 = 32;
     let mut px = vec![0u8; (N * N * 4) as usize];
@@ -31,15 +31,17 @@ fn icon_rgba(viewing: bool) -> (Vec<u8>, u32) {
             let outer = inside_rounded(x, y, 10, 5, 21, 26, 3);
             let inner = inside_rounded(x, y, 13, 8, 18, 21, 1);
             let dot = (x - 15).pow(2) * 4 + (y - 23).pow(2) * 4 <= 5;
-            let white = (outer && !inner) || dot;
+            let lime = (outer && !inner) || dot;
             let red_ring = viewing && (x - 25).pow(2) + (y - 6).pow(2) <= 49;
             let red = viewing && (x - 25).pow(2) + (y - 6).pow(2) <= 30;
             let (r, g, b, a) = if red {
                 (0xe5, 0x2b, 0x2b, 255)
-            } else if red_ring || white {
+            } else if red_ring {
                 (255, 255, 255, 255)
+            } else if lime {
+                (0xd2, 0xf3, 0x4c, 255)
             } else if bg {
-                (0x24, 0x57, 0xd6, 255)
+                (0x11, 0x11, 0x11, 255)
             } else {
                 (0, 0, 0, 0)
             };
@@ -65,9 +67,46 @@ fn tooltip(state: &AppState) -> String {
 }
 
 fn open(url: &str) {
+    #[cfg(target_os = "linux")]
+    if open_app_window(url) {
+        return;
+    }
     if let Err(e) = webbrowser::open(url) {
         log::warn!("cannot open the browser: {e}");
     }
+}
+
+/// Linux: the page in a window of its own, without tabs or an address bar,
+/// when a Chromium-based browser is installed (its "app" mode). Otherwise
+/// (and inside Flatpak, which can't start them) the default browser.
+#[cfg(target_os = "linux")]
+fn open_app_window(url: &str) -> bool {
+    if std::env::var_os("FLATPAK_ID").is_some() {
+        return false;
+    }
+    const BROWSERS: [&str; 7] = [
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "microsoft-edge",
+        "microsoft-edge-stable",
+        "brave-browser",
+    ];
+    BROWSERS.iter().any(|b| {
+        std::process::Command::new(b)
+            .arg(format!("--app={url}"))
+            .arg("--window-size=1040,740")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map(|mut child| {
+                // Reaped when the launcher exits (usually at once).
+                std::thread::spawn(move || child.wait());
+            })
+            .is_ok()
+    })
 }
 
 /// The settings page's address, and whether this PairDesk may show it
@@ -93,7 +132,7 @@ fn page_url(pair: bool) -> Option<String> {
 
 /// Shows PairDesk (`pair`: on the pairing code). From any thread.
 /// Windows: the PairDesk window (the browser without WebView2). Linux:
-/// the browser.
+/// an app window of a Chromium-based browser, or the browser.
 pub fn show(pair: bool) {
     platform::show(pair);
 }

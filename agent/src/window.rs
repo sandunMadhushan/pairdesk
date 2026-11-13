@@ -29,7 +29,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use wry::raw_window_handle::{
     HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle,
 };
-use wry::{WebContext, WebView, WebViewBuilder};
+use wry::{WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows};
 
 /// Posted to the window by its close button: destroyed outside of
 /// whatever WebView2 is doing at that moment.
@@ -154,10 +154,16 @@ fn create(url: &str, home: &str) -> Result<AppWindow, String> {
         })
         // The page's own background, so opening doesn't flash white.
         .with_background_color(if dark {
-            (0x12, 0x14, 0x18, 255)
+            (0x0d, 0x0d, 0x0f, 255)
         } else {
-            (0xf5, 0xf6, 0xf8, 255)
+            (0xee, 0xee, 0xea, 255)
         })
+        // An app window, not a browser: no reload, find, print, zoom or
+        // developer keys, and no browser right-click menu (the page keeps
+        // copy and paste in its text boxes).
+        .with_browser_accelerator_keys(false)
+        .with_default_context_menus(false)
+        .with_hotkeys_zoom(false)
         .with_navigation_handler(move |to| {
             if to.starts_with(&home) || to == "about:blank" {
                 return true;
@@ -253,10 +259,23 @@ fn make_window() -> Result<HWND, String> {
                 std::io::Error::last_os_error()
             ));
         }
-        if system_uses_dark_mode() {
+        let dark = system_uses_dark_mode();
+        if dark {
             // DWMWA_USE_IMMERSIVE_DARK_MODE: a dark title bar.
             let on: i32 = 1;
             DwmSetWindowAttribute(hwnd, 20, (&on as *const i32).cast(), 4);
+        }
+        // Windows 11: the title bar and border take the page's own colour,
+        // so the window reads as one piece (Windows 10 ignores these).
+        // COLORREF is 0x00BBGGRR.
+        let (caption, text): (u32, u32) = if dark {
+            (0x000f_0d0d, 0x00ee_f2f2)
+        } else {
+            (0x00ea_eeee, 0x0011_1111)
+        };
+        for (attribute, value) in [(35u32, caption), (34, caption), (36, text)] {
+            // DWMWA_CAPTION_COLOR, DWMWA_BORDER_COLOR, DWMWA_TEXT_COLOR
+            DwmSetWindowAttribute(hwnd, attribute, (&value as *const u32).cast(), 4);
         }
         Ok(hwnd)
     }
