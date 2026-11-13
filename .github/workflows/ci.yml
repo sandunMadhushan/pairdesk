@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request replaces the run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   agent:
     name: Agent (${{ matrix.os }})
@@ -162,6 +167,25 @@ jobs:
           name: pairdesk-mac
           path: out/*.dmg
           if-no-files-found: error
+
+  e2e-mac:
+    name: End to end on macOS (phone code ↔ Mac agent)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: cargo build --release
+        working-directory: agent
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: mobile/pubspec.yaml
+          cache: true
+      - run: flutter pub get
+        working-directory: mobile
+      - run: tools/e2e-mac.sh
 
   relay:
     name: Relay

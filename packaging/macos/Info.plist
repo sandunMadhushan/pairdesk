@@ -40,6 +40,12 @@
 	<string>PairDesk asks System Events to lock, restart or shut down this Mac when your phone asks.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>PairDesk lets your phone find and connect to this Mac on your Wi-Fi.</string>
+	<!-- The window shows PairDesk's own page from http://127.0.0.1. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_pairdesk._tcp</string>
