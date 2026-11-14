@@ -14,20 +14,20 @@
 //! Phone → agent: `"PDM1" | µ-law bytes`.
 
 pub mod codec;
+#[cfg(any(windows, target_os = "macos"))]
+mod cpal_host;
 mod echo;
 #[cfg(target_os = "linux")]
 mod linux;
-#[cfg(windows)]
-mod windows;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+#[cfg(any(windows, target_os = "macos"))]
+use cpal_host as backend;
 #[cfg(target_os = "linux")]
 use linux as backend;
-#[cfg(windows)]
-use windows as backend;
 
 use codec::{CHANNELS, FRAME, Ring, Ticker};
 
@@ -66,7 +66,7 @@ impl Codec {
     }
 }
 
-#[cfg(not(any(target_os = "linux", windows)))]
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
 mod backend {
     use super::*;
     pub struct Device;

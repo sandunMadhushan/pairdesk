@@ -6,7 +6,7 @@ const GITHUB = "https://github.com/sandunMadhushan/pairdesk";
 
 const STATS = [
   { n: 2, suffix: " min", label: "to set up, once" },
-  { n: 3, suffix: "", label: "systems: Windows, Linux and Android" },
+  { n: 5, suffix: "", label: "systems: Windows, Mac, Linux, Android, iPhone" },
   { n: 2, suffix: " h", label: "at most for a help link" },
   { n: 0, suffix: "", label: "accounts, ads or trackers" },
 ];
@@ -42,12 +42,12 @@ export function Stats() {
 const STEPS = [
   {
     title: "Install it on your computer",
-    body: "Run the Windows setup or install the Linux package. PairDesk opens and shows a pairing code.",
+    body: "Run the Windows setup, drag PairDesk to Applications on a Mac, or install the Linux package. PairDesk opens and shows a pairing code.",
     icon: "M4 5h16v11H4zM2 19h20",
   },
   {
     title: "Get the app on your phone",
-    body: "Install PairDesk for Android. It asks for the camera only to read the code.",
+    body: "Install PairDesk for Android or iPhone. It asks for the camera only to read the code.",
     icon: "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
   },
   {
@@ -278,7 +278,7 @@ const QUESTIONS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "iPhone or Mac?",
-    a: "Not yet. PairDesk is Android plus Windows and Linux for now.",
+    a: "Yes, new: the Mac app works on macOS 11 and newer (Apple silicon and Intel), and the iPhone app on iOS 15 and newer. The iPhone app isn't on the App Store yet; you install it with Sideloadly and your Apple ID. On a Mac, allow Accessibility and Screen Recording once.",
   },
 ];
 

@@ -1,0 +1,10 @@
+PairDesk
+Copyright (C) Sandun Madhushan and contributors.
+
+PairDesk is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version. See the LICENSE file.
+
+THIRD-PARTY ASSETS
+------------------
+- Urbanist font (SIL Open Font License 1.1): mobile/assets/fonts and
+  agent/assets/fonts, with their Urbanist-OFL.txt.

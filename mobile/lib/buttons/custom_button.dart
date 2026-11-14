@@ -109,9 +109,13 @@ class CustomButton {
 
 String modifierLabel(Modifier m, {String? os}) => switch (m) {
   Modifier.ctrl => 'Ctrl',
-  Modifier.alt => 'Alt',
+  Modifier.alt => os == 'macos' ? 'Option' : 'Alt',
   Modifier.shift => 'Shift',
-  Modifier.meta => os == 'windows' ? 'Win' : 'Super',
+  Modifier.meta => switch (os) {
+    'windows' => 'Win',
+    'macos' => 'Cmd',
+    _ => 'Super',
+  },
 };
 
 String keyLabel(AgentKey k) => switch (k) {
@@ -150,9 +154,29 @@ String powerLabel(PowerAction a) => switch (a) {
 };
 
 /// Buttons a new install starts with. Shortcuts that differ between
-/// systems use the Windows form; Linux desktops mostly share them.
+/// systems use the Windows form; Linux desktops mostly share them, and
+/// Macs get their own set (Cmd instead of Ctrl).
 List<CustomButton> defaultButtons({String? os}) {
   CustomButton b(String id, String label, ButtonAction a) => CustomButton(id: id, label: label, action: a);
+  if (os == 'macos') {
+    const cmd = [Modifier.meta];
+    return [
+      b('d-copy', 'Copy', const ComboAction(cmd, char: 'c')),
+      b('d-paste', 'Paste', const ComboAction(cmd, char: 'v')),
+      b('d-cut', 'Cut', const ComboAction(cmd, char: 'x')),
+      b('d-undo', 'Undo', const ComboAction(cmd, char: 'z')),
+      b('d-all', 'Select all', const ComboAction(cmd, char: 'a')),
+      b('d-find', 'Find', const ComboAction(cmd, char: 'f')),
+      b('d-switch', 'Switch app', const ComboAction(cmd, key: AgentKey.tab)),
+      b('d-close', 'Close window', const ComboAction(cmd, char: 'w')),
+      b('d-quit', 'Quit app', const ComboAction(cmd, char: 'q')),
+      b('d-newtab', 'New tab', const ComboAction(cmd, char: 't')),
+      b('d-spotlight', 'Spotlight', const ComboAction(cmd, key: AgentKey.space)),
+      b('d-full', 'Full screen', const ComboAction([Modifier.ctrl, Modifier.meta], char: 'f')),
+      b('d-forcequit', 'Force Quit', const ComboAction([Modifier.meta, Modifier.alt], key: AgentKey.escape)),
+      b('d-snip', 'Screenshot', const ComboAction([Modifier.meta, Modifier.shift], char: '4')),
+    ];
+  }
   const ctrl = [Modifier.ctrl];
   return [
     b('d-copy', 'Copy', const ComboAction(ctrl, char: 'c')),

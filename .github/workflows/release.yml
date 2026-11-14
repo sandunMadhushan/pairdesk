@@ -200,9 +200,58 @@ jobs:
           path: out
           if-no-files-found: error
 
+  mac:
+    name: Mac app
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: packaging/macos/build-app.sh "$VERSION" out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: mac
+          path: out
+          if-no-files-found: error
+
+  iphone:
+    name: iPhone app (unsigned)
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: mobile/pubspec.yaml
+          cache: true
+      - run: flutter pub get
+        working-directory: mobile
+      - run: flutter build ios --release --no-codesign --dart-define=PAIRDESK_UPDATES=github
+        working-directory: mobile
+      # Unsigned: installed with Sideloadly and a free Apple ID (docs/IPHONE.md).
+      - run: |
+          mkdir -p out Payload
+          cp -R mobile/build/ios/iphoneos/Runner.app Payload/
+          zip -qry out/PairDesk-$VERSION-iphone.ipa Payload
+          ls -lh out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: iphone
+          path: out
+          if-no-files-found: error
+
   publish:
     name: Setup, checksums, signed manifest, release
-    needs: [version, windows, linux, android]
+    needs: [version, windows, linux, android, mac, iphone]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -225,7 +274,7 @@ jobs:
         run: SETUP=dist/PairDesk-Setup-$VERSION-x64.exe PATH=$PATH:/usr/lib/wine tools/e2e-windows-setup.sh
       - name: Collect
         run: |
-          cp art/linux/* art/android/* dist/
+          cp art/linux/* art/android/* art/mac/* art/iphone/* dist/
           # The Store package is uploaded to Partner Center, not offered for download.
           mkdir -p store && cp art/windows/*.msix store/
           ls -la dist store
@@ -299,7 +348,9 @@ jobs:
           |---|---|
           | **Windows** | [PairDesk-Setup-$VERSION-x64.exe]($dl/PairDesk-Setup-$VERSION-x64.exe) (recommended), or the [program file]($dl/pairdesk-agent-$VERSION-windows-x64.exe) |
           | **Linux** | [.deb]($dl/pairdesk_${VERSION}_amd64.deb) (Ubuntu, Debian), [.rpm]($dl/pairdesk-$VERSION-1.x86_64.rpm) (Fedora, openSUSE), [AppImage]($dl/PairDesk-$VERSION-x86_64.AppImage) (any distribution) |
+          | **Mac** | [PairDesk-$VERSION-mac.dmg]($dl/PairDesk-$VERSION-mac.dmg) (Apple silicon and Intel, macOS 11 or newer; see [MAC.md](https://github.com/$REPO/blob/main/docs/MAC.md)) |
           | **Android** | [arm64]($dl/pairdesk-$VERSION-android-arm64.apk) (most phones), [armv7]($dl/pairdesk-$VERSION-android-armv7.apk) (older phones) |
+          | **iPhone** | [PairDesk-$VERSION-iphone.ipa]($dl/PairDesk-$VERSION-iphone.ipa) (iOS 15 or newer, installed with Sideloadly; see [IPHONE.md](https://github.com/$REPO/blob/main/docs/IPHONE.md)) |
           | **Relay** (for hosting your own, see [RELAY.md](https://github.com/$REPO/blob/main/docs/RELAY.md)) | [Linux x64]($dl/pairdesk-relay-linux-x64), [Linux arm64]($dl/pairdesk-relay-linux-arm64) |
 
           Check downloads against \`SHA256SUMS.txt\`. PairDesk checks its own updates against \`latest.json.sig\`.

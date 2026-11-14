@@ -658,7 +658,9 @@ mod tests {
         assert_eq!(u.status(), Status::Available);
         let snap = u.snapshot();
         assert_eq!(snap["latest"], "9.0.0");
-        assert_eq!(snap["can_install"], true);
+        // A loose program file on a Mac isn't swapped (the app bundle is
+        // what gets updated there).
+        assert_eq!(snap["can_install"], cfg!(not(target_os = "macos")));
 
         // The download is checked, then swapped in for the program file.
         let target = dir.path().join("pairdesk-agent");

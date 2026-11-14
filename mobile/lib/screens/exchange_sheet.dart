@@ -62,7 +62,11 @@ class Exchange {
     }
     try {
       await conn.clipboardSet(text, paste: paste);
-      say(paste ? 'Pasted on the computer.' : 'On the computer\'s clipboard. Paste it there with Ctrl+V.');
+      say(
+        paste
+            ? 'Pasted on the computer.'
+            : 'On the computer\'s clipboard. Paste it there with ${conn.agentOs == 'macos' ? 'Cmd' : 'Ctrl'}+V.',
+      );
     } on RequestException catch (e) {
       say(e.message);
     }

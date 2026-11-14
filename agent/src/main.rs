@@ -22,6 +22,8 @@ mod identity;
 mod input;
 mod install;
 mod instance;
+#[cfg(target_os = "macos")]
+mod macsys;
 mod net;
 mod pairing;
 mod power;
@@ -180,8 +182,12 @@ fn init_logging(data_dir: &Path) {
     let mut builder = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("info,rustls=error"),
     );
-    // Without a console (Windows release, or started at sign-in) log to a file.
-    let to_file = cfg!(all(windows, not(debug_assertions)));
+    // Without a console (Windows release, or started at sign-in) log to a
+    // file. A Mac app opened from Finder has no terminal either.
+    let to_file = cfg!(all(
+        any(windows, target_os = "macos"),
+        not(debug_assertions)
+    ));
     // Appended to (starting PairDesk again mustn't wipe the running copy's
     // log), and started afresh once it gets big.
     let path = data_dir.join("agent.log");

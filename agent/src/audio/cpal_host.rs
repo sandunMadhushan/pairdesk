@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Windows: sound through WASAPI (cpal). The computer's sound is recorded
-//! with loopback capture on the default output device; devices' own
-//! formats are converted to and from 48 kHz stereo 16-bit here.
+//! Windows and Mac: sound through cpal (WASAPI / Core Audio). The
+//! computer's sound is recorded with loopback capture on the default output
+//! device (Mac: a Core Audio process tap, macOS 14.2 and newer); devices'
+//! own formats are converted to and from 48 kHz stereo 16-bit here.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

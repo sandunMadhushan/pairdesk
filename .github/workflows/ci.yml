@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request replaces the run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   agent:
     name: Agent (${{ matrix.os }})
@@ -108,6 +113,79 @@ jobs:
           name: pairdesk-android
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+  ios:
+    name: Phone app (iPhone)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: mobile/pubspec.yaml
+          cache: true
+      - run: flutter pub get
+      # Unsigned: installed with Sideloadly (or signed later with an Apple
+      # developer account). See docs/IPHONE.md.
+      - run: flutter build ios --release --no-codesign
+      - name: PairDesk.ipa
+        run: |
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry PairDesk.ipa Payload
+          ls -lh PairDesk.ipa
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pairdesk-iphone
+          path: mobile/PairDesk.ipa
+          if-no-files-found: error
+
+  agent-macos:
+    name: Agent (macOS)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: cargo clippy --release --all-targets -- -D warnings
+      - run: cargo test
+      # PairDesk.app for Apple silicon and Intel (Macs in virtual machines,
+      # older Macs), in a disk image to try from this run's artifacts.
+      - run: ../packaging/macos/build-app.sh 0.0.0-ci ../out
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pairdesk-mac
+          path: out/*.dmg
+          if-no-files-found: error
+
+  e2e-mac:
+    name: End to end on macOS (phone code ↔ Mac agent)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - run: cargo build --release
+        working-directory: agent
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: mobile/pubspec.yaml
+          cache: true
+      - run: flutter pub get
+        working-directory: mobile
+      - run: tools/e2e-mac.sh
 
   relay:
     name: Relay

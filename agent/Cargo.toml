@@ -47,11 +47,18 @@ aec3 = "0.4"
 embed-resource = "3"
 
 [target.'cfg(windows)'.dependencies]
-tray-icon = "0.21"
-# The PairDesk window: the settings page in WebView2 (part of Windows).
-wry = { version = "0.57", default-features = false, features = ["os-webview"] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_Packaging_Appx", "Win32_System_Com", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Services", "Win32_System_StationsAndDesktops", "Win32_UI_Shell", "Win32_System_Console", "Win32_System_Power", "Win32_System_Shutdown", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
+
+# Windows and Mac: tray icon, the PairDesk window (WebView2 / WKWebView) and
+# sound through WASAPI / Core Audio.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+tray-icon = "0.21"
+wry = { version = "0.57", default-features = false, features = ["os-webview"] }
 cpal = "0.18"
+
+# Mac: the AppKit event loop and window the tray and the web view live in.
+[target.'cfg(target_os = "macos")'.dependencies]
+tao = "0.37"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = "0.3"

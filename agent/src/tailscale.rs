@@ -42,6 +42,15 @@ fn cli_path() -> Option<PathBuf> {
         }
         None
     }
+    #[cfg(target_os = "macos")]
+    {
+        // The App Store / standalone app carries its command-line tool
+        // inside; Homebrew puts one on the PATH.
+        let bundled = PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/Tailscale");
+        if bundled.is_file() {
+            return Some(bundled);
+        }
+    }
     #[cfg(not(windows))]
     {
         let path = std::env::var_os("PATH")?;
@@ -51,6 +60,7 @@ fn cli_path() -> Option<PathBuf> {
                 PathBuf::from("/usr/bin/tailscale"),
                 PathBuf::from("/usr/local/bin/tailscale"),
                 PathBuf::from("/snap/bin/tailscale"),
+                PathBuf::from("/opt/homebrew/bin/tailscale"),
             ])
             .find(|p| p.is_file())
     }

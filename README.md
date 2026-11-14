@@ -18,8 +18,8 @@ no codes or "accept" prompts every time.
 
 | | |
 | --- | --- |
-| Computer | Windows 10/11, Linux: X11, and Wayland on GNOME and KDE Plasma (Ubuntu 20.04 / Debian 11 or newer) |
-| Phone | Android 6.0 or newer |
+| Computer | Windows 10/11, Mac (macOS 11 or newer, new: see [docs/MAC.md](docs/MAC.md)), Linux: X11, and Wayland on GNOME and KDE Plasma (Ubuntu 20.04 / Debian 11 or newer) |
+| Phone | Android 6.0 or newer; iPhone with iOS 15 or newer (new, installed with Sideloadly: see [docs/IPHONE.md](docs/IPHONE.md)) |
 | Pairing | Scan a QR code once. The phone is remembered; remove it any time on the computer |
 | Security | TLS with a pinned certificate, Ed25519 sign-in, one-time pairing codes |
 | Background | Tray icon, starts when you sign in, finds the computer again if its address changes |
@@ -204,7 +204,7 @@ flutter build apk --release
 ```text
 agent/      Rust desktop agent: TLS server, pairing, settings page, tray, input, updater
 relay/      PairDesk relay: joins phones and computers that can't reach each other
-mobile/     Flutter phone app (Android now, iPhone later)
+mobile/     Flutter phone app (Android and iPhone)
 packaging/  Icons, Windows setup and Store package, Linux packages, F-Droid and Flatpak
 fastlane/   F-Droid listing: text, icon, screenshots, changelogs
 site/       pairdesk.madhushan.me (Next.js, Tailwind, GSAP, Three.js, Lenis; static export)

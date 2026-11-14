@@ -79,7 +79,7 @@ mod platform {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use std::path::{Path, PathBuf};
 
@@ -171,7 +171,22 @@ mod platform {
     }
 }
 
-#[cfg(all(test, not(windows)))]
+/// Mac: not yet (a Finder Quick Action would do it); files are sent by
+/// dropping them on PairDesk's window.
+#[cfg(target_os = "macos")]
+mod platform {
+    use std::path::Path;
+
+    pub fn present() -> bool {
+        true
+    }
+
+    pub fn install(_exe: &Path) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::platform::*;
 

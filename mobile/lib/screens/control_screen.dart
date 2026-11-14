@@ -110,6 +110,7 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _conn.resumed();
       _audio.resume();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _audio.pause();

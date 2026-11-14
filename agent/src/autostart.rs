@@ -3,6 +3,7 @@
 //!
 //! Windows: a value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 //! Linux: `~/.config/autostart/PairDesk.desktop`.
+//! Mac: a Launch Agent, `~/Library/LaunchAgents/PairDesk.plist`.
 //! Neither needs administrator rights.
 //!
 //! Microsoft Store copy: a startup task in the package manifest, which the
@@ -23,6 +24,7 @@ fn launcher() -> Result<AutoLaunch, String> {
     AutoLaunchBuilder::new()
         .set_app_name("PairDesk")
         .set_app_path(&quoted(exe))
+        .set_use_launch_agent(true)
         .set_args(&["--background"])
         .build()
         .map_err(|e| e.to_string())
@@ -31,7 +33,10 @@ fn launcher() -> Result<AutoLaunch, String> {
 /// The entry is a command line (Windows `Run` value, Linux `Exec=`), so a
 /// path with spaces ("C:\\Users\\Jane Doe\\…") must be quoted.
 fn quoted(exe: &str) -> String {
-    if cfg!(windows) {
+    if cfg!(target_os = "macos") {
+        // A Launch Agent lists the program and its arguments separately.
+        exe.to_string()
+    } else if cfg!(windows) {
         format!("\"{exe}\"")
     } else if exe.contains(|c: char| c.is_whitespace() || "\"'\\`$".contains(c)) {
         // Desktop Entry quoting: inside quotes, escape " ` $ and \.
@@ -179,7 +184,16 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    fn launch_agents_take_the_path_as_it_is() {
+        assert_eq!(
+            quoted("/Applications/Pair Desk.app/Contents/MacOS/pairdesk-agent"),
+            "/Applications/Pair Desk.app/Contents/MacOS/pairdesk-agent"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn quotes_desktop_entry_paths_only_when_needed() {
         assert_eq!(quoted("/opt/pairdesk/agent"), "/opt/pairdesk/agent");
         assert_eq!(

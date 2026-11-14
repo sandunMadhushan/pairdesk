@@ -331,6 +331,10 @@ class AgentConnection extends ChangeNotifier {
   StreamSubscription<dynamic>? _sub;
   Timer? _pingTimer;
   DateTime _lastHeard = DateTime.now();
+
+  /// When the computer last actually sent something (unlike [_lastHeard],
+  /// never reset when the phone wakes from a freeze).
+  DateTime _lastMessage = DateTime.now();
   Completer<Map<String, dynamic>>? _reply;
   bool _cancelRequested = false;
   Completer<(String, IOWebSocketChannel)?>? _race;
@@ -429,6 +433,21 @@ class AgentConnection extends ChangeNotifier {
       useDiscovery: true,
     );
     _session = (laptop, me, phoneName);
+  }
+
+  /// The app is back on screen. iPhones suspend connections in the
+  /// background, so this one may be dead without anyone having noticed:
+  /// ping, and if nothing comes back quickly, reconnect at once (quietly,
+  /// and without counting against [maxReconnects]).
+  Future<void> resumed() async {
+    if (_session == null || _status != ConnectionStatus.connected) return;
+    final before = _lastMessage;
+    _send({'t': 'ping'});
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    if (_status == ConnectionStatus.connected && !_lastMessage.isAfter(before)) {
+      _reconnects = 0;
+      await _reconnect();
+    }
   }
 
   /// The connection went quiet (a sleeping phone, a Wi-Fi hiccup, a
@@ -652,7 +671,7 @@ class AgentConnection extends ChangeNotifier {
   }
 
   void _onData(dynamic data) {
-    _lastHeard = DateTime.now();
+    _lastHeard = _lastMessage = DateTime.now();
     if (data is List<int>) {
       _onBinary(data is Uint8List ? data : Uint8List.fromList(data));
       return;
@@ -908,9 +927,11 @@ class AgentConnection extends ChangeNotifier {
       return 'The computer has PairDesk $v, which can\'t do this. '
           'Install the latest PairDesk on the computer.';
     }
-    final where = _agentOs == 'windows'
-        ? 'right-click the PairDesk icon next to the clock (it may be under the ^ arrow)'
-        : 'open the PairDesk icon in the top bar or system tray';
+    final where = switch (_agentOs) {
+      'windows' => 'right-click the PairDesk icon next to the clock (it may be under the ^ arrow)',
+      'macos' => 'click the PairDesk icon in the menu bar',
+      _ => 'open the PairDesk icon in the top bar or system tray',
+    };
     return 'The computer is running an older PairDesk.\n\n'
         'If you just installed a new one there: $where, choose Stop PairDesk, '
         'then open the new PairDesk. Otherwise download it from pairdesk.madhushan.me.';

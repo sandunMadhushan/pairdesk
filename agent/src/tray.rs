@@ -2,7 +2,9 @@
 //! Tray icon and the main thread's wait-for-quit loop.
 //!
 //! Windows: a native notification-area icon (needs a Win32 message loop on
-//! the main thread). Linux: a StatusNotifierItem over D-Bus, shown by KDE,
+//! the main thread). Mac: a menu-bar icon and the PairDesk window, in the
+//! AppKit event loop on the main thread. Linux: a StatusNotifierItem over
+//! D-Bus, shown by KDE,
 //! most other desktops and GNOME with the AppIndicator extension. Where no
 //! tray is available the agent keeps running and the settings page is
 //! still reachable by starting PairDesk again.
@@ -318,7 +320,7 @@ mod platform {
 
 // ------------------------------------------------------------------- Linux
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use super::*;
     use std::sync::{Condvar, Mutex};
@@ -340,14 +342,12 @@ mod platform {
 
     pub fn show_error(_msg: &str) {}
 
-    #[cfg(target_os = "linux")]
     struct Tray {
         url: String,
         name: String,
         viewing: bool,
     }
 
-    #[cfg(target_os = "linux")]
     impl ksni::Tray for Tray {
         fn id(&self) -> String {
             "pairdesk".into()
@@ -403,7 +403,6 @@ mod platform {
     }
 
     pub fn run(rt: &tokio::runtime::Runtime, state: Arc<AppState>, url: String, no_tray: bool) {
-        #[cfg(target_os = "linux")]
         if !no_tray {
             use ksni::TrayMethods;
             let tray = Tray {
@@ -432,13 +431,294 @@ mod platform {
                 }
             });
         }
-        #[cfg(not(target_os = "linux"))]
-        let _ = (rt, state, url, no_tray);
-
         let mut quit = QUIT.0.lock().unwrap_or_else(|p| p.into_inner());
         while !*quit {
             quit = QUIT.1.wait(quit).unwrap_or_else(|p| p.into_inner());
         }
+    }
+}
+
+// --------------------------------------------------------------------- Mac
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+    use std::sync::{Condvar, Mutex};
+    use tao::dpi::LogicalSize;
+    use tao::event::{Event, StartCause, WindowEvent};
+    use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
+    use tao::platform::macos::{
+        ActivationPolicy, EventLoopExtMacOS, EventLoopWindowTargetExtMacOS,
+    };
+    use tao::platform::run_return::EventLoopExtRunReturn;
+    use tao::window::{Window, WindowBuilder};
+    use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+    use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+    use wry::{WebView, WebViewBuilder};
+
+    enum UserEvent {
+        Show(bool),
+        Quit,
+        Viewers,
+        Menu(MenuEvent),
+    }
+
+    static PROXY: Mutex<Option<EventLoopProxy<UserEvent>>> = Mutex::new(None);
+    /// A "show" asked for before the event loop runs.
+    static PENDING: Mutex<Option<bool>> = Mutex::new(None);
+    /// Without a menu-bar icon (`--no-tray`) there is no event loop.
+    static QUIT: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
+
+    fn send(event: UserEvent) -> bool {
+        PROXY
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .is_some_and(|p| p.send_event(event).is_ok())
+    }
+
+    pub fn attach_console() {}
+
+    pub fn request_quit() {
+        send(UserEvent::Quit);
+        *QUIT.0.lock().unwrap_or_else(|p| p.into_inner()) = true;
+        QUIT.1.notify_all();
+    }
+
+    pub fn show(pair: bool) {
+        if !send(UserEvent::Show(pair)) {
+            *PENDING.lock().unwrap_or_else(|p| p.into_inner()) = Some(pair);
+        }
+    }
+
+    pub fn show_error(msg: &str) {
+        let quoted = format!("\"{}\"", msg.replace('\\', "\\\\").replace('"', "\\\""));
+        let _ = std::process::Command::new("/usr/bin/osascript")
+            .arg("-e")
+            .arg(format!(
+                "display alert \"PairDesk\" message {quoted} as critical"
+            ))
+            .status();
+    }
+
+    /// Menu-bar icons are "templates": black shapes macOS tints to fit the
+    /// menu bar. While a phone watches, the full-colour icon stands out.
+    fn menu_bar_icon(viewing: bool) -> Option<Icon> {
+        let (mut rgba, n) = icon_rgba(viewing);
+        if !viewing {
+            for p in rgba.as_chunks_mut::<4>().0 {
+                let lime = p[0] == 0xd2 && p[1] == 0xf3;
+                *p = if lime { [0, 0, 0, 255] } else { [0, 0, 0, 0] };
+            }
+        }
+        Icon::from_rgba(rgba, n, n).ok()
+    }
+
+    struct Shown {
+        window: Window,
+        view: WebView,
+    }
+
+    /// Shows the PairDesk window (`pair`: on the pairing code).
+    fn show_here(target: &EventLoopWindowTarget<UserEvent>, shown: &mut Option<Shown>, pair: bool) {
+        let Some(url) = page_url(pair) else { return };
+        target.set_activation_policy_at_runtime(ActivationPolicy::Regular);
+        if let Some(s) = shown {
+            if pair {
+                let _ = s.view.load_url(&url);
+            }
+            s.window.set_visible(true);
+            s.window.set_focus();
+            return;
+        }
+        let home = page_url(false).unwrap_or_default();
+        let home_for_popups = home.clone();
+        let window = match WindowBuilder::new()
+            .with_title("PairDesk")
+            .with_inner_size(LogicalSize::new(1040.0, 740.0))
+            .with_min_inner_size(LogicalSize::new(760.0, 560.0))
+            .build(target)
+        {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("window: {e}; opening the browser");
+                open(&url);
+                return;
+            }
+        };
+        let built = WebViewBuilder::new()
+            .with_url(&url)
+            .with_navigation_handler(move |to| {
+                if to.starts_with(&home) || to == "about:blank" {
+                    return true;
+                }
+                open(&to);
+                false
+            })
+            .with_new_window_req_handler(move |to, _| {
+                if !to.starts_with(&home_for_popups) {
+                    open(&to);
+                }
+                wry::NewWindowResponse::Deny
+            })
+            .build(&window);
+        match built {
+            Ok(view) => {
+                window.set_focus();
+                *shown = Some(Shown { window, view });
+                log::info!("window: page loaded");
+            }
+            Err(e) => {
+                log::warn!("window: {e}; opening the browser");
+                open(&url);
+            }
+        }
+    }
+
+    /// The Mac's menu bar while the window is open: Edit makes Cmd+C, V, X,
+    /// A and Z work in the page's text boxes.
+    fn app_menu(stop: &MenuItem) -> Option<Menu> {
+        let app = Submenu::with_items(
+            "PairDesk",
+            true,
+            &[
+                &PredefinedMenuItem::hide(None),
+                &PredefinedMenuItem::hide_others(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::close_window(None),
+                &PredefinedMenuItem::separator(),
+                stop,
+            ],
+        )
+        .ok()?;
+        let edit = Submenu::with_items(
+            "Edit",
+            true,
+            &[
+                &PredefinedMenuItem::undo(None),
+                &PredefinedMenuItem::redo(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::cut(None),
+                &PredefinedMenuItem::copy(None),
+                &PredefinedMenuItem::paste(None),
+                &PredefinedMenuItem::select_all(None),
+            ],
+        )
+        .ok()?;
+        let menu = Menu::new();
+        menu.append_items(&[&app, &edit]).ok()?;
+        Some(menu)
+    }
+
+    pub fn run(rt: &tokio::runtime::Runtime, state: Arc<AppState>, url: String, no_tray: bool) {
+        if no_tray {
+            if let Some(pair) = PENDING.lock().unwrap_or_else(|p| p.into_inner()).take()
+                && let Some(u) = page_url(pair)
+            {
+                open(&u);
+            }
+            let mut quit = QUIT.0.lock().unwrap_or_else(|p| p.into_inner());
+            while !*quit {
+                quit = QUIT.1.wait(quit).unwrap_or_else(|p| p.into_inner());
+            }
+            return;
+        }
+
+        let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+        // A menu-bar app: no Dock icon until the window opens.
+        event_loop.set_activation_policy(ActivationPolicy::Accessory);
+        *PROXY.lock().unwrap_or_else(|p| p.into_inner()) = Some(event_loop.create_proxy());
+        MenuEvent::set_event_handler(Some(|e| {
+            send(UserEvent::Menu(e));
+        }));
+        {
+            let mut rx = state.subscribe_viewers();
+            rt.spawn(async move {
+                while rx.changed().await.is_ok() {
+                    send(UserEvent::Viewers);
+                }
+            });
+        }
+
+        let open_item = MenuItem::new("Open PairDesk", true, None);
+        let pair_item = MenuItem::new("Pair a phone…", true, None);
+        let browser_item = MenuItem::new("Open in the browser", true, None);
+        let quit_item = MenuItem::new("Stop PairDesk", true, None);
+        let stop_item = MenuItem::new("Stop PairDesk", true, None);
+        let mut tray: Option<TrayIcon> = None;
+        let mut menu_bar: Option<Menu> = None;
+        let mut shown: Option<Shown> = None;
+
+        event_loop.run_return(|event, target, control_flow| {
+            *control_flow = ControlFlow::Wait;
+            match event {
+                Event::NewEvents(StartCause::Init) => {
+                    menu_bar = app_menu(&stop_item);
+                    if let Some(m) = &menu_bar {
+                        m.init_for_nsapp();
+                    }
+                    let menu = Menu::new();
+                    let built = menu
+                        .append_items(&[
+                            &open_item,
+                            &pair_item,
+                            &browser_item,
+                            &PredefinedMenuItem::separator(),
+                            &quit_item,
+                        ])
+                        .map_err(|e| e.to_string())
+                        .and_then(|_| {
+                            let mut b = TrayIconBuilder::new()
+                                .with_menu(Box::new(menu))
+                                .with_tooltip(format!("PairDesk – {}", state.name))
+                                .with_icon_as_template(true);
+                            if let Some(icon) = menu_bar_icon(false) {
+                                b = b.with_icon(icon);
+                            }
+                            b.build().map_err(|e| e.to_string())
+                        });
+                    match built {
+                        Ok(t) => tray = Some(t),
+                        Err(e) => log::warn!("no menu-bar icon: {e}"),
+                    }
+                    if let Some(pair) = PENDING.lock().unwrap_or_else(|p| p.into_inner()).take() {
+                        show_here(target, &mut shown, pair);
+                    }
+                }
+                Event::UserEvent(UserEvent::Show(pair)) => show_here(target, &mut shown, pair),
+                Event::UserEvent(UserEvent::Viewers) => {
+                    if let Some(t) = &tray {
+                        let viewing = state.watched();
+                        let _ = t.set_icon_with_as_template(menu_bar_icon(viewing), !viewing);
+                    }
+                }
+                Event::UserEvent(UserEvent::Menu(ev)) => {
+                    if ev.id == open_item.id() {
+                        show_here(target, &mut shown, false);
+                    } else if ev.id == pair_item.id() {
+                        show_here(target, &mut shown, true);
+                    } else if ev.id == browser_item.id() {
+                        open(&url);
+                    } else if ev.id == quit_item.id() || ev.id == stop_item.id() {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                }
+                Event::UserEvent(UserEvent::Quit) => *control_flow = ControlFlow::Exit,
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => {
+                    // Closing the window keeps PairDesk running in the menu bar.
+                    shown = None;
+                    target.set_activation_policy_at_runtime(ActivationPolicy::Accessory);
+                }
+                _ => {}
+            }
+        });
+        *PROXY.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        drop(shown);
+        drop(tray);
+        drop(menu_bar);
     }
 }
 

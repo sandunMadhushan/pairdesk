@@ -54,8 +54,6 @@ impl InputHandle {
     /// (for example no display on Linux).
     pub fn spawn() -> Result<Self, String> {
         let (tx, rx) = mpsc::channel::<InputCmd>();
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
-
         #[cfg(target_os = "linux")]
         if let Some(remote) = crate::wayland::global() {
             let remote = remote.clone();
@@ -69,22 +67,34 @@ impl InputHandle {
             return Ok(Self { tx });
         }
 
+        // Mac: input needs the Accessibility permission, which the owner
+        // may give later; the thread waits for it instead of failing.
+        #[cfg(target_os = "macos")]
         thread::Builder::new()
             .name("pairdesk-input".into())
-            .spawn(move || match Enigo::new(&Settings::default()) {
-                Ok(mut enigo) => {
-                    let _ = ready_tx.send(Ok(()));
-                    run(rx, |cmd| apply_routed(&mut enigo, cmd));
-                }
-                Err(e) => {
-                    let _ = ready_tx.send(Err(format!("cannot open input device: {e}")));
-                }
-            })
+            .spawn(move || run_mac(rx))
             .map_err(|e| e.to_string())?;
 
-        ready_rx
-            .recv()
-            .map_err(|_| "input thread exited during start-up".to_string())??;
+        #[cfg(not(target_os = "macos"))]
+        {
+            let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+            thread::Builder::new()
+                .name("pairdesk-input".into())
+                .spawn(move || match Enigo::new(&Settings::default()) {
+                    Ok(mut enigo) => {
+                        let _ = ready_tx.send(Ok(()));
+                        run(rx, |cmd| apply_routed(&mut enigo, cmd));
+                    }
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(format!("cannot open input device: {e}")));
+                    }
+                })
+                .map_err(|e| e.to_string())?;
+
+            ready_rx
+                .recv()
+                .map_err(|_| "input thread exited during start-up".to_string())??;
+        }
         Ok(Self { tx })
     }
 
@@ -160,9 +170,63 @@ fn apply_routed(enigo: &mut Enigo, cmd: &InputCmd) -> Result<(), String> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn apply_routed(enigo: &mut Enigo, cmd: &InputCmd) -> Result<(), String> {
     apply(enigo, cmd).map_err(|e| e.to_string())
+}
+
+/// Mac: opens the input device once Accessibility is allowed. The first
+/// try shows macOS's own prompt; later ones check quietly, at most every
+/// two seconds, when a phone sends something.
+#[cfg(target_os = "macos")]
+fn run_mac(rx: Receiver<InputCmd>) {
+    let mut enigo: Option<Enigo> = None;
+    let mut prompt = true;
+    let mut last_try: Option<std::time::Instant> = None;
+    run(rx, |cmd| {
+        if enigo.is_none() {
+            let due = last_try.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(2));
+            if !due {
+                return Err("Accessibility isn't allowed for PairDesk yet".into());
+            }
+            last_try = Some(std::time::Instant::now());
+            let settings = Settings {
+                open_prompt_to_get_permissions: prompt,
+                ..Settings::default()
+            };
+            prompt = false;
+            match Enigo::new(&settings) {
+                Ok(e) => {
+                    info!("input ready (Accessibility allowed)");
+                    enigo = Some(e);
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "PairDesk needs Accessibility to move the pointer and type \
+                         (System Settings → Privacy & Security → Accessibility): {e}"
+                    ));
+                }
+            }
+        }
+        let e = enigo.as_mut().expect("just opened");
+        apply_mac(e, cmd).map_err(|e| e.to_string())
+    });
+}
+
+/// Mac: there is no Print Screen key; Cmd+Shift+3 takes the screenshot.
+#[cfg(target_os = "macos")]
+fn apply_mac(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
+    if let InputCmd::Key(NamedKey::PrintScreen) = cmd {
+        return apply(
+            enigo,
+            &InputCmd::Combo {
+                mods: vec![Modifier::Meta, Modifier::Shift],
+                key: None,
+                ch: Some('3'),
+            },
+        );
+    }
+    apply(enigo, cmd)
 }
 
 pub(crate) fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()> {
@@ -235,6 +299,7 @@ fn move_to(_enigo: &mut Enigo, x: i32, y: i32) -> enigo::InputResult<()> {
     Ok(())
 }
 
+/// Mac: desktop coordinates are points, as the screen view's monitors.
 #[cfg(not(windows))]
 fn move_to(enigo: &mut Enigo, x: i32, y: i32) -> enigo::InputResult<()> {
     enigo.move_mouse(x, y, Coordinate::Abs)
@@ -279,8 +344,16 @@ fn key(k: NamedKey) -> Key {
         NamedKey::PlayPause => Key::MediaPlayPause,
         NamedKey::Next => Key::MediaNextTrack,
         NamedKey::Prev => Key::MediaPrevTrack,
+        #[cfg(not(target_os = "macos"))]
         NamedKey::Insert => Key::Insert,
+        // The Mac's Help key sits where Insert is.
+        #[cfg(target_os = "macos")]
+        NamedKey::Insert => Key::Help,
+        #[cfg(not(target_os = "macos"))]
         NamedKey::PrintScreen => Key::PrintScr,
+        // Handled in apply_mac; F13 is the Mac's "Print Screen" position.
+        #[cfg(target_os = "macos")]
+        NamedKey::PrintScreen => Key::F13,
         NamedKey::F1 => Key::F1,
         NamedKey::F2 => Key::F2,
         NamedKey::F3 => Key::F3,

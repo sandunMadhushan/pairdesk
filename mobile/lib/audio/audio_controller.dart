@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -158,7 +159,9 @@ class AudioController extends ChangeNotifier {
       return false;
     });
     if (!ok) {
-      _error ??= 'PairDesk needs the microphone to talk to the computer. Allow it in Android settings.';
+      _error ??=
+          'PairDesk needs the microphone to talk to the computer. '
+          'Allow it in ${Platform.isIOS ? 'Settings → PairDesk' : 'Android settings'}.';
       _talking = false;
       _handsFree = false;
       await backend.setCallMode(false);

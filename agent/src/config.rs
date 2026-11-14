@@ -8,13 +8,14 @@ use std::path::{Path, PathBuf};
 /// Directory holding the identity, paired phones and settings.
 ///
 /// - Windows: `%APPDATA%\PairDesk`
+/// - Mac: `~/Library/Application Support/PairDesk`
 /// - Linux: `$XDG_CONFIG_HOME/pairdesk` (usually `~/.config/pairdesk`)
 ///
 /// `PAIRDESK_HOME` overrides it (used by tests and portable setups).
 pub fn data_dir() -> io::Result<PathBuf> {
     let dir = if let Some(custom) = std::env::var_os("PAIRDESK_HOME") {
         PathBuf::from(custom)
-    } else if cfg!(windows) {
+    } else if cfg!(any(windows, target_os = "macos")) {
         let base = directories::BaseDirs::new()
             .ok_or_else(|| io::Error::other("cannot find the user's AppData folder"))?;
         base.config_dir().join("PairDesk")

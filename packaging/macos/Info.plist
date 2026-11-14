@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>me.madhushan.pairdesk</string>
+	<key>CFBundleName</key>
+	<string>PairDesk</string>
+	<key>CFBundleDisplayName</key>
+	<string>PairDesk</string>
+	<key>CFBundleExecutable</key>
+	<string>pairdesk-agent</string>
+	<key>CFBundleIconFile</key>
+	<string>PairDesk</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<!-- A menu-bar app: no Dock icon until its window opens. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Free software, GPL-3.0-or-later. Sandun Madhushan and contributors.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PairDesk lets your phone hear this Mac's microphone when you allow it in PairDesk.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>PairDesk plays this Mac's sound on your phone while you listen.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>PairDesk asks System Events to lock, restart or shut down this Mac when your phone asks.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PairDesk lets your phone find and connect to this Mac on your Wi-Fi.</string>
+	<!-- The window shows PairDesk's own page from http://127.0.0.1. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pairdesk._tcp</string>
+	</array>
+</dict>
+</plist>

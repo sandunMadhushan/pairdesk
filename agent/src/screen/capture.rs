@@ -5,6 +5,8 @@
 //!   aware, so all coordinates are real pixels across every monitor.
 //! - Linux: X11 `GetImage` on the root window, monitors from RandR. In a
 //!   Wayland session: the desktop's screen-cast portal and PipeWire.
+//! - Mac: Core Graphics display images. Monitors are in points (as the
+//!   pointer is); pictures are in pixels, twice as many on Retina screens.
 //!
 //! Frames are BGRA (blue, green, red, unused), top row first.
 
@@ -29,7 +31,16 @@ pub struct Frame {
 
 /// Why screen view can't run here, if it can't.
 pub fn unsupported_reason() -> Option<String> {
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    if !crate::macsys::screen_recording() {
+        crate::macsys::request_screen_recording();
+        return Some(
+            "Allow PairDesk to record the screen on the Mac (System Settings → Privacy & \
+             Security → Screen Recording), then quit and reopen PairDesk."
+                .into(),
+        );
+    }
+    #[cfg(target_os = "linux")]
     {
         #[cfg(target_os = "linux")]
         if crate::wayland::global().is_some() {
@@ -262,7 +273,7 @@ mod platform {
 
 // ------------------------------------------------------------------ Linux
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use super::*;
     use x11rb::connection::Connection;
@@ -483,6 +494,195 @@ mod platform {
     }
 }
 
+// -------------------------------------------------------------------- Mac
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+    use std::ffi::c_void;
+
+    type DisplayId = u32;
+    type CfRef = *const c_void;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CGPoint {
+        x: f64,
+        y: f64,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct CGRect {
+        origin: CGPoint,
+        size: CGSize,
+    }
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGGetActiveDisplayList(max: u32, displays: *mut DisplayId, count: *mut u32) -> i32;
+        fn CGDisplayBounds(display: DisplayId) -> CGRect;
+        fn CGMainDisplayID() -> DisplayId;
+        fn CGDisplayCreateImage(display: DisplayId) -> CfRef;
+        fn CGImageGetWidth(image: CfRef) -> usize;
+        fn CGImageGetHeight(image: CfRef) -> usize;
+        fn CGImageGetBytesPerRow(image: CfRef) -> usize;
+        fn CGImageGetBitsPerPixel(image: CfRef) -> usize;
+        fn CGImageGetBitmapInfo(image: CfRef) -> u32;
+        fn CGImageGetDataProvider(image: CfRef) -> CfRef;
+        fn CGDataProviderCopyData(provider: CfRef) -> CfRef;
+        fn CGEventCreate(source: CfRef) -> CfRef;
+        fn CGEventGetLocation(event: CfRef) -> CGPoint;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFDataGetBytePtr(data: CfRef) -> *const u8;
+        fn CFDataGetLength(data: CfRef) -> isize;
+        fn CFRelease(cf: CfRef);
+    }
+
+    /// Releases a Core Foundation object when dropped.
+    struct Owned(CfRef);
+    impl Drop for Owned {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe { CFRelease(self.0) };
+            }
+        }
+    }
+
+    fn displays() -> Vec<DisplayId> {
+        let mut ids = [0u32; 16];
+        let mut n = 0u32;
+        // SAFETY: the buffer holds 16 ids and n receives how many were written.
+        if unsafe { CGGetActiveDisplayList(16, ids.as_mut_ptr(), &mut n) } != 0 {
+            return Vec::new();
+        }
+        ids[..(n as usize).min(16)].to_vec()
+    }
+
+    pub fn monitors() -> Result<Vec<Monitor>, String> {
+        let main = unsafe { CGMainDisplayID() };
+        let ids = displays();
+        if ids.is_empty() {
+            return Err("No display found on this Mac.".into());
+        }
+        Ok(ids
+            .iter()
+            .enumerate()
+            .map(|(i, &id)| {
+                let b = unsafe { CGDisplayBounds(id) };
+                Monitor {
+                    index: i as u32,
+                    name: if id == main {
+                        "Main display".into()
+                    } else {
+                        format!("Display {}", i + 1)
+                    },
+                    x: b.origin.x.round() as i32,
+                    y: b.origin.y.round() as i32,
+                    width: b.size.width.round() as u32,
+                    height: b.size.height.round() as u32,
+                    primary: id == main,
+                }
+            })
+            .collect())
+    }
+
+    pub struct Capturer {
+        monitor: Monitor,
+        display: DisplayId,
+    }
+
+    impl Capturer {
+        pub fn new(monitor: Monitor) -> Result<Self, String> {
+            let display = *displays()
+                .get(monitor.index as usize)
+                .ok_or("That display isn't connected any more.")?;
+            Ok(Self { monitor, display })
+        }
+
+        pub fn monitor(&self) -> &Monitor {
+            &self.monitor
+        }
+
+        /// Pointer position in desktop points.
+        pub fn cursor(&self) -> Option<(i32, i32)> {
+            let event = Owned(unsafe { CGEventCreate(std::ptr::null()) });
+            if event.0.is_null() {
+                return None;
+            }
+            let p = unsafe { CGEventGetLocation(event.0) };
+            Some((p.x.round() as i32, p.y.round() as i32))
+        }
+
+        pub fn capture(&mut self) -> Result<Frame, String> {
+            let image = Owned(unsafe { CGDisplayCreateImage(self.display) });
+            if image.0.is_null() {
+                return Err(
+                    "Can't read the screen. Allow PairDesk under System Settings → \
+                            Privacy & Security → Screen Recording."
+                        .into(),
+                );
+            }
+            let (width, height, stride, bpp, info) = unsafe {
+                (
+                    CGImageGetWidth(image.0),
+                    CGImageGetHeight(image.0),
+                    CGImageGetBytesPerRow(image.0),
+                    CGImageGetBitsPerPixel(image.0),
+                    CGImageGetBitmapInfo(image.0),
+                )
+            };
+            if bpp != 32 || width == 0 || height == 0 || stride < width * 4 {
+                return Err("this display's colour format isn't supported".into());
+            }
+            let data = Owned(unsafe { CGDataProviderCopyData(CGImageGetDataProvider(image.0)) });
+            if data.0.is_null() {
+                return Err("can't read the screen picture".into());
+            }
+            let len = unsafe { CFDataGetLength(data.0) } as usize;
+            if len < stride * (height - 1) + width * 4 {
+                return Err("the screen picture was cut short".into());
+            }
+            // SAFETY: CFData owns `len` bytes until `data` is dropped.
+            let bytes = unsafe { std::slice::from_raw_parts(CFDataGetBytePtr(data.0), len) };
+            // 32-bit little-endian with alpha first is B, G, R, A in memory:
+            // what PairDesk uses. Others get their bytes reordered.
+            const BYTE_ORDER_MASK: u32 = 0x7000;
+            const ORDER_32_LITTLE: u32 = 0x2000;
+            let alpha_first = matches!(info & 0x1f, 2 | 4 | 6);
+            let little = info & BYTE_ORDER_MASK == ORDER_32_LITTLE;
+            let mut out = Vec::with_capacity(width * height * 4);
+            for row in bytes.chunks(stride).take(height) {
+                let row = &row[..width * 4];
+                if little {
+                    out.extend_from_slice(row);
+                } else {
+                    for px in row.as_chunks::<4>().0 {
+                        if alpha_first {
+                            out.extend_from_slice(&[px[3], px[2], px[1], px[0]]); // ARGB
+                        } else {
+                            out.extend_from_slice(&[px[2], px[1], px[0], px[3]]); // RGBA
+                        }
+                    }
+                }
+            }
+            Ok(Frame {
+                width: width as u32,
+                height: height as u32,
+                data: out,
+            })
+        }
+    }
+}
+
 #[cfg(windows)]
 impl Capturer {
     pub fn cursor(&self) -> Option<(i32, i32)> {
@@ -507,7 +707,7 @@ pub fn set_dpi_aware() {
     }
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

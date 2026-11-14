@@ -182,7 +182,7 @@ export default function Hero() {
             ))}
           </h1>
           <p data-hero-copy className="mt-7 max-w-[32rem] text-lg text-slate sm:text-xl">
-            Use your Android phone as a touchpad and keyboard, see and control the screen, send files and talk
+            Use your phone as a touchpad and keyboard, see and control the screen, send files and talk
             through the computer. Pair once, then just open the app. Free and open source, with no account.
           </p>
           <div data-hero-copy className="mt-9 flex flex-wrap items-center gap-3">
@@ -194,7 +194,7 @@ export default function Hero() {
             </a>
           </div>
           <p data-hero-copy className="mt-6 text-[0.95rem] text-slate">
-            For Windows 10 and 11, Linux, and Android 6 or newer.
+            For Windows, Mac and Linux, with Android or iPhone.
           </p>
         </div>
 
