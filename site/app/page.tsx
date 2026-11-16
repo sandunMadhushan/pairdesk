@@ -2,6 +2,7 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Hero from "@/components/Hero";
+import Film from "@/components/Film";
 import Motion from "@/components/Motion";
 import Downloads from "@/components/Downloads";
 import Anywhere from "@/components/Anywhere";
@@ -63,6 +64,7 @@ export default function Home() {
       <Header home />
       <main className="flex flex-col gap-10 overflow-x-clip sm:gap-14">
         <Hero />
+        <Film />
         <Stats />
         <Touchpad />
         <Screen />
