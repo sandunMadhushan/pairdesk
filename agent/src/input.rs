@@ -152,6 +152,12 @@ fn apply_routed(enigo: &mut Enigo, cmd: &InputCmd) -> Result<(), String> {
     }
     match winsys::bridge() {
         Some(helper) => helper.input(cmd),
+        None if crate::install::current() == crate::install::Kind::Store => Err(
+            "the lock screen or an administrator prompt is showing; the Microsoft Store \
+                     version can't use it. Install the PairDesk setup from pairdesk.madhushan.me \
+                     to unlock this computer from your phone"
+                .into(),
+        ),
         None => Err(
             "the lock screen or an administrator prompt is showing; turn on \
                      \"Sign-in screen and admin prompts\" in PairDesk's settings to use it"

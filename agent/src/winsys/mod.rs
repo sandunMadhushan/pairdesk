@@ -95,9 +95,10 @@ static LAST_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None
 pub fn settings_state() -> serde_json::Value {
     #[cfg(windows)]
     {
-        // Store apps may not install services.
+        // Store apps may not install services: the page says so instead of
+        // offering a switch that can't work.
         if crate::install::current() == crate::install::Kind::Store {
-            return serde_json::Value::Null;
+            return serde_json::json!({ "store": true });
         }
         serde_json::json!({
             "state": service::state().label(),

@@ -1283,6 +1283,15 @@ function renderSecure(sd) {
   $("nav-secure").hidden = !sd;
   if (!sd) { if (currentPage === "secure") go("home"); return; }
   const text = $("sd-text");
+  if (sd.store) {
+    $("btn-sd-on").hidden = $("btn-sd-off").hidden = true;
+    text.textContent = "Not available in the Microsoft Store version. Windows doesn't let Store apps " +
+      "install the helper this needs. To unlock this computer from your phone, install the PairDesk " +
+      "setup from pairdesk.madhushan.me instead.";
+    $("sd-dot").className = "dot warn";
+    $("sd-ico").className = "ico big";
+    return;
+  }
   const on = sd.state === "running" || sd.state === "starting";
   $("btn-sd-on").hidden = on || !!sd.working;
   $("btn-sd-off").hidden = !on || !!sd.working;
@@ -1318,12 +1327,16 @@ function renderUpdate(u) {
   const notes = $("up-notes");
   const bar = $("up-progress");
   install.hidden = download.hidden = notes.hidden = bar.hidden = true;
-  $("btn-up-check").hidden = $("up-auto-row").hidden = u.store;
+  const viaStore = u.store && u.kind === "store";
+  $("up-auto-row").hidden = u.store;
+  $("btn-up-check").hidden = u.store && !viaStore;
+  $("btn-up-check").textContent = viaStore ? "Check in the Microsoft Store" : "Check now";
   $("up-ico").className = "ico" + (available ? " on" : "");
   notes.href = download.href = u.notes_url;
   if (u.store) {
     text.textContent = "PairDesk " + u.current + ". " +
-      (u.kind === "flatpak" ? "Flathub" : "The Microsoft Store") + " keeps it up to date.";
+      (u.kind === "flatpak" ? "Flathub keeps it up to date."
+        : "The Microsoft Store updates it by itself. To look for a new version now, open the Store's updates page.");
     return;
   }
   const auto = $("up-auto");
@@ -1537,6 +1550,10 @@ $("btn-sd-off").onclick = async () => {
   try { render(await post("secure-desktop", { enabled: false })); } catch (err) { showBanner(err.message, true); }
 };
 $("btn-up-check").onclick = async () => {
+  if ($("btn-up-check").textContent.includes("Microsoft Store")) {
+    try { render(await post("store-updates")); } catch (err) { showBanner(err.message, true); }
+    return;
+  }
   $("up-text").textContent = "Checking for updates…";
   try { render(await post("update-check")); } catch (err) { showBanner(err.message, true); }
 };

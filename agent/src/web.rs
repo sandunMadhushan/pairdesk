@@ -397,6 +397,25 @@ fn handle(
             }
             send_state(request, state)
         }
+        (Method::Post, "/api/store-updates") => {
+            // The Microsoft Store version is updated by the Store: open its
+            // "Downloads and updates" page, where it checks right away.
+            if crate::install::current() != crate::install::Kind::Store {
+                return status(request, 404, "not found");
+            }
+            #[cfg(windows)]
+            if let Err(e) = std::process::Command::new("explorer.exe")
+                .arg("ms-windows-store://downloadsandupdates")
+                .spawn()
+            {
+                return status(
+                    request,
+                    500,
+                    &format!("can't open the Microsoft Store: {e}"),
+                );
+            }
+            send_state(request, state)
+        }
         (Method::Post, "/api/update-install") => {
             let Some(u) = crate::update::global() else {
                 return status(request, 404, "not found");
