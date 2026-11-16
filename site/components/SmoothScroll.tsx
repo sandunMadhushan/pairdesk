@@ -13,6 +13,7 @@ export default function SmoothScroll() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const lenis = new Lenis({ lerp: 0.11, anchors: { offset: -72 } });
     lenis.on("scroll", ScrollTrigger.update);
+    (window as Window & { __lenis?: Lenis }).__lenis = lenis;
     const tick = (time: number) => lenis.raf(time * 1000);
     gsap.ticker.add(tick);
     gsap.ticker.lagSmoothing(0);

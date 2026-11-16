@@ -4,6 +4,7 @@ import "@fontsource-variable/outfit/index.css";
 import "@fontsource-variable/caveat/index.css";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
+import ToTop from "@/components/ToTop";
 import SmoothScroll from "@/components/SmoothScroll";
 import { AUTHOR, DESCRIPTION, NAME, OG_IMAGE, SITE, TAGLINE } from "@/lib/seo";
 
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <SmoothScroll />
         {children}
+        <ToTop />
         <Analytics />
       </body>
     </html>

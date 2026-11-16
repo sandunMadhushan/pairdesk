@@ -45,7 +45,7 @@ const ICON = {
 } as const;
 
 const pill =
-  "flex items-center gap-2 rounded-full bg-white/90 px-4 py-2.5 text-sm font-semibold text-ink shadow-lg backdrop-blur transition hover:bg-white";
+  "flex items-center gap-2 rounded-full bg-white/90 p-2 text-sm font-semibold text-ink shadow-lg backdrop-blur transition hover:bg-white sm:px-4 sm:py-2.5";
 
 export default function Film() {
   const video = useRef<HTMLVideoElement>(null);
@@ -214,13 +214,13 @@ export default function Film() {
             aria-label="A 38-second film: pairing a phone with a computer, then using it as a touchpad and keyboard, seeing the screen, sending files and the clipboard, shortcuts, sound and apps, on Windows, macOS and Linux with Android and iPhone."
           />
           {!still && (
-            <div ref={controls} className="absolute bottom-4 right-4 z-10 flex gap-2 sm:bottom-6 sm:right-6">
+            <div ref={controls} className="absolute bottom-2.5 right-2.5 z-10 flex gap-1.5 sm:bottom-6 sm:right-6 sm:gap-2">
               <button type="button" onClick={replay} className={pill}>
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" {...ICON}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" {...ICON}>
                   <path d="M3 12a9 9 0 1 0 3-6.7" />
                   <path d="M3 4v5h5" />
                 </svg>
-                Replay
+                <span className="sr-only sm:not-sr-only">Replay</span>
               </button>
               <button
                 type="button"
@@ -228,7 +228,7 @@ export default function Film() {
                 aria-pressed={!muted}
                 className={`${pill} ${blocked ? "animate-pulse ring-4 ring-lime" : ""}`}
               >
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" {...ICON}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" {...ICON}>
                   <path d="M4 9v6h4l5 4V5L8 9z" />
                   {muted ? (
                     <path d="M17 9l5 5M22 9l-5 5" />
@@ -236,7 +236,7 @@ export default function Film() {
                     <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />
                   )}
                 </svg>
-                <span>{muted ? (blocked ? "Tap for sound" : "Sound on") : "Sound off"}</span>
+                <span className="sr-only sm:not-sr-only">{muted ? (blocked ? "Tap for sound" : "Sound on") : "Sound off"}</span>
               </button>
             </div>
           )}
@@ -247,8 +247,8 @@ export default function Film() {
               aria-label="Replay the film"
               className="absolute inset-0 grid place-items-center bg-ink/35 transition hover:bg-ink/25"
             >
-              <span className="grid h-20 w-20 place-items-center rounded-full bg-lime text-ink shadow-xl">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-9 w-9" {...ICON}>
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-lime sm:h-20 sm:w-20 text-ink shadow-xl">
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7 sm:h-9 sm:w-9" {...ICON}>
                   <path d="M3 12a9 9 0 1 0 3-6.7" />
                   <path d="M3 4v5h5" />
                 </svg>
