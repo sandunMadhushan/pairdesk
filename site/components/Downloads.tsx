@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 const REPO = "sandunMadhushan/pairdesk";
 const LATEST = `https://github.com/${REPO}/releases/latest`;
+const STORE = "https://apps.microsoft.com/detail/9mvc6369hwrj";
 
 type Asset =
   | "windows-x64-setup"
@@ -94,17 +95,21 @@ export default function Downloads() {
                 <OsIcon d={WIN} />
               </span>
               <h3 className="mt-6 text-2xl font-semibold tracking-tight">Windows</h3>
-              <p className="mt-2 text-slate">Windows 10 or 11, 64-bit. No administrator rights needed.</p>
+              <p className="mt-2 text-slate">Windows 10 or 11, 64-bit. Now in the Microsoft Store, which keeps it up to date.</p>
               <div className="mt-auto pt-7">
-                <a className="btn btn-ink w-full" href={href("windows-x64-setup")}>
-                  Download the setup
+                <a className="btn btn-ink w-full" href={STORE}>
+                  Get it from Microsoft Store
                 </a>
                 <p className="mt-4 text-[0.9rem] text-slate">
-                  Or the{" "}
+                  Or download the{" "}
+                  <a className="link" href={href("windows-x64-setup")}>
+                    setup
+                  </a>{" "}
+                  or the{" "}
                   <a className="link" href={href("windows-x64")}>
                     program file
                   </a>{" "}
-                  without installing. If SmartScreen warns, choose <i>More info</i>, then <i>Run anyway</i>.
+                  from GitHub. If SmartScreen warns about those, choose <i>More info</i>, then <i>Run anyway</i>.
                 </p>
               </div>
             </div>

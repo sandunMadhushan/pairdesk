@@ -42,7 +42,7 @@ export function Stats() {
 const STEPS = [
   {
     title: "Install it on your computer",
-    body: "Run the Windows setup or install the Linux package. PairDesk opens and shows a pairing code.",
+    body: "Get it from the Microsoft Store on Windows, or install the Linux package. PairDesk opens and shows a pairing code.",
     icon: "M4 5h16v11H4zM2 19h20",
   },
   {
@@ -266,7 +266,7 @@ const QUESTIONS: { q: string; a: React.ReactNode }[] = [
     q: "Windows says the setup is from an unknown publisher.",
     a: (
       <>
-        PairDesk isn&apos;t code-signed yet (that&apos;s coming through the SignPath Foundation&apos;s free signing for
+        The Microsoft Store version doesn&apos;t show this warning. The setup from GitHub isn&apos;t code-signed yet (that&apos;s coming through the SignPath Foundation&apos;s free signing for
         open-source projects). Choose <i>More info</i>, then <i>Run anyway</i>. You can check the download against{" "}
         <code className="rounded bg-sky px-1.5 py-0.5 text-[0.9em]">SHA256SUMS.txt</code> on the release page.
       </>

@@ -194,7 +194,7 @@ export default function Hero() {
             </a>
           </div>
           <p data-hero-copy className="mt-6 text-[0.95rem] text-slate">
-            For Windows 10 and 11, Linux, and Android 6 or newer.
+            On the Microsoft Store for Windows 10 and 11. Also for Linux, and Android 6 or newer.
           </p>
         </div>
 
