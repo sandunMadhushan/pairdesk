@@ -5,12 +5,15 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.11.** Pair once with a QR code or a link; after that the phone
+> **Status: 0.12.** Now in the
+> [Microsoft Store](https://apps.microsoft.com/detail/9mvc6369hwrj) for Windows.
+> Pair once with a QR code or a link; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls, a live view of the screen, clipboard and files, on your
 > Wi-Fi or from anywhere (Tailscale or the PairDesk relay), two-way sound, and
-> "Get help" links to help someone else for a while. Installers for Windows and
+> "Get help" links to help someone else for a while. A new look on the phone and on
+> the computer, with a dark mode. Installers for Windows and
 > Linux, automatic updates, smooth H.264 screen view, and on Windows the lock
 > screen, sign-in screen and admin prompts.
 
@@ -45,9 +48,11 @@ Get the downloads from [pairdesk.madhushan.me](https://pairdesk.madhushan.me/#do
 or the [latest release](https://github.com/sandunMadhushan/pairdesk/releases/latest).
 
 1. **Computer:** install PairDesk.
-   - Windows: run `PairDesk-Setup-…-x64.exe` (no administrator rights needed). If
-     SmartScreen warns about an unknown publisher, choose **More info → Run
-     anyway**. When Windows Firewall asks, allow **Private networks**.
+   - Windows: get PairDesk from the
+     [Microsoft Store](https://apps.microsoft.com/detail/9mvc6369hwrj); the Store keeps
+     it up to date. Or run `PairDesk-Setup-…-x64.exe` from GitHub (no administrator
+     rights needed). If SmartScreen warns about an unknown publisher, choose **More
+     info → Run anyway**. When Windows Firewall asks, allow **Private networks**.
    - Linux: install the `.deb` (Ubuntu, Debian, Mint) or `.rpm` (Fedora,
      openSUSE), or make the AppImage executable and run it. Then open PairDesk
      from the app menu. In a Wayland session (the default on Ubuntu and Fedora),
