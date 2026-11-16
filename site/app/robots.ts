@@ -7,7 +7,7 @@ export const dynamic = "force-static";
 export default function robots(): MetadataRoute.Robots {
   return {
     // /p/ only opens pairing links; there's nothing to index there.
-    rules: [{ userAgent: "*", allow: "/", disallow: "/p/" }],
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/p/", "/store/"] }],
     sitemap: `${SITE}/sitemap.xml`,
     host: SITE,
   };

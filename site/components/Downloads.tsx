@@ -2,10 +2,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { STORE_APP, STORE_WEB, isWindows } from "@/lib/store";
 
 const REPO = "sandunMadhushan/pairdesk";
 const LATEST = `https://github.com/${REPO}/releases/latest`;
-const STORE = "https://apps.microsoft.com/detail/9mvc6369hwrj";
 
 type Asset =
   | "windows-x64-setup"
@@ -97,7 +97,17 @@ export default function Downloads() {
               <h3 className="mt-6 text-2xl font-semibold tracking-tight">Windows</h3>
               <p className="mt-2 text-slate">Windows 10 or 11, 64-bit. Now in the Microsoft Store, which keeps it up to date.</p>
               <div className="mt-auto pt-7">
-                <a className="btn btn-ink w-full" href={STORE}>
+                <a
+                  className="btn btn-ink w-full"
+                  href={STORE_WEB}
+                  onClick={(e) => {
+                    // On Windows, open the Microsoft Store app; elsewhere the web page.
+                    if (isWindows()) {
+                      e.preventDefault();
+                      location.href = STORE_APP;
+                    }
+                  }}
+                >
                   Get it from Microsoft Store
                 </a>
                 <p className="mt-4 text-[0.9rem] text-slate">

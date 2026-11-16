@@ -6,7 +6,7 @@ no codes or "accept" prompts every time.
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
 > **Status: 0.12.** Now in the
-> [Microsoft Store](https://apps.microsoft.com/detail/9mvc6369hwrj) for Windows.
+> [Microsoft Store](https://pairdesk.madhushan.me/store/) for Windows.
 > Pair once with a QR code or a link; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
@@ -49,7 +49,7 @@ or the [latest release](https://github.com/sandunMadhushan/pairdesk/releases/lat
 
 1. **Computer:** install PairDesk.
    - Windows: get PairDesk from the
-     [Microsoft Store](https://apps.microsoft.com/detail/9mvc6369hwrj); the Store keeps
+     [Microsoft Store](https://pairdesk.madhushan.me/store/); the Store keeps
      it up to date. Or run `PairDesk-Setup-…-x64.exe` from GitHub (no administrator
      rights needed). If SmartScreen warns about an unknown publisher, choose **More
      info → Run anyway**. When Windows Firewall asks, allow **Private networks**.
