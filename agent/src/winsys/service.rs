@@ -28,7 +28,7 @@ use windows_sys::Win32::System::Services::{
     SERVICE_WIN32_OWN_PROCESS, SetServiceStatus, StartServiceCtrlDispatcherW, StartServiceW,
 };
 
-use super::{SERVICE_NAME, acl, session};
+use super::{acl, service_name, session};
 use crate::install::Kind;
 use crate::update::{Source, Updater};
 
@@ -77,7 +77,7 @@ fn manager(access: u32) -> Result<Scm, String> {
 }
 
 fn open(scm: &Scm, access: u32) -> Option<Scm> {
-    let name = wide(SERVICE_NAME);
+    let name = wide(service_name());
     let h = unsafe { OpenServiceW(scm.0, name.as_ptr(), access) };
     (!h.is_null()).then_some(Scm(h))
 }
@@ -192,7 +192,7 @@ pub fn install() -> Result<(), String> {
             svc
         }
         None => {
-            let (name, display) = (wide(SERVICE_NAME), wide(DISPLAY_NAME));
+            let (name, display) = (wide(service_name()), wide(DISPLAY_NAME));
             let h = unsafe {
                 CreateServiceW(
                     scm.0,
@@ -394,7 +394,7 @@ unsafe extern "system" fn handler(
 }
 
 unsafe extern "system" fn service_main(_argc: u32, _argv: *mut windows_sys::core::PWSTR) {
-    let name = wide(SERVICE_NAME);
+    let name = wide(service_name());
     let h =
         unsafe { RegisterServiceCtrlHandlerExW(name.as_ptr(), Some(handler), std::ptr::null()) };
     if h.is_null() {
@@ -408,7 +408,7 @@ unsafe extern "system" fn service_main(_argc: u32, _argv: *mut windows_sys::core
 
 /// `--service`: hands this process to the service manager.
 pub fn run() -> ! {
-    let mut name = wide(SERVICE_NAME);
+    let mut name = wide(service_name());
     let table = [
         SERVICE_TABLE_ENTRYW {
             lpServiceName: name.as_mut_ptr(),
@@ -452,9 +452,47 @@ impl Job {
     }
 }
 
+/// Where the signed-in user's PairDesk keeps its pairing: for the Store
+/// version, the package's private AppData; otherwise roaming AppData.
+fn user_pairing_dir(
+    token: &session::Handle,
+    exe: &std::path::Path,
+    store: bool,
+) -> Option<PathBuf> {
+    if store
+        && let Some(family) = super::package_family(exe)
+        && let Some(local) = session::local_appdata(token)
+    {
+        let dir = super::packaged_data_dir(&local, &family);
+        if dir.is_dir() {
+            return Some(dir);
+        }
+    }
+    session::roaming_appdata(token).map(|r| r.join("PairDesk"))
+}
+
 fn work() {
     let base = program_data();
     let exe = std::env::current_exe().unwrap_or_default();
+    // The Microsoft Store package's own service: it starts with Windows
+    // (declared in the manifest), so nothing installs it, and the Store keeps
+    // it up to date. It prepares its folder itself and serves phones only
+    // while the owner's switch in PairDesk's settings is on.
+    let store = crate::install::current() == Kind::Store;
+    if store {
+        for d in [
+            base.clone(),
+            base.join("bridge"),
+            super::system_data_dir(&base),
+        ] {
+            if let Err(e) = std::fs::create_dir_all(&d) {
+                log::warn!("can't create {}: {e}", d.display());
+            }
+        }
+        if let Err(e) = acl::set(&base, acl::ADMIN_ONLY) {
+            log::warn!("can't protect {}: {e}", base.display());
+        }
+    }
     let job = Job::new();
     let mut helper: Option<(u32, session::Child)> = None;
     let updater = Updater::new(Kind::Service, Source::github(), base.join("updates"));
@@ -463,6 +501,24 @@ fn work() {
 
     while !STOP.load(Ordering::Relaxed) {
         if let Some(sess) = session::active_console_session() {
+            // The signed-in user's pairing (and, for the Store version, the
+            // switch), for the sign-in screen.
+            if let Some(token) = session::user_token(sess)
+                && let Some(from) = user_pairing_dir(&token, &exe, store)
+                && let Err(e) = super::mirror(&from, &super::system_data_dir(&base))
+            {
+                log::warn!("can't copy the pairing for the sign-in screen: {e}");
+            }
+            let wanted = !store
+                || std::fs::read_to_string(super::system_data_dir(&base).join("settings.json"))
+                    .is_ok_and(|s| super::secure_desktop_enabled(&s));
+            if !wanted {
+                if let Some((_, old)) = helper.take() {
+                    old.kill();
+                }
+                std::thread::sleep(Duration::from_secs(2));
+                continue;
+            }
             let alive = helper
                 .as_ref()
                 .is_some_and(|(s, c)| *s == sess && c.alive());
@@ -481,16 +537,8 @@ fn work() {
                     Err(e) => log::warn!("can't start the helper in session {sess}: {e}"),
                 }
             }
-            // The signed-in user's pairing, for the sign-in screen.
-            if let Some(token) = session::user_token(sess)
-                && let Some(appdata) = session::roaming_appdata(&token)
-                && let Err(e) =
-                    super::mirror(&appdata.join("PairDesk"), &super::system_data_dir(&base))
-            {
-                log::warn!("can't copy the pairing for the sign-in screen: {e}");
-            }
         }
-        if Instant::now() >= next_update_check {
+        if !store && Instant::now() >= next_update_check {
             next_update_check = Instant::now() + Duration::from_secs(24 * 60 * 60);
             if updater.check().unwrap_or(false) {
                 let quit: std::sync::Arc<dyn Fn() + Send + Sync> = std::sync::Arc::new(|| {

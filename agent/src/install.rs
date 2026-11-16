@@ -77,7 +77,9 @@ pub fn current() -> Kind {
 
 /// The decision, separated from the environment for tests.
 fn detect(exe: &Path, env: impl Fn(&str) -> Option<PathBuf>, packaged: bool) -> Kind {
-    if packaged {
+    // Also true for the packaged service and its helpers, which run outside
+    // the package's identity but from the package's folder.
+    if packaged || in_windows_apps(exe) {
         return Kind::Store;
     }
     if env("FLATPAK_ID").is_some() {
@@ -97,6 +99,12 @@ fn detect(exe: &Path, env: impl Fn(&str) -> Option<PathBuf>, packaged: bool) -> 
         return Kind::SystemPackage;
     }
     Kind::Portable
+}
+
+/// Is `exe` inside `...\WindowsApps\` (where Windows keeps Store packages)?
+pub fn in_windows_apps(exe: &Path) -> bool {
+    exe.components()
+        .any(|c| c.as_os_str().eq_ignore_ascii_case("WindowsApps"))
 }
 
 fn writable(dir: &Path) -> bool {
@@ -174,6 +182,24 @@ mod tests {
         );
         assert!(Kind::Flatpak.store_updates() && Kind::Store.store_updates());
         assert_eq!(Kind::Flatpak.asset_key(), None);
+    }
+
+    #[test]
+    fn a_program_in_the_store_folder_is_the_store_version() {
+        let exe = Path::new(
+            r"C:\Program Files\WindowsApps\X.PairDesk_0.12.2.0_x64__abc\pairdesk-agent.exe",
+        );
+        // Backslashes only separate folders on Windows; use a unix-style path elsewhere.
+        let exe = if cfg!(windows) {
+            exe.to_path_buf()
+        } else {
+            PathBuf::from(
+                "/c/Program Files/WindowsApps/X.PairDesk_0.12.2.0_x64__abc/pairdesk-agent.exe",
+            )
+        };
+        assert!(in_windows_apps(&exe));
+        assert_eq!(detect(&exe, none, false), Kind::Store);
+        assert!(!in_windows_apps(Path::new("/usr/bin/pairdesk-agent")));
     }
 
     #[test]

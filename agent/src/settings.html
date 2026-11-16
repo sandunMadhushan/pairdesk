@@ -701,7 +701,7 @@
       </div>
       <div class="card">
         <h2>How it works</h2>
-        <p class="muted">Windows asks for administrator permission. PairDesk then installs a small helper service ("PairDesk helper") and keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.</p>
+        <p class="muted" id="sd-how">Windows asks for administrator permission. PairDesk then installs a small helper service ("PairDesk helper") and keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.</p>
         <div class="note warn" style="margin:0">Good to know: like any remote control that can answer administrator prompts, this also means a program already running on your account could answer one. Turn it on if you need it, and keep your phone's app lock on.</div>
       </div>
     </section>
@@ -1283,16 +1283,10 @@ function renderSecure(sd) {
   $("nav-secure").hidden = !sd;
   if (!sd) { if (currentPage === "secure") go("home"); return; }
   const text = $("sd-text");
-  if (sd.store) {
-    $("btn-sd-on").hidden = $("btn-sd-off").hidden = true;
-    text.textContent = "Not available in the Microsoft Store version. Windows doesn't let Store apps " +
-      "install the helper this needs. To unlock this computer from your phone, install the PairDesk " +
-      "setup from pairdesk.madhushan.me instead.";
-    $("sd-dot").className = "dot warn";
-    $("sd-ico").className = "ico big";
-    return;
-  }
-  const on = sd.state === "running" || sd.state === "starting";
+  if (sd.store) $("sd-how").textContent = "The Microsoft Store version comes with a small helper service (\"PairDesk helper\") that Windows starts with the computer. This switch tells it whether to serve your phone at the lock screen and on administrator prompts. It keeps a copy of your pairing where only Windows itself can read it, so phones you paired can reach the sign-in screen.";
+  // The Store version has a switch (its helper comes with the app); the
+  // setup version installs and removes the helper.
+  const on = sd.store ? sd.enabled : sd.state === "running" || sd.state === "starting";
   $("btn-sd-on").hidden = on || !!sd.working;
   $("btn-sd-off").hidden = !on || !!sd.working;
   if (sd.working) {
@@ -1300,8 +1294,12 @@ function renderSecure(sd) {
   } else if (on) {
     text.textContent = sd.helper
       ? "On. Your phone can unlock this computer and answer administrator prompts."
-      : "On. Restart PairDesk (Stop PairDesk, then open it again) to finish.";
-  } else if (sd.state === "stopped") {
+      : sd.store
+        ? (sd.state === "running" || sd.state === "starting"
+          ? "On. Starting the helper; this takes a few seconds."
+          : "On, but PairDesk's helper service isn't running. Restart the computer once; Windows starts it with the Store app.")
+        : "On. Restart PairDesk (Stop PairDesk, then open it again) to finish.";
+  } else if (!sd.store && sd.state === "stopped") {
     text.textContent = "The helper is installed but not running. Turn it on again to restart it.";
   } else {
     text.textContent = "Off";

@@ -58,6 +58,11 @@ pub struct Prefs {
     /// The relay, `host:port`.
     #[serde(default = "default_relay")]
     pub relay: String,
+    /// Microsoft Store version only: let the packaged helper service serve
+    /// phones at the lock screen and on administrator prompts. (The setup
+    /// version turns the helper on by installing it instead.)
+    #[serde(default)]
+    pub secure_desktop: bool,
 }
 
 fn default_relay() -> String {
@@ -80,6 +85,7 @@ impl Default for Prefs {
             check_updates: true,
             relay_on: true,
             relay: default_relay(),
+            secure_desktop: false,
         }
     }
 }
@@ -209,6 +215,11 @@ impl PrefsStore {
 
     pub fn set_keep_awake(&mut self, on: bool) -> io::Result<()> {
         self.prefs.keep_awake = on;
+        self.save()
+    }
+
+    pub fn set_secure_desktop(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.secure_desktop = on;
         self.save()
     }
 

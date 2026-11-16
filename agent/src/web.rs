@@ -444,6 +444,14 @@ fn handle(
                 enabled: bool,
             }
             match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) if crate::install::current() == crate::install::Kind::Store => {
+                    // The package's own service does the work; no installing,
+                    // no administrator prompt.
+                    match state.prefs().set_secure_desktop(b.enabled) {
+                        Ok(()) => send_state(request, state),
+                        Err(e) => status(request, 500, &format!("could not save: {e}")),
+                    }
+                }
                 Some(b) => {
                     crate::winsys::set_enabled(b.enabled);
                     send_state(request, state)
@@ -694,7 +702,7 @@ fn send_state(request: Request, state: &AppState) {
             v
         }),
         "autostart_managed": crate::autostart::managed_by(),
-        "secure_desktop": crate::winsys::settings_state(),
+        "secure_desktop": crate::winsys::settings_state(prefs.secure_desktop),
         "firewall": firewall_state(),
     });
     respond(

@@ -57,6 +57,35 @@ for port 47800 and mDNS on private networks, and gets updates from the Store.
      from GitHub Releases.
 4. Each new release: new submission with the new `.msix` (version x.y.z.0).
 
+### Since 0.12.3: the helper service in the package
+
+The package declares a Windows service (`PairDeskStoreHelper`, LocalSystem,
+`desktop6:Service` in `AppxManifest.xml`) so the Store version can use the lock
+screen, the sign-in screen and administrator prompts from the phone. It is the
+same program as the app, started as `--service`, and serves phones only while
+the owner's switch in PairDesk's settings is on. That needs two more
+restricted capabilities: `packagedServices` and `localSystemServices`. In
+Partner Center, Submission options → Restricted capabilities, give a
+justification for each (500 characters each), for example:
+
+> PairDesk lets a paired phone control this PC, including the Windows lock
+> screen, sign-in screen and UAC prompts. Windows shows those on the secure
+> desktop, which only SYSTEM can read or control, so a packaged LocalSystem
+> service is needed. It is the same open-source program as the app, starts
+> with Windows, and serves phones only when the owner switches "Sign-in screen
+> and admin prompts" on in PairDesk's settings. Source: github.com/sandunMadhushan/pairdesk
+
+Notes for certification: to see it, turn that switch on, lock the PC (Win+L)
+and use a paired Android phone (the APK is on GitHub Releases). Without a phone
+the service is idle. The minimum Windows version is 10.0.19041 (version 2004),
+which packaged services need.
+
+What can't be tested without a real Store install: the package's private AppData
+(the service reads `%LOCALAPPDATA%\Packages\<family>\LocalCache\Roaming\PairDesk`),
+the service starting with the package, and the phone at the lock screen.
+Submit it first as a package flight to your own account, or check it on a PC
+before you publish to everyone.
+
 Store description:
 
 > PairDesk turns your Android phone into a remote for this PC: touchpad and

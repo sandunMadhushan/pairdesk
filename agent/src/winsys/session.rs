@@ -18,7 +18,9 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcessId, OpenProcessToken, PROCESS_INFORMATION, STARTUPINFOW, TerminateProcess,
     WaitForSingleObject,
 };
-use windows_sys::Win32::UI::Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath};
+use windows_sys::Win32::UI::Shell::{
+    FOLDERID_LocalAppData, FOLDERID_RoamingAppData, SHGetKnownFolderPath,
+};
 
 fn wide(s: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
@@ -103,8 +105,17 @@ unsafe fn wide_ptr_to_string(p: *const u16) -> String {
 
 /// The user's roaming AppData folder (where their PairDesk keeps its data).
 pub fn roaming_appdata(token: &Handle) -> Option<PathBuf> {
+    known_folder(&FOLDERID_RoamingAppData, token)
+}
+
+/// The user's local AppData folder (`...\AppData\Local`).
+pub fn local_appdata(token: &Handle) -> Option<PathBuf> {
+    known_folder(&FOLDERID_LocalAppData, token)
+}
+
+fn known_folder(id: &windows_sys::core::GUID, token: &Handle) -> Option<PathBuf> {
     let mut path: windows_sys::core::PWSTR = std::ptr::null_mut();
-    let hr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, 0, token.0, &mut path) };
+    let hr = unsafe { SHGetKnownFolderPath(id, 0, token.0, &mut path) };
     if hr < 0 || path.is_null() {
         return None;
     }

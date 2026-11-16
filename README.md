@@ -147,7 +147,8 @@ address for the computer at all, its menu on the phone (⋮ next to the computer
 - Windows: the lock screen, the sign-in screen and administrator (UAC) prompts need
   **Sign-in screen and admin prompts** turned on in PairDesk's settings (Windows asks
   for administrator permission once). Windows that run as administrator can't be
-  controlled without it either. Not available in the Microsoft Store version.
+  controlled without it either. In the Microsoft Store version the helper comes with
+  the app (turn the same switch on; Windows 10 version 2004 or newer).
 - Linux Wayland works through the desktop's remote desktop permission (tested on
   GNOME; KDE Plasma offers the same permission). While a phone is connected the desktop shows that it's being
   shared. Desktops without that permission (Sway, Hyprland and other wlroots

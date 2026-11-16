@@ -44,8 +44,54 @@ pub mod service;
 #[cfg(windows)]
 pub mod session;
 
-/// Service name in the Windows service manager.
+/// Service name in the Windows service manager (setup version).
 pub const SERVICE_NAME: &str = "PairDesk";
+/// The Microsoft Store package declares its own service under this name
+/// (in AppxManifest.xml), so it never clashes with the setup version's.
+pub const STORE_SERVICE_NAME: &str = "PairDeskStoreHelper";
+
+/// The service this copy of PairDesk works with.
+pub fn service_name() -> &'static str {
+    if crate::install::current() == crate::install::Kind::Store {
+        STORE_SERVICE_NAME
+    } else {
+        SERVICE_NAME
+    }
+}
+
+/// `Name_publisherid`, from a package path like
+/// `...\WindowsApps\Name_1.2.3.0_x64__publisherid\pairdesk-agent.exe`.
+pub fn package_family(exe: &Path) -> Option<String> {
+    let mut parts = exe
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned());
+    parts.find(|p| p.eq_ignore_ascii_case("WindowsApps"))?;
+    let folder = parts.next()?;
+    let fields: Vec<&str> = folder.split('_').collect();
+    (fields.len() >= 5 && !fields[0].is_empty() && !fields[fields.len() - 1].is_empty())
+        .then(|| format!("{}_{}", fields[0], fields[fields.len() - 1]))
+}
+
+/// Where the Store version's PairDesk really keeps its files. The package
+/// runs with a private view of AppData: what it writes to `%APPDATA%\PairDesk`
+/// lands in `%LOCALAPPDATA%\Packages\<family>\LocalCache\Roaming\PairDesk`,
+/// which the service (outside that view) reads directly.
+pub fn packaged_data_dir(local_appdata: &Path, family: &str) -> PathBuf {
+    local_appdata
+        .join("Packages")
+        .join(family)
+        .join("LocalCache")
+        .join("Roaming")
+        .join("PairDesk")
+}
+
+/// The Store version's switch, read from the mirrored `settings.json`.
+pub fn secure_desktop_enabled(settings_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(settings_json)
+        .ok()
+        .and_then(|v| v.get("secure_desktop")?.as_bool())
+        .unwrap_or(false)
+}
 
 /// The pairing files the sign-in screen needs, copied from the user's
 /// PairDesk folder.
@@ -92,13 +138,20 @@ static WORKING: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 static LAST_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// For the settings page: `null` off Windows.
-pub fn settings_state() -> serde_json::Value {
+pub fn settings_state(store_switch: bool) -> serde_json::Value {
+    #[cfg(not(windows))]
+    let _ = store_switch;
     #[cfg(windows)]
     {
-        // Store apps may not install services: the page says so instead of
-        // offering a switch that can't work.
+        // The Store package carries its own service, started with Windows;
+        // the switch only tells it whether to serve phones.
         if crate::install::current() == crate::install::Kind::Store {
-            return serde_json::json!({ "store": true });
+            return serde_json::json!({
+                "store": true,
+                "enabled": store_switch,
+                "state": service::state().label(),
+                "helper": helper_available(),
+            });
         }
         serde_json::json!({
             "state": service::state().label(),
@@ -177,6 +230,34 @@ pub fn read_endpoint(path: &Path) -> Option<crate::bridge::Endpoint> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn store_package_folders() {
+        let exe = Path::new(
+            "/c/Program Files/WindowsApps/Me.PairDesk_0.12.2.0_x64__8wekyb3d8bbwe/pairdesk-agent.exe",
+        );
+        assert_eq!(
+            package_family(exe).as_deref(),
+            Some("Me.PairDesk_8wekyb3d8bbwe")
+        );
+        assert_eq!(package_family(Path::new("/usr/bin/pairdesk-agent")), None);
+        assert_eq!(
+            packaged_data_dir(Path::new("/u/AppData/Local"), "Me.PairDesk_8wekyb3d8bbwe"),
+            Path::new(
+                "/u/AppData/Local/Packages/Me.PairDesk_8wekyb3d8bbwe/LocalCache/Roaming/PairDesk"
+            )
+        );
+    }
+
+    #[test]
+    fn the_store_switch_is_read_from_the_mirrored_settings() {
+        assert!(secure_desktop_enabled(
+            r#"{"secure_desktop": true, "keep_awake": false}"#
+        ));
+        assert!(!secure_desktop_enabled(r#"{"secure_desktop": false}"#));
+        assert!(!secure_desktop_enabled("{}"));
+        assert!(!secure_desktop_enabled("not json"));
+    }
 
     #[test]
     fn mirrors_only_pairing_files_and_only_changes() {
