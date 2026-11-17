@@ -75,6 +75,9 @@ export default function Film() {
   const wantSound = useRef(true);
   const inView = useRef(false);
   const done = useRef(false);
+  const userPaused = useRef(false); // they paused it: scrolling back must not restart it
+  const unlockedAt = useRef(0); // the tap that switched sound on must not also pause
+  const [paused, setPaused] = useState(false);
   const tier = useRef<Tier>("720");
   const choice = useRef<Choice>("auto");
   const [playing, setPlaying] = useState<Tier>("720"); // the size loaded now
@@ -140,7 +143,9 @@ export default function Film() {
     const seen = new IntersectionObserver(
       ([e]) => {
         inView.current = e.isIntersecting;
-        if (e.isIntersecting) void start();
+        if (e.isIntersecting) {
+          if (!userPaused.current) void start();
+        }
         else v.pause();
       },
       { threshold: 0.5 },
@@ -154,7 +159,8 @@ export default function Film() {
       off();
       if (wantSound.current && v.muted && inView.current && !done.current) {
         sound(true);
-        if (v.paused) v.play().catch(() => {});
+        unlockedAt.current = performance.now();
+        if (v.paused && !userPaused.current) v.play().catch(() => {});
       }
     };
     const kinds = ["pointerdown", "touchend", "keydown"] as const;
@@ -227,10 +233,28 @@ export default function Film() {
     if (!v.muted && v.paused && !done.current) v.play().catch(() => {});
   };
 
+  // A tap or click on the picture plays or pauses it, on phones too.
+  const tap = () => {
+    const v = video.current;
+    if (!v || still || done.current) return;
+    if (performance.now() - unlockedAt.current < 600) return;
+    if (v.paused) {
+      userPaused.current = false;
+      setPaused(false);
+      v.play().catch(() => {});
+    } else {
+      userPaused.current = true;
+      setPaused(true);
+      v.pause();
+    }
+  };
+
   const replay = () => {
     const v = video.current;
     if (!v) return;
     done.current = false;
+    userPaused.current = false;
+    setPaused(false);
     setEnded(false);
     v.currentTime = 0;
     // Pressing the button is a tap, so sound is allowed unless they turned it off.
@@ -259,7 +283,15 @@ export default function Film() {
         >
           <video
             ref={video}
-            className="block aspect-video w-full"
+            className={`block aspect-video w-full ${still ? "" : "cursor-pointer"}`}
+            onClick={tap}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                tap();
+              }
+            }}
+            tabIndex={still ? undefined : 0}
             src={SRC["720"]}
             poster="/video/pairdesk-film-poster.jpg"
             muted
@@ -336,6 +368,15 @@ export default function Film() {
                 <span className="sr-only sm:not-sr-only">{muted ? (blocked ? "Tap for sound" : "Sound on") : "Sound off"}</span>
               </button>
             </div>
+          )}
+          {paused && !ended && !still && (
+            <span aria-hidden="true" className="pointer-events-none absolute inset-0 grid place-items-center">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-ink/60 text-white shadow-xl backdrop-blur sm:h-20 sm:w-20">
+                <svg viewBox="0 0 24 24" className="ml-1 h-7 w-7 sm:h-9 sm:w-9" fill="currentColor">
+                  <path d="M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.8l-12-7.5A1 1 0 0 0 7 4.5z" />
+                </svg>
+              </span>
+            </span>
           )}
           {ended && !still && (
             <button
