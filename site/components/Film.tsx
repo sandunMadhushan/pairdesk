@@ -5,36 +5,52 @@ import { useEffect, useRef, useState } from "react";
 
 // The 38-second film, right under the hero.
 //
-// Three sizes of the same film (1080p 1.9 MB, 720p 1.2 MB, 480p 0.7 MB). The
-// page starts with 720p so loading begins at once, then switches to a smaller
-// or bigger one for the connection and screen, and steps down by itself if
-// playback stalls.
+// Four sizes of the same film (1080p 1.9 MB, 720p 1.2 MB, 480p 0.7 MB, 360p
+// 0.4 MB). Like YouTube, the quality menu has "Auto" and the four sizes. Auto
+// starts with the one that suits the connection and screen, then steps down by
+// itself if playback stalls. A size the person picks is kept (in this browser)
+// and never changed behind their back.
 //
 // It plays with sound when it scrolls into view. Browsers only allow that after
 // the person has used the page (a click, a tap, a key), so before that it plays
 // muted and the first tap or key anywhere switches the sound on.
 const SRC = {
-  hi: "/video/pairdesk-film-1080.mp4",
-  mid: "/video/pairdesk-film-720.mp4",
-  low: "/video/pairdesk-film-480.mp4",
+  "1080": "/video/pairdesk-film-1080.mp4",
+  "720": "/video/pairdesk-film-720.mp4",
+  "480": "/video/pairdesk-film-480.mp4",
+  "360": "/video/pairdesk-film-360.mp4",
 } as const;
 type Tier = keyof typeof SRC;
+type Choice = Tier | "auto";
+const TIERS: Tier[] = ["1080", "720", "480", "360"];
+const STORE = "pairdesk.film.quality";
 
 type Connection = { saveData?: boolean; effectiveType?: string; downlink?: number };
 
 function pickTier(width: number): Tier {
   const c = (navigator as Navigator & { connection?: Connection }).connection;
   const type = c?.effectiveType;
-  if (c?.saveData) return "low";
-  if (type === "slow-2g" || type === "2g" || type === "3g") return "low";
-  if (c?.downlink !== undefined && c.downlink < 2.5) return "low";
-  if (width >= 900 && (!type || type === "4g") && (c?.downlink === undefined || c.downlink >= 8)) {
-    return "hi";
+  if (c?.saveData || type === "slow-2g" || type === "2g") return "360";
+  if (type === "3g" || (c?.downlink !== undefined && c.downlink < 2.5)) {
+    return c?.downlink !== undefined && c.downlink < 1 ? "360" : "480";
   }
-  return "mid";
+  if (width >= 900 && (!type || type === "4g") && (c?.downlink === undefined || c.downlink >= 8)) {
+    return "1080";
+  }
+  return "720";
 }
 
-const stepDown: Record<Tier, Tier> = { hi: "mid", mid: "low", low: "low" };
+const stepDown: Record<Tier, Tier> = { "1080": "720", "720": "480", "480": "360", "360": "360" };
+
+function saved(): Choice {
+  try {
+    const v = window.localStorage.getItem(STORE);
+    if (v && (v === "auto" || v in SRC)) return v as Choice;
+  } catch {
+    // Storage can be blocked; Auto it is.
+  }
+  return "auto";
+}
 
 const ICON = {
   fill: "none",
@@ -59,7 +75,32 @@ export default function Film() {
   const wantSound = useRef(true);
   const inView = useRef(false);
   const done = useRef(false);
-  const tier = useRef<Tier>("mid");
+  const tier = useRef<Tier>("720");
+  const choice = useRef<Choice>("auto");
+  const [playing, setPlaying] = useState<Tier>("720"); // the size loaded now
+  const [pick, setPick] = useState<Choice>("auto"); // what the menu shows
+  const [menu, setMenu] = useState(false);
+  const quality = useRef<HTMLDivElement>(null);
+
+  // Loads another size of the film and carries on from the same moment.
+  const load = (next: Tier) => {
+    const v = video.current;
+    if (!v || tier.current === next) return;
+    const at = v.currentTime;
+    const playingNow = !v.paused && !v.ended;
+    tier.current = next;
+    setPlaying(next);
+    v.addEventListener(
+      "loadedmetadata",
+      () => {
+        if (at > 0.1) v.currentTime = at;
+        if (playingNow) v.play().catch(() => {});
+      },
+      { once: true },
+    );
+    v.src = SRC[next];
+    v.load();
+  };
 
   useEffect(() => {
     const v = video.current;
@@ -67,23 +108,9 @@ export default function Film() {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setStill(reduce);
 
-    const switchTo = (next: Tier) => {
-      if (tier.current === next) return;
-      const at = v.currentTime;
-      const playing = !v.paused && !v.ended;
-      tier.current = next;
-      v.addEventListener(
-        "loadedmetadata",
-        () => {
-          if (at > 0.1) v.currentTime = at;
-          if (playing) v.play().catch(() => {});
-        },
-        { once: true },
-      );
-      v.src = SRC[next];
-      v.load();
-    };
-    switchTo(pickTier(v.clientWidth));
+    choice.current = saved();
+    setPick(choice.current);
+    load(choice.current === "auto" ? pickTier(v.clientWidth) : choice.current);
 
     if (reduce) return;
 
@@ -122,7 +149,8 @@ export default function Film() {
 
     // The first tap, click or key anywhere on the page unlocks sound.
     const unlock = (e: Event) => {
-      if (controls.current?.contains(e.target as Node)) return;
+      const t = e.target as Node;
+      if (controls.current?.contains(t) || quality.current?.contains(t)) return;
       off();
       if (wantSound.current && v.muted && inView.current && !done.current) {
         sound(true);
@@ -138,7 +166,7 @@ export default function Film() {
     const waiting = () => {
       window.clearTimeout(stall);
       stall = window.setTimeout(() => {
-        if (v.readyState < 3 && !v.paused) switchTo(stepDown[tier.current]);
+        if (choice.current === "auto" && v.readyState < 3 && !v.paused) load(stepDown[tier.current]);
       }, 1800);
     };
     const flowing = () => window.clearTimeout(stall);
@@ -161,6 +189,33 @@ export default function Film() {
       v.removeEventListener("ended", finished);
     };
   }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: Event) => {
+      if (!quality.current?.contains(e.target as Node)) setMenu(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menu]);
+
+  const choose = (c: Choice) => {
+    const v = video.current;
+    choice.current = c;
+    setPick(c);
+    setMenu(false);
+    try {
+      window.localStorage.setItem(STORE, c);
+    } catch {
+      // Not remembered; it still applies now.
+    }
+    if (v) load(c === "auto" ? pickTier(v.clientWidth) : c);
+  };
 
   const toggleSound = () => {
     const v = video.current;
@@ -205,7 +260,7 @@ export default function Film() {
           <video
             ref={video}
             className="block aspect-video w-full"
-            src={SRC.mid}
+            src={SRC["720"]}
             poster="/video/pairdesk-film-poster.jpg"
             muted
             playsInline
@@ -213,6 +268,48 @@ export default function Film() {
             controls={still}
             aria-label="A 38-second film: pairing a phone with a computer, then using it as a touchpad and keyboard, seeing the screen, sending files and the clipboard, shortcuts, sound and apps, on Windows, macOS and Linux with Android and iPhone."
           />
+          <div ref={quality} className="absolute right-2.5 top-2.5 z-10 sm:right-6 sm:top-6">
+            <button
+              type="button"
+              onClick={() => setMenu((m) => !m)}
+              aria-haspopup="menu"
+              aria-expanded={menu}
+              aria-label={`Video quality: ${pick === "auto" ? `Auto, ${playing}p` : `${pick}p`}`}
+              className={pill}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" {...ICON}>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+              </svg>
+              <span>{pick === "auto" ? `Auto · ${playing}p` : `${pick}p`}</span>
+            </button>
+            {menu && (
+              <ul
+                role="menu"
+                aria-label="Video quality"
+                className="absolute right-0 mt-2 w-44 overflow-hidden rounded-2xl bg-white/95 py-1 text-sm font-semibold text-ink shadow-xl backdrop-blur"
+              >
+                {(["auto", ...TIERS] as Choice[]).map((c) => (
+                  <li key={c} role="none">
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={pick === c}
+                      onClick={() => choose(c)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-ink/5"
+                    >
+                      <span>{c === "auto" ? `Auto (${playing}p)` : `${c}p`}</span>
+                      {pick === c && (
+                        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" {...ICON}>
+                          <path d="M5 12.5l4.5 4.5L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {!still && (
             <div ref={controls} className="absolute bottom-2.5 right-2.5 z-10 flex gap-1.5 sm:bottom-6 sm:right-6 sm:gap-2">
               <button type="button" onClick={replay} className={pill}>
