@@ -17,7 +17,7 @@ The history contains no secrets (the signing keys were never committed).
 ## 1. Website: pairdesk.madhushan.me
 
 Ready: `site/` (home page with downloads, privacy policy, code signing
-policy) and `.github/workflows/pages.yml`.
+policy). It is hosted on Vercel, which deploys on every push to `main`.
 
 1. Settings → Pages → Build and deployment → Source: **GitHub Actions**.
 2. At your DNS provider for madhushan.me: `CNAME pairdesk → sandunmadhushan.github.io`.

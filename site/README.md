@@ -17,5 +17,4 @@ npm run build   # writes the site to out/
 - `public/.well-known/assetlinks.json`: lets Android open
   `https://pairdesk.madhushan.me/p` links straight in the app.
 
-`.github/workflows/pages.yml` builds and publishes it (only while the
-repository is public).
+Vercel builds and publishes it on every push to `main` (project `pairdesk-site`).
