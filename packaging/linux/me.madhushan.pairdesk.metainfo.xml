@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.12.4" date="2026-11-18">
+      <description>
+        <p>The screen view heals itself: if the phone ever shows a broken, blocky picture, it clears within a few seconds instead of staying broken.</p>
+      </description>
+    </release>
     <release version="0.12.3" date="2026-11-16">
       <description>
         <p>The Microsoft Store version can now use the lock screen, the sign-in screen and administrator prompts from your phone, and it checks for updates in the Microsoft Store.</p>
