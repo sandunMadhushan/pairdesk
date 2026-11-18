@@ -22,6 +22,11 @@ const MAX_IN_FLIGHT: u32 = 2;
 /// Between frames the pointer is checked this often and sent on its own
 /// (a tiny frame), so it follows the finger without waiting for a frame.
 const CURSOR_POLL: Duration = Duration::from_millis(16);
+/// While the picture changes, a key frame at least this often. A phone that
+/// missed or mis-decoded one frame shows a shredded picture until the next key
+/// frame, and without this none came until the phone asked for one.
+const KEY_FRAME_EVERY: Duration = Duration::from_secs(3);
+
 /// Stop if the phone hasn't acknowledged anything for this long.
 const ACK_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -205,6 +210,10 @@ fn run(
     let mut prev: Option<Vec<u8>> = None;
     let mut last_cursor: Option<(i32, i32)> = None;
     let mut flush_pending = false;
+    // When the last key frame went out, and whether pictures built on it
+    // have gone out since (then a damaged picture is possible).
+    let mut last_key = Instant::now();
+    let mut delta_since_key = false;
     let mut seq: u32 = 0;
     let mut failing_since: Option<Instant> = None;
     log::info!(
@@ -277,15 +286,26 @@ fn run(
             // One repeat after a change: some phone decoders show a picture
             // only when the next one arrives. A repeat is a few bytes.
             let flush = !changed && std::mem::take(&mut flush_pending);
-            if changed || flush {
+            // Time for a key frame, even if nothing changed since the last
+            // picture: it replaces whatever damaged picture the phone shows.
+            let heal = delta_since_key && last_key.elapsed() >= KEY_FRAME_EVERY;
+            if changed || flush || heal {
                 // No previous picture: first frame or a refresh, so a key frame.
-                match enc.encode(&scaled, prev.is_none()) {
+                match enc.encode(&scaled, prev.is_none() || heal) {
                     Ok((data, k)) => (picture, key) = (data, k),
                     Err(e) => return Some(format!("Can't encode the screen: {e}")),
                 }
             }
             let sent_picture = !picture.is_empty();
-            if sent_picture && changed {
+            if sent_picture {
+                if key {
+                    last_key = Instant::now();
+                    delta_since_key = false;
+                } else {
+                    delta_since_key = true;
+                }
+            }
+            if sent_picture && (changed || heal) {
                 flush_pending = true;
             }
             (sent_picture || cursor != last_cursor).then(|| {

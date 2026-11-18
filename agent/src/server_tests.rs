@@ -661,6 +661,70 @@ async fn streams_h264_video_to_phones_that_ask_for_it() {
     }
 }
 
+/// While the picture keeps changing, key frames keep coming, so a phone that
+/// mis-decoded one frame recovers by itself. Needs an X display and
+/// ImageMagick's `display` (to change the root window); skipped otherwise.
+#[tokio::test(flavor = "multi_thread")]
+async fn video_gets_fresh_key_frames_while_the_picture_changes() {
+    let have_display_tool = std::process::Command::new("display")
+        .arg("-version")
+        .output()
+        .is_ok();
+    if std::env::var_os("DISPLAY").is_none() || !have_display_tool {
+        eprintln!("no DISPLAY or no `display`; skipped");
+        return;
+    }
+    let agent = start_agent().await;
+    let (mut ws, _) = signed_in(&agent, 34).await;
+    send(
+        &mut ws,
+        json!({"t":"screen_start","id":8,"quality":"low","codecs":["h264"]}),
+    )
+    .await;
+    assert_eq!(recv(&mut ws).await["codec"], "h264");
+
+    // Something on screen changes every 250 ms.
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let painter = {
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            let colors = ["red", "blue", "green", "yellow"];
+            let mut i = 0;
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let mut child = std::process::Command::new("display")
+                    .args(["-window", "root", &format!("xc:{}", colors[i % 4])])
+                    .spawn()
+                    .ok();
+                std::thread::sleep(Duration::from_millis(250));
+                if let Some(c) = child.as_mut() {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                }
+                i += 1;
+            }
+        })
+    };
+
+    let started = std::time::Instant::now();
+    let mut keys = 0;
+    while started.elapsed() < Duration::from_secs(9) {
+        let f = recv_frame(&mut ws).await;
+        let seq = u32::from_le_bytes(f[4..8].try_into().unwrap());
+        send(&mut ws, json!({"t":"screen_ack","seq":seq})).await;
+        let len = u32::from_le_bytes(f[17..21].try_into().unwrap());
+        if len > 0 && f[16] & 1 == 1 {
+            keys += 1;
+        }
+    }
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _ = painter.join();
+    // The first, plus about one every three seconds.
+    assert!(
+        keys >= 3,
+        "only {keys} key frames in 9 s of changing picture"
+    );
+}
+
 /// Needs an X display (run under Xvfb); skipped otherwise.
 #[tokio::test(flavor = "multi_thread")]
 async fn streams_the_screen_with_acks_and_can_be_stopped() {
