@@ -1,1 +1,2 @@
+• Shortcut buttons now light up and buzz when you tap them
 • The computer app: a broken screen picture now clears by itself within a few seconds

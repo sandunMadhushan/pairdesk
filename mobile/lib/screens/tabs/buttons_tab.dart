@@ -2,6 +2,8 @@
 // A grid of one-tap buttons: shortcuts, text, apps and power actions.
 // Long-press a button to change or remove it.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -26,6 +28,11 @@ class _ButtonsTabState extends State<ButtonsTab> {
   late final ButtonStore _store = widget.store ?? ButtonStore();
   List<CustomButton>? _buttons;
 
+  /// The tile that was just pressed; it lights up for a moment so you can
+  /// see the touch registered.
+  String? _flashId;
+  Timer? _flashTimer;
+
   String? get _os => widget.connection.agentOs;
 
   @override
@@ -41,8 +48,23 @@ class _ButtonsTabState extends State<ButtonsTab> {
     await _store.save(buttons);
   }
 
+  @override
+  void dispose() {
+    _flashTimer?.cancel();
+    super.dispose();
+  }
+
+  void _flash(CustomButton b) {
+    setState(() => _flashId = b.id);
+    _flashTimer?.cancel();
+    _flashTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) setState(() => _flashId = null);
+    });
+  }
+
   Future<void> _press(CustomButton b) async {
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
+    if (b.action is! PowerButtonAction) _flash(b);
     final messenger = ScaffoldMessenger.of(context);
     final action = b.action;
     if (action is PowerButtonAction) {
@@ -207,14 +229,20 @@ class _ButtonsTabState extends State<ButtonsTab> {
             itemCount: buttons.length,
             itemBuilder: (context, i) {
               final b = buttons[i];
+              final lit = _flashId == b.id;
               return FadeRise(
                 delay: Duration(milliseconds: (40 * i).clamp(0, 400)),
                 child: Pressable(
+                  scale: 0.9,
                   onTap: () => _press(b),
                   onLongPress: () => _menu(b),
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: PdMotion.press,
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: c.s1, borderRadius: BorderRadius.circular(24)),
+                    decoration: BoxDecoration(
+                      color: lit ? PdColors.lime : c.s1,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -222,8 +250,15 @@ class _ButtonsTabState extends State<ButtonsTab> {
                         Container(
                           width: 36,
                           height: 36,
-                          decoration: BoxDecoration(color: c.s2, shape: BoxShape.circle),
-                          child: Icon(_icon(b.action), size: 18, color: c.ink),
+                          decoration: BoxDecoration(
+                            color: lit ? Colors.white.withValues(alpha: 0.55) : c.s2,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            lit ? Icons.check_rounded : _icon(b.action),
+                            size: 18,
+                            color: lit ? PdColors.onAccent : c.ink,
+                          ),
                         ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -232,13 +267,17 @@ class _ButtonsTabState extends State<ButtonsTab> {
                               b.label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: lit ? PdColors.onAccent : null,
+                              ),
                             ),
                             Text(
-                              _subtitle(b.action),
+                              lit ? 'Sent' : _subtitle(b.action),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 13, color: c.sub),
+                              style: TextStyle(fontSize: 13, color: lit ? PdColors.onAccent : c.sub),
                             ),
                           ],
                         ),
