@@ -319,7 +319,7 @@ export default function Film() {
               <ul
                 role="menu"
                 aria-label="Video quality"
-                className="absolute right-0 mt-2 w-44 overflow-hidden rounded-2xl bg-white/95 py-1 text-sm font-semibold text-ink shadow-xl backdrop-blur"
+                className="absolute right-0 mt-2 flex w-max max-w-[calc(100vw-2.5rem)] gap-1 rounded-full bg-white/95 p-1 text-xs font-semibold text-ink shadow-xl backdrop-blur sm:block sm:w-44 sm:max-w-none sm:overflow-hidden sm:rounded-2xl sm:p-0 sm:py-1 sm:text-sm"
               >
                 {(["auto", ...TIERS] as Choice[]).map((c) => (
                   <li key={c} role="none">
@@ -328,11 +328,16 @@ export default function Film() {
                       role="menuitemradio"
                       aria-checked={pick === c}
                       onClick={() => choose(c)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-ink/5"
+                      className={`flex w-full items-center justify-between gap-3 rounded-full px-3 py-2 text-left transition sm:rounded-none sm:px-4 sm:py-2.5 sm:hover:bg-ink/5 ${
+                        pick === c ? "bg-ink text-white sm:bg-transparent sm:text-ink" : ""
+                      }`}
                     >
-                      <span>{c === "auto" ? `Auto (${playing}p)` : `${c}p`}</span>
+                      <span>
+                        {c === "auto" ? "Auto" : `${c}p`}
+                        {c === "auto" && <span className="hidden sm:inline"> ({playing}p)</span>}
+                      </span>
                       {pick === c && (
-                        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" {...ICON}>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" className="hidden h-4 w-4 sm:block" {...ICON}>
                           <path d="M5 12.5l4.5 4.5L19 7" />
                         </svg>
                       )}
