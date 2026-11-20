@@ -24,6 +24,21 @@ pub const DEFAULT_RELAY: &str = "relay.pairdesk.madhushan.me:443";
 
 const TOKEN_FILE: &str = "relay-token";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// The relay pings every 25 s. Three missed pings in a row means the link
+/// is dead even though TCP hasn't said so (a laptop that slept, a router
+/// that forgot the connection): the relay has already dropped this
+/// computer by then, so register again.
+const DEAD_AFTER: Duration = Duration::from_secs(80);
+/// How often to look for a wake from sleep or a change of network.
+const WATCH_EVERY: Duration = Duration::from_secs(5);
+/// More than this beyond [`WATCH_EVERY`] between two looks means the
+/// computer was asleep.
+const SLEEP_GAP: Duration = Duration::from_secs(20);
+/// A registration that lasted this long was a good one, so the next try
+/// after it ends starts again at the short delay.
+const STABLE_AFTER: Duration = Duration::from_secs(30);
+const FIRST_RETRY: Duration = Duration::from_secs(2);
+const LAST_RETRY: Duration = Duration::from_secs(60);
 
 /// What the settings page shows.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -122,7 +137,7 @@ pub async fn run(
 ) {
     let shared = &state.relay;
     let mut changed = shared.changed.subscribe();
-    let mut backoff = Duration::from_secs(2);
+    let mut backoff = FIRST_RETRY;
     loop {
         let (on, address) = {
             let p = state.prefs();
@@ -134,15 +149,23 @@ pub async fn run(
             continue;
         }
         shared.set(Status::Connecting);
+        let started = tokio::time::Instant::now();
         let result = tokio::select! {
             r = session(&state, &address, &token, &incoming) => r,
             _ = changed.changed() => {
-                backoff = Duration::from_secs(2);
+                backoff = FIRST_RETRY;
                 continue;
             }
         };
+        backoff = backoff_after_session(backoff, started.elapsed());
         let msg = match result {
-            Ok(()) => "the relay closed the connection".to_string(),
+            Ok(Ended::Moved) => {
+                // Woke up or changed network: the old connection is useless,
+                // so register again straight away.
+                info!("relay {address}: the computer woke up or changed network; reconnecting");
+                continue;
+            }
+            Ok(Ended::Closed) => "the relay closed the connection".to_string(),
             Err(e) => e,
         };
         warn!(
@@ -154,7 +177,25 @@ pub async fn run(
             _ = tokio::time::sleep(backoff) => {}
             _ = changed.changed() => {}
         }
-        backoff = (backoff * 2).min(Duration::from_secs(60));
+        backoff = (backoff * 2).min(LAST_RETRY);
+    }
+}
+
+/// Why a registration ended without an error.
+enum Ended {
+    /// The relay closed the connection.
+    Closed,
+    /// The computer woke from sleep or its network changed.
+    Moved,
+}
+
+/// After a registration that lasted [`STABLE_AFTER`] the delay starts over;
+/// otherwise it keeps growing, so a relay that is down isn't hammered.
+fn backoff_after_session(backoff: Duration, lasted: Duration) -> Duration {
+    if lasted >= STABLE_AFTER {
+        FIRST_RETRY
+    } else {
+        backoff
     }
 }
 
@@ -164,7 +205,7 @@ async fn session(
     address: &str,
     token: &str,
     incoming: &mpsc::Sender<TcpStream>,
-) -> Result<(), String> {
+) -> Result<Ended, String> {
     let mut control = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(address))
         .await
         .map_err(|_| "no answer".to_string())?
@@ -190,31 +231,84 @@ async fn session(
     state.relay.set(Status::Online { route });
 
     let (read, mut write) = control.into_split();
+    let serve = control_loop(read, &mut write, DEAD_AFTER, |nonce| {
+        let (address, token, incoming) = (address.to_string(), token.to_string(), incoming.clone());
+        tokio::spawn(async move {
+            match answer(&address, &token, &nonce).await {
+                Ok(stream) => {
+                    let _ = incoming.send(stream).await;
+                }
+                Err(e) => warn!("relay: couldn't take a phone's connection: {e}"),
+            }
+        });
+    });
+    tokio::select! {
+        r = serve => r.map(|()| Ended::Closed),
+        () = watch_for_move() => Ok(Ended::Moved),
+    }
+}
+
+/// Answers the relay's pings and passes on each `INCOMING <nonce>` until
+/// the relay closes the connection, or says nothing for `dead_after`.
+async fn control_loop<R, W>(
+    read: R,
+    write: &mut W,
+    dead_after: Duration,
+    mut incoming: impl FnMut(String),
+) -> Result<(), String>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
     let mut lines = BufReader::new(read).lines();
-    while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+    loop {
+        let line = tokio::time::timeout(dead_after, lines.next_line())
+            .await
+            .map_err(|_| "the relay stopped answering".to_string())?
+            .map_err(|e| e.to_string())?;
+        let Some(line) = line else {
+            return Ok(());
+        };
         if line == "PING" {
             write
                 .write_all(b"PONG\n")
                 .await
                 .map_err(|e| e.to_string())?;
         } else if let Some(nonce) = line.strip_prefix("INCOMING ") {
-            let (address, token, nonce, incoming) = (
-                address.to_string(),
-                token.to_string(),
-                nonce.to_string(),
-                incoming.clone(),
-            );
-            tokio::spawn(async move {
-                match answer(&address, &token, &nonce).await {
-                    Ok(stream) => {
-                        let _ = incoming.send(stream).await;
-                    }
-                    Err(e) => warn!("relay: couldn't take a phone's connection: {e}"),
-                }
-            });
+            incoming(nonce.to_string());
         }
     }
-    Ok(())
+}
+
+/// This computer's own addresses, not counting Tailscale's.
+fn local_addresses() -> Vec<std::net::Ipv4Addr> {
+    let mut v: Vec<_> = crate::net::addresses()
+        .into_iter()
+        .filter(|a| a.kind != crate::net::Kind::Tailscale)
+        .map(|a| a.ip)
+        .collect();
+    v.sort();
+    v
+}
+
+/// Returns when the computer has woken from sleep or its addresses have
+/// changed. A connection that was open before either is dead, but TCP
+/// often doesn't say so for a long time.
+async fn watch_for_move() {
+    let mut tick = tokio::time::interval(WATCH_EVERY);
+    let mut clock = std::time::SystemTime::now();
+    let addresses = local_addresses();
+    loop {
+        tick.tick().await;
+        let now = std::time::SystemTime::now();
+        let slept = now
+            .duration_since(clock)
+            .map_or(true, |d| d > WATCH_EVERY + SLEEP_GAP);
+        clock = now;
+        if slept || local_addresses() != addresses {
+            return;
+        }
+    }
 }
 
 /// Opens this computer's side of one phone's connection.
@@ -240,6 +334,45 @@ async fn answer(address: &str, token: &str, nonce: &str) -> Result<TcpStream, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_silent_relay_is_given_up_on() {
+        let (mine, _relay) = tokio::io::duplex(1024);
+        let (read, mut write) = tokio::io::split(mine);
+        let started = std::time::Instant::now();
+        let result = control_loop(read, &mut write, Duration::from_millis(150), |_| {}).await;
+        assert_eq!(result, Err("the relay stopped answering".to_string()));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn pings_are_answered_and_phones_passed_on() {
+        let (mine, relay) = tokio::io::duplex(1024);
+        let (read, mut write) = tokio::io::split(mine);
+        let mut relay = relay;
+        relay
+            .write_all(b"PING\nINCOMING abc123\nPING\n")
+            .await
+            .unwrap();
+        relay.shutdown().await.unwrap();
+        let mut nonces = Vec::new();
+        let result =
+            control_loop(read, &mut write, Duration::from_secs(5), |n| nonces.push(n)).await;
+        // The relay closing the connection is a clean end, not an error.
+        assert_eq!(result, Ok(()));
+        assert_eq!(nonces, ["abc123"]);
+        drop(write);
+        let mut answered = String::new();
+        relay.read_to_string(&mut answered).await.unwrap();
+        assert_eq!(answered, "PONG\nPONG\n");
+    }
+
+    #[test]
+    fn a_good_session_resets_the_delay() {
+        let long = Duration::from_secs(60);
+        assert_eq!(backoff_after_session(long, STABLE_AFTER), FIRST_RETRY);
+        assert_eq!(backoff_after_session(long, Duration::from_secs(29)), long);
+    }
 
     #[test]
     fn token_is_kept_and_id_matches_the_relay() {
