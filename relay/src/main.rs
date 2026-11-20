@@ -42,8 +42,10 @@ const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
 /// (phones ping every 3 s).
 const IDLE: Duration = Duration::from_secs(90);
 const PING_EVERY: Duration = Duration::from_secs(25);
-/// Connections from one address at once.
-const PER_IP: usize = 64;
+/// Connections from one address at once. Each computer holds one control
+/// connection and each phone one joined connection, and a mobile carrier or
+/// an office puts many people behind one address, so this must be generous.
+const PER_IP: usize = 512;
 const MAX_LINE: usize = 256;
 
 #[derive(Default)]
