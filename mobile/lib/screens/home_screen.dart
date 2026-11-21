@@ -13,6 +13,7 @@ import '../files/native_files.dart';
 import '../files/share_inbox.dart';
 import '../pairing/laptop.dart';
 import '../pairing/pairing_link.dart';
+import '../pairing/relay_route.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../update_check.dart';
@@ -1157,9 +1158,32 @@ class _ComputerMenu extends StatelessWidget {
 }
 
 /// "Can't reach …": what to check, and three ways on.
-class _CantReach extends StatelessWidget {
+class _CantReach extends StatefulWidget {
   const _CantReach({required this.laptop});
   final Laptop laptop;
+
+  @override
+  State<_CantReach> createState() => _CantReachState();
+}
+
+class _CantReachState extends State<_CantReach> {
+  Laptop get laptop => widget.laptop;
+
+  /// null until the person asks; then one result per relay.
+  List<RelayCheck>? _checks;
+  bool _checking = false;
+
+  List<RelayRoute> get _relays => [for (final a in laptop.addresses) ?RelayRoute.tryParse(a)];
+
+  Future<void> _runCheck() async {
+    setState(() => _checking = true);
+    final results = await Future.wait(_relays.map(checkRelay));
+    if (!mounted) return;
+    setState(() {
+      _checks = results;
+      _checking = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1200,6 +1224,39 @@ class _CantReach extends StatelessWidget {
                 ? 'Away from home: the relay or Tailscale is on, on the computer'
                 : 'The phone and the computer are on the same Wi-Fi',
           ),
+          if (_relays.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            if (_checks == null)
+              SecondaryButton(
+                label: _checking ? 'Checking the relay…' : 'Check the relay',
+                height: 50,
+                onPressed: _checking ? null : _runCheck,
+              )
+            else
+              for (final r in _checks!)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        r.state == RelayState.computerOnline
+                            ? Icons.check_circle_rounded
+                            : Icons.error_outline_rounded,
+                        size: 20,
+                        color: c.ink,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${r.route.host}: ${r.detail}',
+                          style: const TextStyle(fontSize: 14, height: 1.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
           const SizedBox(height: 14),
           PrimaryButton(
             label: 'Try again',

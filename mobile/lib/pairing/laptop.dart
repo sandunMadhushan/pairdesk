@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'codec.dart';
 import 'host.dart';
+import 'relay_route.dart';
 
 export 'host.dart' show isTailscaleAddress, isTypedHost, isUsableHost, splitHostPort;
 
@@ -46,6 +47,9 @@ class Laptop {
 
   static const maxAddresses = 8;
 
+  /// Most relay routes kept (the computer connects to at most this many).
+  static const maxRelays = 4;
+
   /// Puts [address] first, keeping at most [maxAddresses].
   void rememberAddress(String address) {
     addresses = [address, ...addresses.where((a) => a != address)].take(maxAddresses).toList();
@@ -58,18 +62,19 @@ class Laptop {
     for (final a in [working, ...fromComputer, ...addresses]) {
       if (!merged.contains(a)) merged.add(a);
     }
-    // Direct routes first; the computer's current relay route always kept
-    // (it's what works from anywhere).
-    final relay = [
-      ...fromComputer.where((a) => a.startsWith('relay:')),
-      ...merged.where((a) => a.startsWith('relay:')),
-    ].firstOrNull;
-    final direct = merged.where((a) => !a.startsWith('relay:')).take(maxAddresses - (relay == null ? 0 : 1));
-    addresses = [...direct, ?relay];
+    // Direct routes first. The relay routes the computer currently reports
+    // are all kept (it may use several relays); when it reports none, the
+    // ones remembered from before stay. They're what works from anywhere.
+    final reported = fromComputer.where(RelayRoute.looksLike).toSet();
+    final relays = (reported.isNotEmpty ? reported : merged.where(RelayRoute.looksLike).toSet())
+        .take(maxRelays)
+        .toList();
+    final direct = merged.where((a) => !RelayRoute.looksLike(a)).take(maxAddresses - relays.length);
+    addresses = [...direct, ...relays];
   }
 
   /// True when the phone knows a route from anywhere: Tailscale or a relay.
-  bool get reachableAnywhere => addresses.any((a) => isTailscaleAddress(a) || a.startsWith('relay:'));
+  bool get reachableAnywhere => addresses.any((a) => isTailscaleAddress(a) || RelayRoute.looksLike(a));
 
   Map<String, Object?> toJson() => {
     'fp': key,

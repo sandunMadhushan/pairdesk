@@ -13,6 +13,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 /// `relay:host:port/id`, as kept in a computer's address list.
 class RelayRoute {
   const RelayRoute(this.host, this.port, this.id);
@@ -55,10 +57,53 @@ class RelayRefused implements Exception {
   String toString() => message;
 }
 
+/// Relays that didn't speak TLS, and when we last found that out. A relay
+/// that does TLS is tried first (it hides what the phone is doing from the
+/// network); an older plain one is remembered so later connections don't wait.
+final _plainRelays = <String, DateTime>{};
+const _tlsRetryAfter = Duration(minutes: 10);
+
+@visibleForTesting
+void forgetPlainRelays() => _plainRelays.clear();
+
+/// TLS to the relay first (only for names, as a certificate can't match an
+/// IP address), then the plain protocol as before.
+Future<Socket> _connectRelay(
+  RelayRoute route,
+  Duration timeout,
+  Duration tlsTimeout,
+  SecurityContext? context,
+) async {
+  final key = '${route.host}:${route.port}';
+  final isName = InternetAddress.tryParse(route.host) == null;
+  final since = _plainRelays[key];
+  final tryTls = isName && (since == null || DateTime.now().difference(since) > _tlsRetryAfter);
+  if (tryTls) {
+    try {
+      return await SecureSocket.connect(
+        route.host,
+        route.port,
+        timeout: timeout,
+        context: context,
+      ).timeout(tlsTimeout);
+    } catch (_) {
+      // Not a TLS relay, or one with a certificate we can't verify: use the
+      // plain protocol. The computer's own certificate is still pinned.
+      _plainRelays[key] = DateTime.now();
+    }
+  }
+  return Socket.connect(route.host, route.port, timeout: timeout);
+}
+
 /// Asks the relay for the computer and, once joined, returns a local port
 /// whose first connection is forwarded to it.
-Future<int> openRelayTunnel(RelayRoute route, {required Duration timeout}) async {
-  final upstream = await Socket.connect(route.host, route.port, timeout: timeout);
+Future<int> openRelayTunnel(
+  RelayRoute route, {
+  required Duration timeout,
+  Duration tlsTimeout = const Duration(seconds: 5),
+  @visibleForTesting SecurityContext? tlsContext,
+}) async {
+  final upstream = await _connectRelay(route, timeout, tlsTimeout, tlsContext);
   upstream.setOption(SocketOption.tcpNoDelay, true);
   final reply = Completer<String>();
   final header = BytesBuilder();
@@ -134,4 +179,53 @@ Future<int> openRelayTunnel(RelayRoute route, {required Duration timeout}) async
     );
   }, onError: (Object _) => upstream.destroy());
   return server.port;
+}
+
+/// What a check found out about one relay.
+enum RelayState { computerOnline, computerOffline, relayDown, unexpected }
+
+class RelayCheck {
+  const RelayCheck(this.route, this.state, this.detail);
+  final RelayRoute route;
+  final RelayState state;
+
+  /// Plain words for the person looking at it.
+  final String detail;
+}
+
+/// Asks a relay whether the computer is connected to it, without opening a
+/// session (the connection is dropped as soon as the relay has answered).
+Future<RelayCheck> checkRelay(
+  RelayRoute route, {
+  Duration timeout = const Duration(seconds: 6),
+  Duration tlsTimeout = const Duration(seconds: 3),
+}) async {
+  try {
+    final port = await openRelayTunnel(route, timeout: timeout, tlsTimeout: tlsTimeout);
+    // The relay joined us to the computer, which proves everything works up
+    // to the computer. Nobody connects to the forwarder, so it times out.
+    unawaited(Future<void>.delayed(Duration.zero, () => _poke(port)));
+    return RelayCheck(
+      route,
+      RelayState.computerOnline,
+      'The relay answers and the computer is connected to it.',
+    );
+  } on RelayRefused catch (e) {
+    final offline = e.message.contains('isn\'t connected');
+    return RelayCheck(
+      route,
+      offline ? RelayState.computerOffline : RelayState.unexpected,
+      offline ? 'The relay answers, but the computer isn\'t connected to it.' : e.message,
+    );
+  } catch (_) {
+    return RelayCheck(route, RelayState.relayDown, 'No answer from ${route.host}.');
+  }
+}
+
+/// Closes the forwarder's port so the tunnel is torn down at once.
+Future<void> _poke(int port) async {
+  try {
+    final s = await Socket.connect(InternetAddress.loopbackIPv4, port, timeout: const Duration(seconds: 1));
+    s.destroy();
+  } catch (_) {}
 }

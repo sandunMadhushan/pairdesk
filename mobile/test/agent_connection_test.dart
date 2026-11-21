@@ -17,6 +17,7 @@ import 'package:pairdesk/pairing/discovery.dart';
 import 'package:pairdesk/pairing/identity.dart';
 import 'package:pairdesk/pairing/laptop.dart';
 import 'package:pairdesk/pairing/pairing_link.dart';
+import 'package:pairdesk/pairing/relay_route.dart';
 
 const fixtures = 'test/fixtures';
 
@@ -614,6 +615,16 @@ void main() {
       expect(l.addresses.last, 'relay:r.example.org:443/${'b' * 32}');
       expect(l.addresses.where((a) => a.startsWith('relay:')), hasLength(1));
       expect(l.reachableAnywhere, isTrue);
+      // Several relays the computer reports are all kept (at most four);
+      // when it reports none, the remembered ones stay.
+      String r(String host) => 'relay:$host:443/${'c' * 32}';
+      l.learnAddresses(working: '10.0.0.1', fromComputer: [r('a.org'), r('b.org'), r('c.org')]);
+      expect(l.addresses.where(RelayRoute.looksLike), [r('a.org'), r('b.org'), r('c.org')]);
+      expect(l.addresses.length, lessThanOrEqualTo(Laptop.maxAddresses));
+      l.learnAddresses(working: '10.0.0.1');
+      expect(l.addresses.where(RelayRoute.looksLike), hasLength(3));
+      l.learnAddresses(working: '10.0.0.1', fromComputer: [r('a.org'), r('b.org')]);
+      expect(l.addresses.where(RelayRoute.looksLike), [r('a.org'), r('b.org')]);
     });
   });
 
