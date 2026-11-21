@@ -94,12 +94,15 @@ pub fn secure_desktop_enabled(settings_json: &str) -> bool {
 }
 
 /// The pairing files the sign-in screen needs, copied from the user's
-/// PairDesk folder.
-pub const MIRRORED: [&str; 4] = [
+/// PairDesk folder. `relay-token` makes the sign-in screen's server register
+/// with the relay under the same id as the user's PairDesk, so a phone's
+/// saved relay route finds it before anyone has signed in.
+pub const MIRRORED: [&str; 5] = [
     "identity-cert.der",
     "identity-key.der",
     "paired-phones.json",
     "settings.json",
+    "relay-token",
 ];
 
 static SYSTEM_MODE: AtomicBool = AtomicBool::new(false);
@@ -266,9 +269,15 @@ mod tests {
         let to = system_data_dir(sys.path());
         std::fs::write(user.path().join("identity-key.der"), b"key").unwrap();
         std::fs::write(user.path().join("paired-phones.json"), b"[1]").unwrap();
+        std::fs::write(user.path().join("relay-token"), b"relay-secret").unwrap();
         std::fs::write(user.path().join("agent.log"), b"not this").unwrap();
         assert!(mirror(user.path(), &to).unwrap());
         assert_eq!(std::fs::read(to.join("identity-key.der")).unwrap(), b"key");
+        assert_eq!(
+            std::fs::read(to.join("relay-token")).unwrap(),
+            b"relay-secret",
+            "the sign-in screen registers with the relay as the same computer"
+        );
         assert!(!to.join("agent.log").exists());
         assert!(!mirror(user.path(), &to).unwrap(), "nothing changed");
         std::fs::write(user.path().join("paired-phones.json"), b"[1,2]").unwrap();
