@@ -1,0 +1,2 @@
+• The ✕ now asks before it ends the connection to the computer
+• Connect from anywhere now talks only about the PairDesk relay

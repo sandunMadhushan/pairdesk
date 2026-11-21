@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.12.6" date="2026-11-21">
+      <description>
+        <p>The close button asks before it ends the connection to the computer. Tailscale is no longer shown in the app: connecting from anywhere uses the PairDesk relay.</p>
+      </description>
+    </release>
     <release version="0.12.5" date="2026-11-21">
       <description>
         <p>Steadier connections through a relay: a dead relay link is noticed and replaced within seconds, the relay accepts TLS on port 443, you can use more than one relay, and settings show whether each relay works.</p>
