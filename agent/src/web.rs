@@ -238,10 +238,14 @@ fn handle(
                 Some(_) => status(
                     request,
                     400,
-                    "Enter the relay as host:port, e.g. relay.example.org:443.",
+                    "Enter the relay as host:port, e.g. relay.example.org:443. Several can be separated by commas.",
                 ),
                 None => status(request, 400, "bad request"),
             }
+        }
+        (Method::Post, "/api/relay-check") => {
+            crate::relay::start_check(state.clone());
+            send_state(request, state)
         }
         (Method::Post, "/api/cancel-pair") => {
             state.cancel_pairing();
@@ -691,6 +695,8 @@ fn send_state(request: Request, state: &AppState) {
             "address": prefs.relay,
             "default": crate::relay::DEFAULT_RELAY,
             "state": state.relay.status(),
+            "details": state.relay.details(),
+            "check": state.relay.check_state(),
         },
         "keep_awake": state.awake.is_on(),
         "transfers": state.transfers(),
@@ -839,8 +845,13 @@ fn reveal(path: &std::path::Path) {
     }
 }
 
-/// `host:port`, with a sensible host.
-fn valid_relay(address: &str) -> bool {
+/// One or more relays, each `host:port` with a sensible host.
+fn valid_relay(addresses: &str) -> bool {
+    let list = crate::relay::parse_list(addresses);
+    !list.is_empty() && list.iter().all(|a| valid_relay_one(a))
+}
+
+fn valid_relay_one(address: &str) -> bool {
     let a = address.trim();
     let Some((host, port)) = a.rsplit_once(':') else {
         return false;
@@ -874,6 +885,11 @@ mod tests {
     fn relay_addresses() {
         assert!(super::valid_relay("relay.example.org:443"));
         assert!(super::valid_relay(" 10.0.0.2:47900 "));
+        assert!(super::valid_relay(
+            "relay.example.org:443, relay2.example.org:443"
+        ));
+        assert!(!super::valid_relay("relay.example.org:443, nope"));
+        assert!(!super::valid_relay(" , "));
         assert!(!super::valid_relay("relay.example.org"));
         assert!(!super::valid_relay("bad host:443"));
         assert!(!super::valid_relay("host:0"));

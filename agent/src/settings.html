@@ -311,6 +311,11 @@
   input[type=text]::placeholder { color: var(--sub); opacity: .7; }
   input[readonly] { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 12.5px; }
   .linkbox { display: flex; gap: 8px; align-items: center; }
+  .relay-row { margin: 10px 0 0; }
+  .relay-row b { font-weight: 600; word-break: break-all; }
+  .relay-sub { display: block; font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .check-step { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; margin: 4px 0 0; }
+  .check-step .ms { color: var(--sub); white-space: nowrap; }
   .seg { display: inline-flex; padding: 4px; gap: 2px; border-radius: 99px; background: var(--s2); }
   .seg button { height: 32px; padding: 0 14px; background: transparent; font-size: 13.5px; }
   .seg button[aria-pressed="true"] { background: var(--s1); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
@@ -650,7 +655,12 @@
         <p class="hint">When your phone can't reach this computer directly (another network, no Tailscale), it connects through the relay. Everything stays encrypted between your phone and this computer: the relay only passes it along and can't see your screen or what you type.</p>
         <details class="mini"><summary>Relay server <svg><use href="#i-chev"/></svg></summary>
           <div class="linkbox" style="margin-top:10px"><input type="text" id="relay-address" spellcheck="false" aria-label="Relay server (host:port)"><button id="btn-relay-save">Save</button></div>
-          <p class="hint" style="margin:8px 0 0">host:port. You can run your own: see docs/RELAY.md in the PairDesk repository.</p>
+          <p class="hint" style="margin:8px 0 0">host:port. Several can be separated by commas; this computer then registers with each. You can run your own: see docs/RELAY.md in the PairDesk repository.</p>
+        </details>
+        <details class="mini" style="margin-top:8px"><summary>Connection details <svg><use href="#i-chev"/></svg></summary>
+          <div id="relay-details"></div>
+          <div class="linkbox" style="margin-top:12px"><button id="btn-relay-check" class="small">Check now</button><span class="hint" id="relay-check-note"></span></div>
+          <div id="relay-check-out"></div>
         </details>
       </div>
       <div class="card">
@@ -1231,6 +1241,81 @@ function renderRelay(r) {
   const on = $("relay-on"), addr = $("relay-address");
   if (document.activeElement !== on) on.checked = r.on;
   if (document.activeElement !== addr && !addr.dataset.edited) addr.value = r.address;
+  renderRelayDetails(r);
+}
+
+function secsText(n) {
+  if (n < 90) return n + " s";
+  if (n < 5400) return Math.round(n / 60) + " min";
+  return Math.round(n / 3600) + " h";
+}
+
+function relayRow(d) {
+  const row = document.createElement("div");
+  row.className = "relay-row";
+  const name = document.createElement("b");
+  name.textContent = d.address;
+  const state = { online: "connected", connecting: "connecting…", failed: "can't connect", off: "off" }[d.status] || d.status;
+  row.append(name, " — " + state);
+  const bits = [];
+  if (d.status === "online") bits.push(d.tls ? "Encrypted connection (TLS)" : "Plain connection");
+  if (d.status === "online" && d.tls === false && d.tls_error) bits.push("TLS wasn't possible: " + d.tls_error);
+  if (d.connect_ms != null) bits.push("reached in " + d.connect_ms + " ms");
+  if (d.ips && d.ips.length) bits.push(d.ips.join(", "));
+  if (d.online_secs != null) bits.push("connected for " + secsText(d.online_secs));
+  if (d.ping_secs != null) bits.push("last ping " + secsText(d.ping_secs) + " ago");
+  if (d.failures) bits.push(d.failures + (d.failures === 1 ? " failed attempt" : " failed attempts"));
+  if (d.error) bits.push("last problem: " + d.error + " (" + secsText(d.error_secs || 0) + " ago)");
+  if (bits.length) {
+    const sub = document.createElement("span");
+    sub.className = "relay-sub";
+    sub.textContent = bits.join(" · ");
+    row.append(sub);
+  }
+  return row;
+}
+
+function checkBlock(c) {
+  const box = document.createElement("div");
+  box.className = "relay-row";
+  const head = document.createElement("div");
+  const dot = document.createElement("span");
+  dot.className = "dot" + (c.ok ? " ok" : " warn");
+  const name = document.createElement("b");
+  name.textContent = " " + c.address;
+  head.append(dot, name);
+  const sum = document.createElement("span");
+  sum.className = "relay-sub";
+  sum.textContent = c.summary;
+  box.append(head, sum);
+  for (const st of c.steps) {
+    const line = document.createElement("div");
+    line.className = "check-step";
+    const t = document.createElement("span");
+    t.textContent = (st.ok ? "✓ " : "✗ ") + st.name + (st.note ? " — " + st.note : "");
+    const ms = document.createElement("span");
+    ms.className = "ms";
+    ms.textContent = st.ms ? st.ms + " ms" : "";
+    line.append(t, ms);
+    box.append(line);
+  }
+  return box;
+}
+
+function renderRelayDetails(r) {
+  const list = $("relay-details");
+  const rows = (r.details || []).map(relayRow);
+  if (!rows.length) {
+    const none = document.createElement("p");
+    none.className = "hint";
+    none.textContent = r.on ? "Nothing to show yet." : "The relay is off.";
+    rows.push(none);
+  }
+  list.replaceChildren(...rows);
+  const check = r.check || { status: "idle" };
+  $("btn-relay-check").disabled = check.status === "running" || !r.on;
+  $("relay-check-note").textContent = check.status === "running" ? "Checking…" : "";
+  $("relay-check-out").replaceChildren(...(check.status === "done" ? check.results.map(checkBlock) : []));
 }
 
 // One line on Home and the top of Remote access: where can a phone reach this computer from?
@@ -1522,6 +1607,9 @@ const saveRelay = async () => {
   } catch (e) { showBanner(e.message, true); refresh(); }
 };
 $("relay-on").onchange = saveRelay;
+$("btn-relay-check").onclick = async () => {
+  try { render(await post("relay-check", {})); } catch (e) { showBanner(e.message, true); }
+};
 $("btn-relay-save").onclick = saveRelay;
 $("relay-address").oninput = () => ($("relay-address").dataset.edited = "1");
 $("btn-stop-audio").onclick = async () => {

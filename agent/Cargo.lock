@@ -2585,6 +2585,7 @@ dependencies = [
  "unsafe-libopus",
  "ureq",
  "webbrowser",
+ "webpki-roots",
  "windows-sys 0.59.0",
  "wry",
  "x11rb",

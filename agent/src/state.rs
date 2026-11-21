@@ -323,7 +323,7 @@ impl AppState {
                 out.push(name);
             }
         }
-        if let Some(route) = self.relay.route() {
+        for route in self.relay.routes() {
             out.push(format!("relay:{route}"));
         }
         out
