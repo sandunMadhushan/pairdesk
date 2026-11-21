@@ -389,7 +389,23 @@ both directions untouched. Lines end with `\n` and are at most 256 bytes.
 
 `token` is 32 random bytes kept in the computer's data folder
 (`relay-token`), so only that computer can register its id. Idle
-connections close after 90 s; one IP address may hold 64 connections.
+connections close after 90 s; one IP address may hold 512 connections.
+
+**TLS to the relay.** A relay started with a certificate also accepts TLS on
+the same port: a connection whose first byte is a TLS handshake (22) is
+unwrapped and then speaks the lines above; anything else is served as plain
+text. The computer tries TLS first, checking the relay's certificate against
+the usual public authorities (not when the relay is a bare IP address), and
+uses a plain connection if that fails, trying TLS again every 10 minutes. Its
+control and `ACCEPT` connections use the same transport. The phone's own
+TLS to the computer runs inside, as before.
+
+**Several relays.** The computer's relay setting may list up to four
+`host:port` entries separated by commas. It registers with each under the
+same id and puts every route that is up in `welcome.addrs` (a phone that
+only knows one relay uses the first). It also drops a control connection
+that has seen no `PING` for 80 s and registers again, as it does after
+waking from sleep or a change of network.
 
 On the phone the route is the address `relay:host:port/id` (`r=` in the
 pairing link, and last in `welcome.addrs` while the computer is connected to

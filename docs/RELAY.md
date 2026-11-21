@@ -85,15 +85,60 @@ Within a minute, every PairDesk computer with **Use the relay** on (the
 default) connects to it; the PairDesk window shows a green dot under
 *Remote access → PairDesk relay*.
 
+## TLS on port 443 (recommended)
+
+With a certificate, the relay also accepts real TLS on the same ports.
+Firewalls and some mobile networks that only let TLS through on 443 then
+pass it, and a computer's secret isn't sent in the clear. Computers and
+phones that don't know TLS yet keep working on the same port, and a
+computer whose TLS attempt fails (an older relay, a certificate it can't
+check) falls back to plain by itself. The settings page says which it is
+using under *Connection details*.
+
+1. Open **port 80** to the server too (cloud firewall and `ufw`). Let's
+   Encrypt checks it, and renewal needs it every ~60 days.
+2. Get a certificate for the relay's name:
+   ```sh
+   apt install certbot
+   certbot certonly --standalone -d relay.example.org
+   ```
+3. Make the relay read it. A systemd drop-in keeps the shipped unit as it is
+   (`systemctl edit pairdesk-relay`):
+   ```ini
+   [Service]
+   LoadCredential=cert.pem:/etc/letsencrypt/live/relay.example.org/fullchain.pem
+   LoadCredential=key.pem:/etc/letsencrypt/live/relay.example.org/privkey.pem
+   ExecStart=
+   ExecStart=/usr/local/bin/pairdesk-relay --listen 0.0.0.0:443 --listen 0.0.0.0:47900 --tls-cert ${CREDENTIALS_DIRECTORY}/cert.pem --tls-key ${CREDENTIALS_DIRECTORY}/key.pem
+   ```
+4. Restart it when the certificate is renewed
+   (`/etc/letsencrypt/renewal-hooks/deploy/pairdesk-relay.sh`, executable):
+   ```sh
+   #!/bin/sh
+   systemctl restart pairdesk-relay
+   ```
+5. Check: `openssl s_client -connect relay.example.org:443 -servername relay.example.org </dev/null`
+   should show your certificate, and `journalctl -u pairdesk-relay` says
+   "TLS is on".
+
+Use the **name** in the computer's setting, not the IP address: a
+certificate can't vouch for a bare address.
+
 ## Using your own relay
 
 On the computer: **Remote access → PairDesk relay → Relay server**, enter
 `host:port` and save. Phones learn the new route the next time they
 connect, and every new pairing link carries it.
 
+You can list more than one, separated by commas (for example one near each
+group of users, up to four). The computer registers with each; *Connection
+details* shows how each one is doing, and **Check now** walks the path to
+each (name lookup, connection, TLS, the relay's answer) and says where it
+stops.
+
 ## Limits
 
-- At most 64 open connections per IP address; extra ones are refused.
+- At most 512 open connections per IP address; extra ones are refused.
 - A connection that sends nothing for 90 seconds is closed (both sides
   ping every 25 seconds).
 - Running `pairdesk-relay --listen ADDRESS:PORT` (repeatable) picks the
