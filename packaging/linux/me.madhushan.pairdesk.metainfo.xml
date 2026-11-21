@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.12.5" date="2026-11-21">
+      <description>
+        <p>Steadier connections through a relay: a dead relay link is noticed and replaced within seconds, the relay accepts TLS on port 443, you can use more than one relay, and settings show whether each relay works.</p>
+      </description>
+    </release>
     <release version="0.12.4" date="2026-11-18">
       <description>
         <p>Shortcut buttons light up and buzz when tapped. The screen view heals itself: if the phone ever shows a broken, blocky picture, it clears within a few seconds instead of staying broken.</p>

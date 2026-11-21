@@ -1,0 +1,2 @@
+• Steadier connection through a relay: it reconnects by itself, can use TLS and several relays
+• "Check the relay" on the Can't reach screen shows what is wrong
