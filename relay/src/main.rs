@@ -22,6 +22,12 @@
 //!
 //! Only the holder of a token can register its id, so nobody can pose as
 //! someone else's computer (and the phone checks the certificate anyway).
+//!
+//! With `--tls-cert` and `--tls-key` the relay also accepts TLS on the same
+//! ports. A connection that starts with a TLS handshake is unwrapped and then
+//! speaks the protocol above; one that doesn't is served as before. So
+//! firewalls that only let TLS through on 443 pass it, the token isn't sent
+//! in the clear, and older programs keep working.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -30,9 +36,12 @@ use std::time::Duration;
 
 use log::{info, warn};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
+use tokio_rustls::rustls::{self, ServerConfig};
 
 /// Time to send the first line.
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
@@ -48,12 +57,17 @@ const PING_EVERY: Duration = Duration::from_secs(25);
 const PER_IP: usize = 512;
 const MAX_LINE: usize = 256;
 
+/// A connection, with or without TLS around it.
+trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
+type Conn = Box<dyn Io>;
+
 #[derive(Default)]
 struct Relay {
     /// Online computers: id → control channel.
     hosts: Mutex<HashMap<String, Host>>,
     /// Phones waiting for their computer: nonce → (computer id, hand-over).
-    waiting: Mutex<HashMap<String, (String, oneshot::Sender<TcpStream>)>>,
+    waiting: Mutex<HashMap<String, (String, oneshot::Sender<Conn>)>>,
     per_ip: Mutex<HashMap<IpAddr, usize>>,
     next_generation: Mutex<u64>,
 }
@@ -113,7 +127,7 @@ impl Relay {
     }
 }
 
-async fn read_line(stream: &mut BufReader<TcpStream>) -> Option<String> {
+async fn read_line(stream: &mut BufReader<Conn>) -> Option<String> {
     let mut line = String::new();
     let read = tokio::time::timeout(HELLO_TIMEOUT, async {
         let mut limited = (&mut *stream).take(MAX_LINE as u64);
@@ -126,12 +140,30 @@ async fn read_line(stream: &mut BufReader<TcpStream>) -> Option<String> {
     }
 }
 
-async fn handle(relay: Arc<Relay>, stream: TcpStream, peer: SocketAddr) {
+/// Whether the connection starts with a TLS handshake (record type 22).
+async fn starts_with_tls(tcp: &TcpStream) -> bool {
+    let mut first = [0u8; 1];
+    matches!(
+        tokio::time::timeout(HELLO_TIMEOUT, tcp.peek(&mut first)).await,
+        Ok(Ok(1)) if first[0] == 0x16
+    )
+}
+
+async fn handle(relay: Arc<Relay>, tcp: TcpStream, peer: SocketAddr, tls: Option<TlsAcceptor>) {
     let Some(_slot) = relay.take_slot(peer.ip()) else {
         return;
     };
-    let _ = stream.set_nodelay(true);
-    let mut stream = BufReader::new(stream);
+    let _ = tcp.set_nodelay(true);
+    let conn: Conn = match &tls {
+        Some(acceptor) if starts_with_tls(&tcp).await => {
+            match tokio::time::timeout(HELLO_TIMEOUT, acceptor.accept(tcp)).await {
+                Ok(Ok(stream)) => Box::new(stream),
+                _ => return,
+            }
+        }
+        _ => Box::new(tcp),
+    };
+    let mut stream = BufReader::new(conn);
     let Some(line) = read_line(&mut stream).await else {
         return;
     };
@@ -149,7 +181,7 @@ async fn handle(relay: Arc<Relay>, stream: TcpStream, peer: SocketAddr) {
 }
 
 /// A computer's control connection, for as long as it's open.
-async fn host(relay: Arc<Relay>, stream: BufReader<TcpStream>, id: String, peer: SocketAddr) {
+async fn host(relay: Arc<Relay>, stream: BufReader<Conn>, id: String, peer: SocketAddr) {
     let (tx, mut rx) = mpsc::channel::<String>(32);
     let generation = {
         let mut g = lock(&relay.next_generation);
@@ -164,7 +196,7 @@ async fn host(relay: Arc<Relay>, stream: BufReader<TcpStream>, id: String, peer:
         },
     );
     info!("computer {} online from {peer}", &id[..8]);
-    let (read, mut write) = stream.into_inner().into_split();
+    let (read, mut write) = tokio::io::split(stream.into_inner());
     let mut lines = BufReader::new(read).lines();
     let welcomed = write
         .write_all(format!("OK {id}\n").as_bytes())
@@ -200,7 +232,7 @@ async fn host(relay: Arc<Relay>, stream: BufReader<TcpStream>, id: String, peer:
 
 /// A phone asking for a computer: waits for the computer's connection,
 /// then joins the two.
-async fn phone(relay: Arc<Relay>, mut stream: BufReader<TcpStream>, id: &str, peer: SocketAddr) {
+async fn phone(relay: Arc<Relay>, mut stream: BufReader<Conn>, id: &str, peer: SocketAddr) {
     let control = lock(&relay.hosts).get(id).map(|h| h.control.clone());
     let Some(control) = control else {
         let _ = stream.get_mut().write_all(b"ERR offline\n").await;
@@ -229,7 +261,7 @@ async fn phone(relay: Arc<Relay>, mut stream: BufReader<TcpStream>, id: &str, pe
 }
 
 /// The computer's connection for one waiting phone.
-async fn accept(relay: Arc<Relay>, mut stream: BufReader<TcpStream>, token: &str, nonce: &str) {
+async fn accept(relay: Arc<Relay>, mut stream: BufReader<Conn>, token: &str, nonce: &str) {
     let id = host_id(token);
     let waiting = {
         let mut w = lock(&relay.waiting);
@@ -250,9 +282,9 @@ async fn accept(relay: Arc<Relay>, mut stream: BufReader<TcpStream>, token: &str
 }
 
 /// Copies both ways until either side closes or nothing moves for `IDLE`.
-async fn join(phone: TcpStream, early: Vec<u8>, computer: TcpStream) {
-    let (mut pr, mut pw) = phone.into_split();
-    let (mut cr, mut cw) = computer.into_split();
+async fn join(phone: Conn, early: Vec<u8>, computer: Conn) {
+    let (mut pr, mut pw) = tokio::io::split(phone);
+    let (mut cr, mut cw) = tokio::io::split(computer);
     if !early.is_empty() && cw.write_all(&early).await.is_err() {
         return;
     }
@@ -290,11 +322,30 @@ async fn join(phone: TcpStream, early: Vec<u8>, computer: TcpStream) {
     }
 }
 
+/// Reads a certificate chain and private key (PEM) for [`TlsAcceptor`].
+fn load_tls(cert: &str, key: &str) -> Result<TlsAcceptor, String> {
+    let certs = CertificateDer::pem_file_iter(cert)
+        .map_err(|e| format!("can't read {cert}: {e}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("can't read {cert}: {e}"))?;
+    let key = PrivateKeyDer::from_pem_file(key).map_err(|e| format!("can't read {key}: {e}"))?;
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let config = ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| format!("the certificate and key don't fit: {e}"))?;
+    Ok(TlsAcceptor::from(Arc::new(config)))
+}
+
 fn usage() -> ! {
     eprintln!(
-        "PairDesk relay {}\n\nUsage: pairdesk-relay [--listen ADDRESS:PORT]...\n\n\
+        "PairDesk relay {}\n\nUsage: pairdesk-relay [--listen ADDRESS:PORT]... \
+         [--tls-cert FILE --tls-key FILE]\n\n\
          Default: --listen 0.0.0.0:47900. Listen on several, e.g. 443 as well, for\n\
-         networks that block other ports. Log detail: RUST_LOG=info (default) or debug.",
+         networks that block other ports. With a certificate and key (PEM) the relay\n\
+         also accepts TLS on the same ports. Log detail: RUST_LOG=info (default) or debug.",
         env!("CARGO_PKG_VERSION")
     );
     std::process::exit(2);
@@ -304,10 +355,13 @@ fn usage() -> ! {
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let mut listens = Vec::new();
+    let (mut cert, mut key) = (None, None);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--listen" => listens.push(args.next().unwrap_or_else(|| usage())),
+            "--tls-cert" => cert = Some(args.next().unwrap_or_else(|| usage())),
+            "--tls-key" => key = Some(args.next().unwrap_or_else(|| usage())),
             "--version" => {
                 println!("pairdesk-relay {}", env!("CARGO_PKG_VERSION"));
                 return;
@@ -318,6 +372,20 @@ async fn main() {
     if listens.is_empty() {
         listens.push("0.0.0.0:47900".into());
     }
+    let tls = match (cert, key) {
+        (Some(cert), Some(key)) => match load_tls(&cert, &key) {
+            Ok(acceptor) => {
+                info!("TLS is on: connections that start with a TLS handshake are accepted");
+                Some(acceptor)
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        },
+        (None, None) => None,
+        _ => usage(),
+    };
     let relay = Arc::new(Relay::default());
     for addr in listens {
         let listener = match TcpListener::bind(&addr).await {
@@ -332,11 +400,12 @@ async fn main() {
             env!("CARGO_PKG_VERSION")
         );
         let relay = relay.clone();
+        let tls = tls.clone();
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((s, peer)) => {
-                        tokio::spawn(handle(relay.clone(), s, peer));
+                        tokio::spawn(handle(relay.clone(), s, peer, tls.clone()));
                     }
                     Err(e) => {
                         warn!("accept: {e}");
@@ -355,13 +424,17 @@ mod tests {
     use tokio::io::AsyncWriteExt;
 
     async fn start() -> SocketAddr {
+        start_with(None).await
+    }
+
+    async fn start_with(tls: Option<TlsAcceptor>) -> SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let relay = Arc::new(Relay::default());
         tokio::spawn(async move {
             loop {
                 let (s, peer) = listener.accept().await.unwrap();
-                tokio::spawn(handle(relay.clone(), s, peer));
+                tokio::spawn(handle(relay.clone(), s, peer, tls.clone()));
             }
         });
         addr
@@ -453,6 +526,76 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(line(&mut fake).await, "ERR unknown");
+    }
+
+    /// A computer that talks TLS to the relay and a phone that doesn't
+    /// (the phone's own TLS runs inside, end to end): both are served on the
+    /// same port.
+    #[tokio::test]
+    async fn serves_tls_and_plain_on_one_port() {
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let dir = std::env::temp_dir().join(format!("pairdesk-relay-tls-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (cert_file, key_file) = (dir.join("cert.pem"), dir.join("key.pem"));
+        std::fs::write(&cert_file, cert.cert.pem()).unwrap();
+        std::fs::write(&key_file, cert.key_pair.serialize_pem()).unwrap();
+        let acceptor = load_tls(cert_file.to_str().unwrap(), key_file.to_str().unwrap()).unwrap();
+        let addr = start_with(Some(acceptor)).await;
+
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(cert.cert.der().clone()).unwrap();
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let config = rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+        let name = rustls::pki_types::ServerName::try_from("localhost").unwrap();
+        let tcp = TcpStream::connect(addr).await.unwrap();
+        let mut control = BufReader::new(connector.connect(name, tcp).await.unwrap());
+        let token = "a-secret-token-over-tls-123";
+        control
+            .get_mut()
+            .write_all(format!("PDR1 HOST {token}\n").as_bytes())
+            .await
+            .unwrap();
+        let mut ok = String::new();
+        control.read_line(&mut ok).await.unwrap();
+        assert_eq!(ok.trim(), format!("OK {}", host_id(token)));
+
+        // A plain phone finds the computer that registered over TLS.
+        let id = host_id(token);
+        let phone = tokio::spawn(async move {
+            let mut phone = BufReader::new(TcpStream::connect(addr).await.unwrap());
+            phone
+                .get_mut()
+                .write_all(format!("PDR1 CONNECT {id}\n").as_bytes())
+                .await
+                .unwrap();
+            line(&mut phone).await
+        });
+        let mut incoming = String::new();
+        control.read_line(&mut incoming).await.unwrap();
+        assert!(incoming.starts_with("INCOMING "), "{incoming}");
+        let nonce = incoming
+            .trim()
+            .strip_prefix("INCOMING ")
+            .unwrap()
+            .to_string();
+        let tcp = TcpStream::connect(addr).await.unwrap();
+        let name = rustls::pki_types::ServerName::try_from("localhost").unwrap();
+        let mut accept = BufReader::new(connector.connect(name, tcp).await.unwrap());
+        accept
+            .get_mut()
+            .write_all(format!("PDR1 ACCEPT {token} {nonce}\n").as_bytes())
+            .await
+            .unwrap();
+        let mut reply = String::new();
+        accept.read_line(&mut reply).await.unwrap();
+        assert_eq!(reply.trim(), "OK");
+        assert_eq!(phone.await.unwrap(), "OK");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
