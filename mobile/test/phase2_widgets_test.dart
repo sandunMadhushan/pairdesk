@@ -288,8 +288,8 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: RemoteHelpScreen()));
     await tester.pumpAndSettle();
     expect(find.text('Connect from anywhere'), findsOneWidget);
-    expect(find.text('Google Play'), findsOneWidget);
-    expect(find.text('F-Droid'), findsOneWidget);
+    expect(find.text('PairDesk relay'), findsOneWidget);
+    expect(find.textContaining('Tailscale'), findsNothing);
     await tester.scrollUntilVisible(find.textContaining('Keep this computer awake'), 200);
     expect(tester.takeException(), isNull);
   });

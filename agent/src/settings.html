@@ -441,7 +441,6 @@
     <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
     <symbol id="i-router" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 16.5h.01M11 16.5h.01M15.5 9.5a5 5 0 0 0-7 0M18 7a8.5 8.5 0 0 0-12 0"/></symbol>
     <symbol id="i-relay" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="12" cy="5.5" r="2.2"/><path d="M6.8 10.6 10.3 7M13.7 7l3.5 3.6M7.2 12h9.6"/></symbol>
-    <symbol id="i-tail" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2" opacity=".35"/><circle cx="18" cy="6" r="2" opacity=".35"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2" opacity=".35"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2" opacity=".35"/></symbol>
     <symbol id="i-wall" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9 4.5v5M15 9.5v5M9 14.5v5"/></symbol>
     <symbol id="i-coffee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9h12v5.5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z"/><path d="M16.5 10.5h1.5a2.5 2.5 0 0 1 0 5h-1.8M8 3.5v2M12 3.5v2"/></symbol>
     <symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-2 1-4 3-4s3 1 3 3-2 3-6 1z"/><path d="M9.5 13.5 13 17c4.5-2 7-6 7-12-6 0-10 2.5-12 7z"/><circle cx="15" cy="9" r="1.5"/></symbol>
@@ -652,7 +651,7 @@
         <div class="card-head"><span class="ico"><svg><use href="#i-relay"/></svg></span><h2 class="grow">PairDesk relay</h2>
           <span class="toggle" title="Use the relay"><input type="checkbox" id="relay-on" aria-label="Use the relay"><span></span></span></div>
         <div class="status-line" role="status"><span class="dot" id="relay-dot"></span><div id="relay-text"></div></div>
-        <p class="hint">When your phone can't reach this computer directly (another network, no Tailscale), it connects through the relay. Everything stays encrypted between your phone and this computer: the relay only passes it along and can't see your screen or what you type.</p>
+        <p class="hint">When your phone can't reach this computer directly (another network), it connects through the relay. Everything stays encrypted between your phone and this computer: the relay only passes it along and can't see your screen or what you type.</p>
         <details class="mini"><summary>Relay server <svg><use href="#i-chev"/></svg></summary>
           <div class="linkbox" style="margin-top:10px"><input type="text" id="relay-address" spellcheck="false" aria-label="Relay server (host:port)"><button id="btn-relay-save">Save</button></div>
           <p class="hint" style="margin:8px 0 0">host:port. Several can be separated by commas; this computer then registers with each. You can run your own: see docs/RELAY.md in the PairDesk repository.</p>
@@ -663,31 +662,22 @@
           <div id="relay-check-out"></div>
         </details>
       </div>
-      <div class="card">
-        <div class="card-head"><span class="ico"><svg><use href="#i-tail"/></svg></span><h2 class="grow">Tailscale</h2><button id="btn-recheck" class="small">Check again</button></div>
-        <div class="status-line" role="status"><span class="dot" id="remote-dot"></span><div id="remote-text">Checking for Tailscale…</div></div>
-        <ol class="steps" id="remote-steps" hidden>
-          <li><span>Install <a href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">Tailscale</a> on this computer and sign in. It's free for personal use.</span></li>
-          <li><span>Install Tailscale on your phone (Google Play or F-Droid) and sign in with the same account.</span></li>
-          <li><span>Open PairDesk on your phone once while you're on the same Wi-Fi, so it learns this computer's Tailscale address. (Already paired phones are told as soon as Tailscale comes up; you can also just scan a new pairing code.)</span></li>
-        </ol>
-      </div>
       <div class="card" id="card-firewall" hidden>
         <div class="card-head"><span class="ico"><svg><use href="#i-wall"/></svg></span><h2 class="grow">Windows Firewall</h2></div>
         <div class="status-line" role="status"><span class="dot" id="fw-dot"></span><div id="fw-text"></div></div>
-        <p class="hint">Windows asks which networks an app may be reached on, and leaves "public" ones out. It usually files the Tailscale adapter as public, so phones get through on Wi-Fi but not through Tailscale. This writes a rule for every kind of network instead.</p>
+        <p class="hint">Windows asks which networks an app may be reached on, and leaves "public" ones out. This writes a rule for every kind of network instead, so phones get through on any of them.</p>
         <div class="row"><button id="btn-firewall">Allow PairDesk on all networks</button></div>
       </div>
       <details class="card fold">
-        <summary><span class="ico"><svg><use href="#i-router"/></svg></span><span class="grow"><h2>Your own router instead</h2><span class="hint">No Tailscale and no relay: a port forward to this computer.</span></span><svg class="chev"><use href="#i-chev"/></svg></summary>
-        <p class="hint">Your phone and this computer sit on two different private networks, so something has to join them: Tailscale, the PairDesk relay, or your own router. For the last one, give the router a <b>port forward</b> to this computer and tell the phone where to find it. No other company is involved.</p>
+        <summary><span class="ico"><svg><use href="#i-router"/></svg></span><span class="grow"><h2>Your own router instead</h2><span class="hint">No relay: a port forward to this computer.</span></span><svg class="chev"><use href="#i-chev"/></svg></summary>
+        <p class="hint">Your phone and this computer sit on two different private networks, so something has to join them: the PairDesk relay or your own router. For the second one, give the router a <b>port forward</b> to this computer and tell the phone where to find it. No other company is involved.</p>
         <ol class="steps">
           <li><span>Give this computer a fixed address on your home network (your router calls it a DHCP reservation or static lease). It is <b class="selectable" id="fw-lan">–</b> right now.</span></li>
           <li><span>In the router, forward <b>TCP port <span id="fw-port">47800</span></b> to that address.</span></li>
           <li><span>Your home connection's address changes now and then, so set up a free dynamic DNS name (DuckDNS, No-IP, or your router's own) that follows it.</span></li>
           <li><span>On the phone, open the computer's <b>⋯</b> menu, choose <b>Add an address</b> and type that name. Add <code>:port</code> after it if the router forwards a different outside port.</span></li>
         </ol>
-        <p class="hint" style="margin:14px 0 0">This only works if your internet provider gives you a public address. If the address your router shows is different from the one a "what is my IP" page shows, you are behind the provider's own NAT and a port forward can't reach you — use Tailscale or the relay instead.</p>
+        <p class="hint" style="margin:14px 0 0">This only works if your internet provider gives you a public address. If the address your router shows is different from the one a "what is my IP" page shows, you are behind the provider's own NAT and a port forward can't reach you — use the relay instead.</p>
       </details>
       <div class="card">
         <label class="setting"><span class="ico"><svg><use href="#i-coffee"/></svg></span><span class="what"><b>Keep this computer awake</b><small>A sleeping computer can't be reached. The screen can still turn off. Closing the lid may still put it to sleep; change that in your power settings.</small></span>
@@ -1021,27 +1011,6 @@ function render(s) {
     $("wl-how").hidden = fine;
   }
 
-  // Remote access: Tailscale
-  const r = s.remote || { status: "checking" };
-  const dot = $("remote-dot"), text = $("remote-text");
-  dot.className = "dot" + (r.status === "running" ? " ok" : r.status === "not_connected" ? " warn" : "");
-  if (r.status === "running") {
-    const where = (r.ips || []).join(", ") + (r.dns_name ? " (" + r.dns_name + ")" : "");
-    text.textContent = "Tailscale is on. With Tailscale also on your phone, PairDesk can reach this computer from anywhere at " +
-      where + ". If your phone was paired before you set up Tailscale, open PairDesk on it once at home.";
-    if (s.firewall && !s.firewall.allowed && !s.firewall.working) {
-      text.textContent += " If the phone still can't connect, allow PairDesk through Windows Firewall below.";
-    }
-  } else if (r.status === "not_connected") {
-    text.textContent = r.reason + " Open Tailscale on this computer to connect from away.";
-  } else if (r.status === "not_installed") {
-    text.textContent = "Not set up. Tailscale is a free private network: an alternative to the relay that joins your phone and this computer directly.";
-  } else if (r.status === "checking") {
-    text.textContent = "Checking for Tailscale…";
-  } else {
-    text.textContent = "Couldn't read Tailscale's status (" + r.reason + ").";
-  }
-  $("remote-steps").hidden = r.status === "running" || r.status === "checking";
   renderFirewall(s.firewall);
   $("fw-lan").textContent = (s.addresses || []).join(" or ") || "not on a network";
   $("fw-port").textContent = s.port;
@@ -1236,7 +1205,7 @@ function renderRelay(r) {
     online: "Connected. Your phones can reach this computer from anywhere.",
     connecting: "Connecting to the relay…",
     failed: "Can't reach the relay (" + (st.msg || "unknown error") + "). Trying again.",
-    off: "Off. Phones reach this computer only on the same Wi-Fi or through Tailscale.",
+    off: "Off. Phones reach this computer only on the same Wi-Fi.",
   }[st.status] || "";
   const on = $("relay-on"), addr = $("relay-address");
   if (document.activeElement !== on) on.checked = r.on;
@@ -1321,15 +1290,13 @@ function renderRelayDetails(r) {
 // One line on Home and the top of Remote access: where can a phone reach this computer from?
 function renderReach(s) {
   const relay = s.relay && s.relay.state ? s.relay.state.status : "off";
-  const tail = s.remote && s.remote.status === "running";
-  const anywhere = relay === "online" || tail;
-  const via = [relay === "online" ? "the PairDesk relay" : "", tail ? "Tailscale" : ""].filter(Boolean).join(" and ");
+  const anywhere = relay === "online";
   $("tile-remote").textContent = anywhere ? "Anywhere" : relay === "connecting" ? "Connecting…" : "Same Wi-Fi only";
   $("tile-remote-ico").className = "ico" + (anywhere ? " on" : "");
   $("reach-ico").className = "ico big" + (anywhere ? " on" : "");
   $("reach-title").textContent = anywhere ? "Your phone can reach this computer from anywhere"
     : relay === "connecting" ? "Connecting to the relay…" : "Your phone can reach this computer on the same Wi-Fi only";
-  $("reach-text").textContent = anywhere ? "Through " + via + ", on mobile data or any other Wi-Fi."
+  $("reach-text").textContent = anywhere ? "Through the PairDesk relay, on mobile data or any other Wi-Fi."
     : "Turn on the PairDesk relay below: it works with nothing else to set up.";
 }
 
@@ -1355,11 +1322,11 @@ function renderFirewall(fw) {
     text.textContent = fw.error;
   } else if (fw.allowed) {
     dot.className = "dot ok";
-    text.textContent = "Phones can reach PairDesk on every kind of network, Tailscale included.";
+    text.textContent = "Phones can reach PairDesk on every kind of network.";
     btn.textContent = "Write the rules again";
   } else {
     dot.className = "dot warn";
-    text.textContent = "Not set. If your phone connects on Wi-Fi but not through Tailscale, the firewall is the likely reason.";
+    text.textContent = "Not set. If your phone connects on some networks but not others, the firewall is the likely reason.";
     btn.textContent = "Allow PairDesk on all networks";
   }
 }
@@ -1624,10 +1591,6 @@ $("keep-awake").onchange = async (e) => {
 };
 $("btn-wl-allow").onclick = async () => {
   try { render(await post("wayland-allow")); } catch (err) { showBanner(err.message, true); }
-};
-$("btn-recheck").onclick = async () => {
-  $("remote-text").textContent = "Checking for Tailscale…";
-  try { render(await post("refresh-remote")); } catch (err) { showBanner(err.message, true); }
 };
 $("btn-sd-on").onclick = async () => {
   try { render(await post("secure-desktop", { enabled: true })); } catch (err) { showBanner(err.message, true); }

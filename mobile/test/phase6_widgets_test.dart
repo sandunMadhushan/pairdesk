@@ -178,4 +178,24 @@ void main() {
     expect(find.text('Saved in Download/PairDesk/report.pdf'), findsOneWidget);
     expect(find.descendant(of: find.byType(SecondaryButton), matching: find.text('Open')), findsOneWidget);
   });
+
+  testWidgets('the ✕ asks before ending the connection', (tester) async {
+    await show(tester);
+    await tester.tap(find.byTooltip('Disconnect'));
+    await tester.pumpAndSettle();
+    expect(find.text('End the connection?'), findsOneWidget);
+
+    // Staying keeps the screen.
+    await tester.tap(find.text('Stay connected'));
+    await tester.pumpAndSettle();
+    expect(find.text('End the connection?'), findsNothing);
+    expect(find.byTooltip('Disconnect'), findsOneWidget);
+
+    // Ending leaves the control screen.
+    await tester.tap(find.byTooltip('Disconnect'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('End connection'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Disconnect'), findsNothing);
+  });
 }

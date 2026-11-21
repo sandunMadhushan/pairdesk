@@ -147,6 +147,23 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
     super.dispose();
   }
 
+  bool _confirming = false;
+
+  Future<void> _confirmDisconnect() async {
+    if (_confirming || _closing) return;
+    _confirming = true;
+    final end = await showPdSheet<bool>(
+      context,
+      (_) => EndConnectionSheet(name: _conn.agentName ?? 'the computer'),
+      scrollable: false,
+    );
+    _confirming = false;
+    if (end == true && mounted && !_closing) {
+      _closing = true;
+      Navigator.of(context).pop();
+    }
+  }
+
   void _onConnectionChanged() {
     if (!mounted) return;
     if (_conn.status == ConnectionStatus.disconnected && !_closing) {
@@ -453,10 +470,15 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
     ];
     final showNav = !_fullscreen && !(_showKeyboard && _keyboardTab);
     return PopScope(
+      // The ✕ and the back gesture ask first: in the Screen tab it reads as
+      // "close the picture", but it ends the whole connection.
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
           _closing = true;
           _conn.disconnect();
+        } else {
+          _confirmDisconnect();
         }
       },
       child: Scaffold(
@@ -602,6 +624,40 @@ class KeyRow extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// "End the connection?", shown before the ✕ or the back gesture
+/// disconnects from the computer.
+@visibleForTesting
+class EndConnectionSheet extends StatelessWidget {
+  const EndConnectionSheet({super.key, required this.name});
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PdTitle('End the connection?', subtitle: 'This disconnects from $name, not just the screen view.'),
+          const SizedBox(height: 16),
+          PrimaryButton(
+            label: 'End connection',
+            icon: Icons.link_off_rounded,
+            onPressed: () => Navigator.pop(context, true),
+          ),
+          const SizedBox(height: 10),
+          SecondaryButton(
+            label: 'Stay connected',
+            height: 50,
+            onPressed: () => Navigator.pop(context, false),
+          ),
+        ],
       ),
     );
   }

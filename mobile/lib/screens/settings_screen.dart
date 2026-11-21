@@ -131,7 +131,7 @@ class SettingsScreen extends StatelessWidget {
                 child: PdRow(
                   icon: Icons.public_rounded,
                   title: 'Connect from anywhere',
-                  subtitle: 'Relay, Tailscale or your router',
+                  subtitle: 'The relay or your router',
                   trailing: Icon(Icons.chevron_right_rounded, color: c.sub),
                   onTap: () =>
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteHelpScreen())),

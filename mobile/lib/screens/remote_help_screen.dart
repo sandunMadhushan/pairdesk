@@ -1,26 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // How to use PairDesk when the phone and the computer are on different
-// networks: the relay (on by itself), Tailscale, or your own router.
+// networks: the relay (on by itself) or your own router.
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
 class RemoteHelpScreen extends StatelessWidget {
   const RemoteHelpScreen({super.key});
-
-  static final _playStore = Uri.parse('https://play.google.com/store/apps/details?id=com.tailscale.ipn');
-  static final _fdroid = Uri.parse('https://f-droid.org/packages/com.tailscale.ipn/');
-  static final _download = Uri.parse('https://tailscale.com/download');
-
-  Future<void> _open(BuildContext context, Uri uri) async {
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn\'t open $uri')));
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,25 +97,6 @@ class RemoteHelpScreen extends StatelessWidget {
             ),
             option(
               2,
-              'Tailscale',
-              'A free private network between your own devices. Install it on the computer and on this '
-                  'phone and sign in with the same account. PairDesk finds the address by itself.',
-              actions: [
-                SecondaryButton(
-                  label: 'Google Play',
-                  height: 44,
-                  onPressed: () => _open(context, _playStore),
-                ),
-                SecondaryButton(label: 'F-Droid', height: 44, onPressed: () => _open(context, _fdroid)),
-                SecondaryButton(
-                  label: 'For the computer',
-                  height: 44,
-                  onPressed: () => _open(context, _download),
-                ),
-              ],
-            ),
-            option(
-              3,
               'Your router',
               'Forward port 47800 on your home router to the computer, then on this phone use ⋯ → '
                   'Add an address with your home address or a name that points to it.',

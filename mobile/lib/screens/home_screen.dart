@@ -282,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
       FailureKind.wrongComputer => (
         'Different computer',
         'Another device answered at this computer\'s address, so PairDesk didn\'t connect. '
-            'Make sure the computer is on this Wi-Fi, or that Tailscale is on.',
+            'Make sure the computer is on this Wi-Fi, or use the relay from anywhere.',
       ),
       FailureKind.notPaired => (
         'Pair again',
@@ -374,7 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Lets the owner type an address PairDesk hasn't seen, so a computer
-  /// paired before Tailscale was set up isn't a dead end.
+  /// paired before the relay was set up isn't a dead end.
   Future<void> _addAddress(Laptop laptop) async {
     final controller = TextEditingController();
     final value = await showDialog<String>(
@@ -386,11 +386,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'An address this computer can be reached at. Its Remote access page shows them: '
-              'the Tailscale one (100.x.x.x, or a name ending in .ts.net) works from anywhere '
-              'with Tailscale on. A name of your own that points at your home connection works '
-              'without it, if your router forwards the port — add ":port" if the router '
-              'uses a different one.',
+              'An address this computer can be reached at. A name of your own that points at your '
+              'home connection works from anywhere, if your router forwards the port — add ":port" '
+              'if the router uses a different one.',
               style: Theme.of(ctx).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -1136,7 +1134,7 @@ class _ComputerMenu extends StatelessWidget {
                 PdRow(
                   icon: Icons.public_rounded,
                   title: 'Add an address',
-                  subtitle: 'Tailscale, a name of your own, or your router',
+                  subtitle: 'A name of your own, or your router',
                   iconBackground: c.s1,
                   onTap: () => Navigator.pop(context, 'address'),
                 ),
@@ -1221,7 +1219,7 @@ class _CantReachState extends State<_CantReach> {
           check('PairDesk is running on it (look for the tray icon)'),
           check(
             laptop.reachableAnywhere
-                ? 'Away from home: the relay or Tailscale is on, on the computer'
+                ? 'Away from home: the relay is on, on the computer'
                 : 'The phone and the computer are on the same Wi-Fi',
           ),
           if (_relays.isNotEmpty) ...[
