@@ -128,11 +128,11 @@ Screenshots are regenerated with
 - **Flathub manifests must not contain AI-generated or AI-assisted content**;
 - AI tools must not open or automate submission pull requests.
 
-PairDesk's code was written with Claude, so:
-- the manifest in `packaging/flatpak/` was written by Claude and **can't be
-  submitted to Flathub**. It's the project's own test build: it builds
-  offline, runs, and was tested (sandbox, portals, host commands);
-- for Flathub you'd write the manifest yourself, disclose the AI-generated
+So:
+- the manifest in `packaging/flatpak/` is the project's own test build: it
+  builds offline, runs, and was tested (sandbox, portals, host commands), but
+  it **can't be submitted to Flathub** as it is;
+- for Flathub you'd write the manifest yourself, disclose any AI-generated
   code in the pull request, and open the PR yourself.
 
 Reviewers may also question `--talk-name=org.freedesktop.Flatpak` (used to

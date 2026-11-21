@@ -11,7 +11,7 @@ no codes or "accept" prompts every time.
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls, a live view of the screen, clipboard and files, on your
-> Wi-Fi or from anywhere (Tailscale or the PairDesk relay), two-way sound, and
+> Wi-Fi or from anywhere (the PairDesk relay, encrypted twice, or your own router), two-way sound, and
 > "Get help" links to help someone else for a while. A new look on the phone and on
 > the computer, with a dark mode. Installers for Windows and
 > Linux, automatic updates, smooth H.264 screen view, and on Windows the lock
@@ -38,7 +38,7 @@ no codes or "accept" prompts every time.
 | Clipboard | Copy the computer's clipboard to the phone, send the phone's clipboard to the computer, or paste it straight into the computer's active window |
 | Files | Phone → computer: pick files, or **Share → PairDesk** from any app; saved in `Downloads/PairDesk`. Computer → phone: drop files on PairDesk's page, or right-click → **Send to → PairDesk phone** (Windows), "Send to phone (PairDesk)" (GNOME Files, Dolphin); saved in `Download/PairDesk` |
 | Sound | Hear what the computer plays (videos, music, calls) on the phone; talk through the computer's speakers (hold to talk or hands-free); hear the computer's microphone (off unless allowed on the computer; red tray dot while used) |
-| Anywhere | Away from home, connects through [Tailscale](https://tailscale.com) if you use it, or else through the PairDesk relay, still encrypted end to end; picks the best route by itself |
+| Anywhere | Away from home, connects through the PairDesk relay (TLS to the relay, and still encrypted end to end; up to 4 relays, with a relay check in the app), or through your own router; picks the best route by itself |
 | Links | Pair by sending a link from the computer to the phone (chat, email) instead of scanning the QR code |
 | Get help | Someone presses **Get help** on their computer and sends you the link: you see and control their screen for up to 2 hours, without power, files or sound, and they can end it any time |
 
@@ -110,21 +110,16 @@ either side. The relay only passes encrypted data along; see
 
 Usually nothing to do: when the phone can't reach the computer directly, it goes
 through the PairDesk relay (**Remote access** on the computer shows whether the relay
-is connected). For a direct, private route you can use Tailscale instead:
-
-1. Install [Tailscale](https://tailscale.com/download) on the computer and on the
-   phone, and sign in to both with the same account (free for personal use).
-2. Open PairDesk on the phone once at home, so it learns the computer's Tailscale address.
-   Phones that are already connected are told as soon as Tailscale comes up, and a
-   freshly scanned pairing code carries the address too.
-3. Away from home, turn Tailscale on, on the phone, and open PairDesk. The title bar
-   shows whether you're connected via Wi-Fi or Tailscale.
+is connected, and **Check now** tests each relay). The relay is reached over TLS, with
+a plain fallback, and the phone still checks the computer's own certificate inside it.
+If a relay is down the phone tries the next one, and **Check the relay** on the phone
+shows what failed.
 
 The computer must be awake: turn on **Keep this computer awake** on its PairDesk page
 if it tends to sleep.
 
-**Neither Tailscale nor the relay?** Your phone and your computer are on two
-different private networks, so something has to join them. The third way is your
+**Don't want to use the relay?** Your phone and your computer are on two
+different private networks, so something has to join them. The other way is your
 own router: give the computer a fixed address on your home network, forward TCP
 port 47800 to it, point a free dynamic DNS name (DuckDNS, No-IP, or your router's
 own) at your home connection, then on the phone use **⋮ → Add an address** and
@@ -134,13 +129,6 @@ checks the computer's certificate exactly as on Wi-Fi. This needs a public
 address from your internet provider: if your router's address differs from what a
 "what is my IP" page shows, you are behind the provider's NAT and a port forward
 can't reach you. **Remote access** on the computer walks through the steps.
-
-**Works on Wi-Fi but not through Tailscale?** On Windows that is almost always the
-firewall. Windows asks which networks an app may be reached on and leaves "public" ones
-out, and it usually files the Tailscale adapter as public. Open **Remote access** on the
-computer and press **Allow PairDesk on all networks**. If the phone has no Tailscale
-address for the computer at all, its menu on the phone (⋮ next to the computer) has
-**Add an address**, where you can type the `100.x.x.x` address shown on that same page.
 
 ### Known limits
 
@@ -229,7 +217,7 @@ releases in [docs/RELEASING.md](docs/RELEASING.md); store submissions in
 | 0 | Touchpad over home Wi-Fi |
 | 1 | One-time QR pairing, encryption, tray app, auto-start, auto-discovery |
 | 2 | Power actions, app launcher, custom buttons, phone app lock |
-| 3 | Connect from anywhere with Tailscale |
+| 3 | Connect from anywhere (Tailscale at first, now the relay and your own router) |
 | 4 | Live screen view on Windows and Linux X11 |
 | 5 | Linux agent on Wayland |
 | 6 | Clipboard sync and file transfer |
