@@ -35,6 +35,8 @@ const FEATURES: &[&str] = &[
     "files",
     "video",
     "audio",
+    // Sends Wake-on-LAN packets for a sleeping computer (`wake`).
+    "wake",
     // Direct paths through the relay's introduction (src/direct).
     "direct",
 ];
@@ -277,6 +279,7 @@ async fn serve(
             features: FEATURES.to_vec(),
             allow,
             addrs,
+            macs: crate::wol::own_macs(),
         },
     )
     .await?;
@@ -499,6 +502,10 @@ async fn serve(
                 ClientMsg::Power { id, a } => {
                     let allowed = state.prefs().get().allows(a) && !state.is_helper(&who.id);
                     power_request(allowed, id, a, reply_tx.clone())
+                }
+                ClientMsg::Wake { id, macs } => {
+                    let allowed = state.allow_for(&who.id).power;
+                    wake_request(allowed, id, macs, reply_tx.clone())
                 }
                 ClientMsg::Apps { id } => apps_request(state, id, reply_tx.clone()),
                 ClientMsg::Launch { id, app } => launch_request(state, id, app, reply_tx.clone()),
@@ -842,6 +849,37 @@ fn ack(id: Option<u64>, result: Result<(), (AckCode, String)>) -> ServerMsg {
             msg: Some(msg),
         },
     }
+}
+
+/// Sends Wake-on-LAN packets for other computers on this network.
+fn wake_request(allowed: bool, id: Option<u64>, macs: Vec<String>, replies: Replies) {
+    if !allowed {
+        let _ = replies.send(ack(id, Err((AckCode::NotAllowed, NOT_ALLOWED.into()))));
+        return;
+    }
+    let parsed: Vec<crate::wol::Mac> = macs
+        .iter()
+        .filter_map(|m| crate::wol::parse_mac(m))
+        .take(crate::wol::MAX_MACS)
+        .collect();
+    if parsed.is_empty() {
+        let _ = replies.send(ack(
+            id,
+            Err((AckCode::Failed, "no valid network address to wake".into())),
+        ));
+        return;
+    }
+    tokio::spawn(async move {
+        let sent = tokio::task::spawn_blocking(move || crate::wol::wake(&parsed))
+            .await
+            .unwrap_or(0);
+        let result = if sent > 0 {
+            Ok(())
+        } else {
+            Err((AckCode::Failed, "couldn't send on this network".into()))
+        };
+        let _ = replies.send(ack(id, result));
+    });
 }
 
 fn power_request(allowed: bool, id: Option<u64>, action: PowerAction, replies: Replies) {

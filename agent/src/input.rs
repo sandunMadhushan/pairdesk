@@ -186,7 +186,11 @@ pub(crate) fn apply(enigo: &mut Enigo, cmd: &InputCmd) -> enigo::InputResult<()>
         }
         InputCmd::Text(s) => {
             if !s.is_empty() {
-                enigo.text(s)?;
+                if real_keys_for_text() {
+                    type_with_real_keys(enigo, s)?;
+                } else {
+                    enigo.text(s)?;
+                }
             }
         }
         InputCmd::Key(k) => enigo.key(key(*k), Direction::Click)?,
@@ -293,5 +297,166 @@ fn key(k: NamedKey) -> Key {
         NamedKey::F10 => Key::F10,
         NamedKey::F11 => Key::F11,
         NamedKey::F12 => Key::F12,
+    }
+}
+
+/// One step of typing text with real key presses.
+#[cfg(any(windows, test))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TypeStep {
+    /// A key with its virtual-key code, pressed with Shift when asked.
+    Key { vk: u32, shift: bool },
+    /// Anything the keyboard layout can't produce: sent as a Unicode character.
+    Char(char),
+}
+
+#[cfg(any(windows, test))]
+/// Plans how to type `text` with real key presses. `lookup` says which
+/// virtual key (and whether Shift) produces a character on the current
+/// layout; `None` or a result that needs Ctrl or Alt (AltGr) falls back to
+/// a Unicode character.
+fn plan_real_keys(text: &str, lookup: impl Fn(char) -> Option<(u32, bool, bool)>) -> Vec<TypeStep> {
+    text.chars()
+        .filter(|&c| c != '\r' && c != '\0')
+        .map(|c| match c {
+            '\n' => TypeStep::Key {
+                vk: 0x0D,
+                shift: false,
+            },
+            '\t' => TypeStep::Key {
+                vk: 0x09,
+                shift: false,
+            },
+            _ => match lookup(c) {
+                Some((vk, shift, false)) => TypeStep::Key { vk, shift },
+                _ => TypeStep::Char(c),
+            },
+        })
+        .collect()
+}
+
+/// The Windows PIN and password boxes on the sign-in screen read real key
+/// presses and ignore the Unicode packets `Enigo::text` sends. So in the
+/// SYSTEM helper (the sign-in screen, lock screen and UAC), text is typed as
+/// key presses with scan codes.
+#[cfg(windows)]
+fn real_keys_for_text() -> bool {
+    crate::winsys::is_system_mode() || std::env::var_os("PAIRDESK_TEST_REAL_KEYS").is_some()
+}
+
+#[cfg(not(windows))]
+fn real_keys_for_text() -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn type_with_real_keys(enigo: &mut Enigo, text: &str) -> enigo::InputResult<()> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VkKeyScanW;
+    let lookup = |c: char| {
+        let mut buf = [0u16; 2];
+        if c.encode_utf16(&mut buf).len() != 1 {
+            return None;
+        }
+        // SAFETY: plain Win32 call with a UTF-16 unit.
+        let r = unsafe { VkKeyScanW(buf[0]) };
+        if r == -1 {
+            return None;
+        }
+        let vk = (r & 0xFF) as u32;
+        let state = (r >> 8) & 0xFF;
+        // Bit 0 Shift, 1 Ctrl, 2 Alt.
+        Some((vk, state & 1 != 0, state & 6 != 0))
+    };
+    for step in plan_real_keys(text, lookup) {
+        match step {
+            TypeStep::Key { vk, shift } => {
+                if shift {
+                    enigo.key(Key::Shift, Direction::Press)?;
+                }
+                let r = enigo.key(Key::Other(vk), Direction::Click);
+                if shift {
+                    let _ = enigo.key(Key::Shift, Direction::Release);
+                }
+                r?;
+            }
+            TypeStep::Char(c) => enigo.text(&c.to_string())?,
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn type_with_real_keys(enigo: &mut Enigo, text: &str) -> enigo::InputResult<()> {
+    enigo.text(text)
+}
+
+#[cfg(test)]
+mod real_key_tests {
+    use super::*;
+
+    // A US layout in miniature.
+    fn us(c: char) -> Option<(u32, bool, bool)> {
+        match c {
+            '0'..='9' => Some((c as u32, false, false)),
+            'a'..='z' => Some((c.to_ascii_uppercase() as u32, false, false)),
+            'A'..='Z' => Some((c as u32, true, false)),
+            '@' => Some((0x32, true, false)),
+            '€' => Some((0x45, false, true)), // AltGr on some layouts
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_pin_is_typed_as_digit_keys() {
+        let steps = plan_real_keys("0415", us);
+        assert_eq!(
+            steps,
+            vec![
+                TypeStep::Key {
+                    vk: 0x30,
+                    shift: false
+                },
+                TypeStep::Key {
+                    vk: 0x34,
+                    shift: false
+                },
+                TypeStep::Key {
+                    vk: 0x31,
+                    shift: false
+                },
+                TypeStep::Key {
+                    vk: 0x35,
+                    shift: false
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn capitals_use_shift_and_enter_is_a_key() {
+        let steps = plan_real_keys("Ab\n", us);
+        assert_eq!(
+            steps,
+            vec![
+                TypeStep::Key {
+                    vk: 0x41,
+                    shift: true
+                },
+                TypeStep::Key {
+                    vk: 0x42,
+                    shift: false
+                },
+                TypeStep::Key {
+                    vk: 0x0D,
+                    shift: false
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn what_the_layout_can_not_type_falls_back_to_unicode() {
+        let steps = plan_real_keys("€é", us);
+        assert_eq!(steps, vec![TypeStep::Char('€'), TypeStep::Char('é')]);
     }
 }

@@ -13,6 +13,7 @@ import 'pairing/identity.dart';
 import 'pairing/laptop.dart';
 import 'pairing/pairing_link.dart';
 import 'settings/app_settings.dart';
+import 'wake.dart';
 
 class AppModel extends ChangeNotifier {
   AppModel({
@@ -102,6 +103,34 @@ class AppModel extends ChangeNotifier {
     return true;
   }
 
+  /// Tries to wake a sleeping [target]: a Wake-on-LAN packet from this phone
+  /// (works on the computer's own Wi-Fi or cable network), then through each
+  /// other paired computer that answers (one that is awake on the target's
+  /// network does the sending). Returns what was tried.
+  Future<WakeResult> wake(Laptop target) async {
+    final macs = target.macs;
+    if (macs.isEmpty) return const WakeResult(noAddress: true);
+    final sent = await wakeOnThisNetwork(macs);
+    String? via;
+    for (final helper in _laptops) {
+      if (helper.key == target.key || helper.helping) continue;
+      try {
+        await connection.connect(helper, identity, phoneName: phoneName);
+        await connection.wake(macs);
+        via = helper.name;
+        break;
+      } catch (_) {
+        // Not reachable or not allowed: try the next one.
+      } finally {
+        try {
+          await connection.disconnect();
+        } catch (_) {}
+      }
+    }
+    await _save();
+    return WakeResult(sentFromPhone: sent > 0, via: via);
+  }
+
   Future<void> connect(Laptop laptop) async {
     _watchAddresses();
     await connection.connect(laptop, identity, phoneName: phoneName);
@@ -125,4 +154,20 @@ class AppModel extends ChangeNotifier {
     laptop.name = name;
     await _save();
   }
+}
+
+/// What [AppModel.wake] did.
+class WakeResult {
+  const WakeResult({this.noAddress = false, this.sentFromPhone = false, this.via});
+
+  /// The computer never told the phone its network address.
+  final bool noAddress;
+
+  /// A packet went out from the phone itself.
+  final bool sentFromPhone;
+
+  /// Name of another computer that sent one on its network.
+  final String? via;
+
+  bool get sent => sentFromPhone || via != null;
 }

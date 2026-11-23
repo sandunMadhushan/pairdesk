@@ -127,6 +127,7 @@ Input commands sent before `welcome` are refused and the connection is closed.
 | `file_*` | see [Files](#files) | Files both ways |
 | `audio_start` | `id`, `sound` (bool), `mic` (bool), `codecs` (e.g. `["opus","pcm"]`) | Listen to the computer's sound and/or microphone (since 0.10). Answered with `audio` |
 | `audio_stop` | — | Stop listening |
+| `wake` | `macs`, optional `id` | Send Wake-on-LAN packets on this computer's network for a sleeping computer (feature `wake`; needs the power permission) |
 
 Named keys: `enter`, `backspace`, `escape`, `tab`, `space`, `delete`, `up`, `down`,
 `left`, `right`, `home`, `end`, `page_up`, `page_down`, `volume_up`, `volume_down`,
@@ -165,6 +166,17 @@ the connection.
 | `bad_signature` | The signature didn't verify |
 | `unexpected` | Wrong message for this point in the handshake |
 | `bad_message` | A message couldn't be understood (connection stays open) |
+
+## Wake-on-LAN (since 0.15, feature `wake`)
+
+A sleeping computer runs no PairDesk, so another device sends the "magic
+packet" (6 bytes of 0xFF, then its MAC 16 times, UDP broadcast on ports 9 and
+7). `welcome` carries `macs`: the MACs of the computer's connected adapters
+(wired first, at most 4), which the phone keeps. To wake it the phone sends the
+packet itself when it is on the same network, and otherwise connects to another
+paired computer on that network and sends `wake {macs}`. The computer must have
+Wake-on-LAN enabled in its firmware and network card settings; wireless
+adapters rarely support it.
 
 ## Screen view
 

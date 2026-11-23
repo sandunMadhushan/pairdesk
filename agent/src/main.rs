@@ -46,6 +46,7 @@ mod webview2_loader;
 #[cfg(windows)]
 mod window;
 mod winsys;
+mod wol;
 
 use std::io::ErrorKind;
 use std::path::Path;

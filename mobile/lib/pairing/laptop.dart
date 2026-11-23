@@ -24,7 +24,9 @@ class Laptop {
     this.lastUsed,
     this.helping = false,
     this.direct = false,
-  }) : pairedAt = pairedAt ?? DateTime.now().millisecondsSinceEpoch;
+    List<String>? macs,
+  }) : macs = macs ?? <String>[],
+       pairedAt = pairedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   /// SHA-256 of the computer's certificate. Identifies the computer.
   final Uint8List fingerprint;
@@ -44,6 +46,9 @@ class Laptop {
   /// The computer can open direct paths (it said so when we last connected),
   /// so a direct path is offered when the relay joins us.
   bool direct;
+
+  /// Network addresses (MACs) the computer reported, used to wake it from sleep.
+  List<String> macs;
 
   /// Matches the `id` the computer announces on the network.
   String get shortId => hex(fingerprint.sublist(0, 8));
@@ -91,6 +96,7 @@ class Laptop {
     'lastUsed': lastUsed,
     if (helping) 'helping': true,
     if (direct) 'direct': true,
+    if (macs.isNotEmpty) 'macs': macs,
   };
 
   static Laptop? fromJson(Object? json) {
@@ -111,6 +117,10 @@ class Laptop {
       lastUsed: json['lastUsed'] as int?,
       helping: json['helping'] == true,
       direct: json['direct'] == true,
+      macs: [
+        for (final m in (json['macs'] as List? ?? const []))
+          if (m is String) m,
+      ],
     );
   }
 }

@@ -268,6 +268,8 @@ class _HomeScreenState extends State<HomeScreen> {
           await _connect(laptop);
         case 'address':
           await _addAddress(laptop);
+        case 'wake':
+          await _wake(laptop);
         case 'help':
           await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RemoteHelpScreen()));
       }
@@ -325,9 +327,45 @@ class _HomeScreenState extends State<HomeScreen> {
         await _rename(laptop);
       case 'address':
         await _addAddress(laptop);
+      case 'wake':
+        await _wake(laptop);
       case 'remove':
         await _confirmForget(laptop);
     }
+  }
+
+  /// Wake-on-LAN: from this phone, and through another paired computer.
+  Future<void> _wake(Laptop laptop) async {
+    if (laptop.macs.isEmpty) {
+      return _showMessage(
+        'Can\'t wake it yet',
+        'PairDesk learns the computer\'s network address when you connect while it is awake. '
+            'Connect to ${laptop.name} once, then this works.',
+      );
+    }
+    setState(() => _busy = true);
+    final WakeResult result;
+    try {
+      result = await _model.wake(laptop);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    final how = switch ((result.sentFromPhone, result.via)) {
+      (true, final String v) => 'from this phone and through $v',
+      (true, null) => 'from this phone',
+      (false, final String v) => 'through $v',
+      _ => null,
+    };
+    await _showMessage(
+      how == null ? 'Couldn\'t send the wake signal' : 'Wake signal sent',
+      how == null
+          ? 'Connect the phone to Wi-Fi, or keep another computer with PairDesk awake on the '
+                'same network as ${laptop.name}: it can send the signal for you.'
+          : 'Sent $how. If ${laptop.name} is plugged in by cable and Wake-on-LAN is turned on in '
+                'its BIOS and network card settings, it starts in a few seconds. Laptops on Wi-Fi '
+                'usually can\'t be woken this way. Then press Try again.',
+    );
   }
 
   Future<void> _confirmForget(Laptop laptop) async {
@@ -1145,6 +1183,14 @@ class _ComputerMenu extends StatelessWidget {
                 ),
                 const PdDivider(),
                 PdRow(
+                  icon: Icons.power_settings_new_rounded,
+                  title: 'Wake it up',
+                  subtitle: 'Send a Wake-on-LAN signal',
+                  iconBackground: c.s1,
+                  onTap: () => Navigator.pop(context, 'wake'),
+                ),
+                const PdDivider(),
+                PdRow(
                   icon: Icons.delete_outline_rounded,
                   title: 'Remove',
                   subtitle: 'Forget it on this phone',
@@ -1220,7 +1266,7 @@ class _CantReachState extends State<_CantReach> {
           const SizedBox(height: 12),
           PdTitle('Can\'t reach ${laptop.name}', subtitle: 'Check these, then try again:'),
           const SizedBox(height: 10),
-          check('The computer is on and awake'),
+          check('The computer is on and awake (asleep? try Wake it up)'),
           check('PairDesk is running on it (look for the tray icon)'),
           check(
             laptop.reachableAnywhere
@@ -1266,6 +1312,10 @@ class _CantReachState extends State<_CantReach> {
             icon: Icons.refresh_rounded,
             onPressed: () => Navigator.pop(context, 'retry'),
           ),
+          if (laptop.macs.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SecondaryButton(label: 'Wake it up', height: 50, onPressed: () => Navigator.pop(context, 'wake')),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [
