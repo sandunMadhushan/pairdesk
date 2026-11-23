@@ -57,6 +57,42 @@ for port 47800 and mDNS on private networks, and gets updates from the Store.
      from GitHub Releases.
 4. Each new release: new submission with the new `.msix` (version x.y.z.0).
 
+### The first review (2026-11-23) and what changed
+
+Certification asked for three things:
+
+- **10.2.4.1, undisclosed Visual C++.** The 0.13.0 build linked the Visual C++
+  runtime dynamically. Since 0.13.1 it's linked in (`agent/.cargo/config.toml`,
+  `+crt-static`) and the release workflow fails if an .exe still imports
+  `VCRUNTIME`/`MSVCP`. The description also starts with the phone app it needs.
+- **10.3.3, App is testable.** The tester had only a PC. The notes below tell
+  them how to get the phone side, including on an emulator.
+- **10.6.3, Capabilities.** Not a problem of its own: the restricted
+  capabilities are reviewed once the other two pass.
+
+Notes for certification (paste into Submission options):
+
+> PairDesk is the PC half of a phone remote: the PC app shows a pairing code
+> and the free PairDesk Android app controls the PC. To test:
+> 1. Install and start PairDesk on the PC. Its settings page opens in the
+>    browser (also from the tray icon or Start menu). Click "Pair a phone":
+>    it shows a QR code and a pairing link.
+> 2. On an Android phone (Android 6+) on the same Wi-Fi, install the app:
+>    https://github.com/sandunMadhushan/pairdesk/releases/latest (file
+>    pairdesk-x.y.z-android-arm64.apk; x86_64 for an emulator). With the
+>    Android Emulator (Android Studio) on the same PC, copy the pairing link
+>    on the PC and use "Paste a link" in the app.
+> 3. In the app tap +, then "Scan pairing code" (or "Paste a link"). The
+>    phone now moves the pointer, types, shows the PC screen (Screen tab)
+>    and sends files.
+> No account or sign-in is needed; nothing else must be installed on the PC.
+> runFullTrust: a desktop program that moves the pointer and types for the
+> paired phone. packagedServices and localSystemServices: an optional
+> LocalSystem service that lets the phone use the lock screen, sign-in
+> screen and UAC prompts (secure desktop); off until the owner turns on
+> "Sign-in screen and admin prompts" in PairDesk's settings.
+> A short video of the whole flow: <add a link if you record one>.
+
 ### Since 0.12.3: the helper service in the package
 
 The package declares a Windows service (`PairDeskStoreHelper`, LocalSystem,
@@ -86,8 +122,12 @@ the service starting with the package, and the phone at the lock screen.
 Submit it first as a package flight to your own account, or check it on a PC
 before you publish to everyone.
 
-Store description:
+Store description (the first two lines must name what else is needed,
+policy 10.2.4.1):
 
+> Requires the free PairDesk app on an Android phone (Android 6 or later),
+> from pairdesk.madhushan.me or GitHub Releases.
+>
 > PairDesk turns your Android phone into a remote for this PC: touchpad and
 > keyboard, the screen in your hand, shortcut buttons, apps, power actions,
 > and files and clipboard both ways. Pair once by scanning a code; your

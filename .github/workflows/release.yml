@@ -77,6 +77,15 @@ jobs:
         run: |
           mkdir -p out/bin
           cp agent/target/release/pairdesk-agent.exe agent/target/release/pairdesk-startup.exe out/bin/
+      # Store policy 10.2.4.1: the program must not need the Visual C++
+      # Redistributable (the C runtime is linked in, agent/.cargo/config.toml).
+      - name: No Visual C++ runtime needed
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem out/bin/*.exe) {
+            $t = [System.Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($f.FullName))
+            if ($t -match '(?i)vcruntime1\d\d|msvcp1\d\d') { throw "$($f.Name) needs the Visual C++ runtime" }
+          }
       # Free code signing for open-source projects; skipped until SignPath is set up.
       - if: env.HAS_SIGNPATH == 'true'
         id: unsigned

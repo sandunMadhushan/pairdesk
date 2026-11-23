@@ -10,3 +10,9 @@ rustflags = [
 
 [env]
 CXXSTDLIB_x86_64_pc_windows_gnu = "static=stdc++"
+
+# Release builds (MSVC): link the C runtime statically, so the program and
+# the Store package need no Visual C++ Redistributable. (The cc crate then
+# builds C/C++ dependencies with /MT to match.)
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -1,0 +1,2 @@
+• The Windows program no longer needs the Visual C++ runtime
+• Direct connections from 0.13.0: the screen goes straight to your phone when the networks allow it
