@@ -58,6 +58,13 @@ pub struct Prefs {
     /// The relay, `host:port`.
     #[serde(default = "default_relay")]
     pub relay: String,
+    /// Try a direct path to phones that come through the relay, so the
+    /// screen doesn't pass through it.
+    #[serde(default = "yes")]
+    pub direct: bool,
+    /// Ask the router to forward a port to this computer (UPnP / NAT-PMP).
+    #[serde(default = "yes")]
+    pub router_port: bool,
     /// Microsoft Store version only: let the packaged helper service serve
     /// phones at the lock screen and on administrator prompts. (The setup
     /// version turns the helper on by installing it instead.)
@@ -85,6 +92,8 @@ impl Default for Prefs {
             check_updates: true,
             relay_on: true,
             relay: default_relay(),
+            direct: true,
+            router_port: true,
             secure_desktop: false,
         }
     }
@@ -195,6 +204,16 @@ impl PrefsStore {
     pub fn set_relay(&mut self, on: bool, address: &str) -> io::Result<()> {
         self.prefs.relay_on = on;
         self.prefs.relay = address.trim().to_string();
+        self.save()
+    }
+
+    pub fn set_direct(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.direct = on;
+        self.save()
+    }
+
+    pub fn set_router_port(&mut self, on: bool) -> io::Result<()> {
+        self.prefs.router_port = on;
         self.save()
     }
 

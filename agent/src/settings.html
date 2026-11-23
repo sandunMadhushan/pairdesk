@@ -662,6 +662,16 @@
           <div id="relay-check-out"></div>
         </details>
       </div>
+      <div class="card">
+        <label class="setting"><span class="ico"><svg><use href="#i-swap"/></svg></span><span class="what"><b>Direct connections</b><small>When the relay joins your phone to this computer, they first try to open a path straight through your routers, so the screen goes to your phone without passing through the relay. Encrypted the same way, and the relay keeps working where a direct path isn't possible.</small></span>
+          <span class="toggle"><input type="checkbox" id="direct-on"><span></span></span></label>
+        <div class="status-line" role="status" style="margin:12px 0 0"><span class="dot" id="direct-dot"></span><div id="direct-text"></div></div>
+      </div>
+      <div class="card">
+        <label class="setting"><span class="ico"><svg><use href="#i-router"/></svg></span><span class="what"><b>Open a port on the router automatically</b><small>Asks your router (UPnP or NAT-PMP) to forward a port to this computer, so phones can connect without the relay. Only paired phones get in; pairing still needs the code shown here.</small></span>
+          <span class="toggle"><input type="checkbox" id="router-port-on"><span></span></span></label>
+        <div class="status-line" role="status" style="margin:12px 0 0"><span class="dot" id="router-dot"></span><div id="router-text"></div></div>
+      </div>
       <div class="card" id="card-firewall" hidden>
         <div class="card-head"><span class="ico"><svg><use href="#i-wall"/></svg></span><h2 class="grow">Windows Firewall</h2></div>
         <div class="status-line" role="status"><span class="dot" id="fw-dot"></span><div id="fw-text"></div></div>
@@ -669,7 +679,7 @@
         <div class="row"><button id="btn-firewall">Allow PairDesk on all networks</button></div>
       </div>
       <details class="card fold">
-        <summary><span class="ico"><svg><use href="#i-router"/></svg></span><span class="grow"><h2>Your own router instead</h2><span class="hint">No relay: a port forward to this computer.</span></span><svg class="chev"><use href="#i-chev"/></svg></summary>
+        <summary><span class="ico"><svg><use href="#i-router"/></svg></span><span class="grow"><h2>Your own router instead</h2><span class="hint">No relay: a port forward you set up by hand.</span></span><svg class="chev"><use href="#i-chev"/></svg></summary>
         <p class="hint">Your phone and this computer sit on two different private networks, so something has to join them: the PairDesk relay or your own router. For the second one, give the router a <b>port forward</b> to this computer and tell the phone where to find it. No other company is involved.</p>
         <ol class="steps">
           <li><span>Give this computer a fixed address on your home network (your router calls it a DHCP reservation or static lease). It is <b class="selectable" id="fw-lan">–</b> right now.</span></li>
@@ -1017,6 +1027,7 @@ function render(s) {
   const awake = $("keep-awake");
   if (document.activeElement !== awake) awake.checked = s.keep_awake;
   renderRelay(s.relay);
+  renderDirect(s);
   renderReach(s);
 
   // Someone is watching the screen
@@ -1288,6 +1299,52 @@ function renderRelayDetails(r) {
 }
 
 // One line on Home and the top of Remote access: where can a phone reach this computer from?
+function renderDirect(s) {
+  const d = s.direct || {}, rp = s.router_port || {}, info = rp.info || {};
+  $("direct-on").checked = !!d.on;
+  const dot = $("direct-dot"), text = $("direct-text");
+  const why = {
+    "off": "direct connections are off",
+    "not-paired": "the phone isn't paired",
+    "bad-signature": "the phone's request didn't check out",
+    "no-addresses": "no address to try",
+    "bad-offer": "the phone's request couldn't be read",
+  };
+  if (!d.on) {
+    dot.className = "dot";
+    text.textContent = "Off: phones away from home always go through the relay.";
+  } else if (!d.last) {
+    dot.className = "dot";
+    text.textContent = "On. No phone has come through the relay since PairDesk started.";
+  } else if (d.last.direct) {
+    dot.className = "dot ok";
+    text.textContent = "The last phone that came through the relay connected directly (" + ago(d.last.at) + ").";
+  } else {
+    dot.className = "dot warn";
+    text.textContent = "The last phone stayed on the relay (" + ago(d.last.at) + "): " + (why[d.last.why] || d.last.why) +
+      ". Some networks, like many mobile carriers and offices, don't allow a direct path; the relay works there.";
+  }
+  $("router-port-on").checked = !!rp.on;
+  const rdot = $("router-dot"), rtext = $("router-text");
+  const v6 = (info.ipv6 || []).length ? " IPv6: " + info.ipv6.join(", ") + "." : "";
+  if (!rp.on) {
+    rdot.className = "dot";
+    rtext.textContent = "Off." + v6;
+  } else if (info.state === "open") {
+    rdot.className = "dot ok";
+    rtext.textContent = "The router forwards " + info.external + " to this computer (" + info.method + "). Phones try it first." + v6;
+  } else if (info.state === "provider_nat") {
+    rdot.className = "dot warn";
+    rtext.textContent = (info.detail || "Your provider's NAT is in the way.") + " The relay still works." + v6;
+  } else if (info.state === "failed") {
+    rdot.className = "dot warn";
+    rtext.textContent = "Your router didn't open a port: " + (info.detail || "no answer") + " That's fine: the relay and direct connections still work." + v6;
+  } else {
+    rdot.className = "dot";
+    rtext.textContent = "Asking the router\u2026" + v6;
+  }
+}
+
 function renderReach(s) {
   const relay = s.relay && s.relay.state ? s.relay.state.status : "off";
   const anywhere = relay === "online";
@@ -1296,7 +1353,7 @@ function renderReach(s) {
   $("reach-ico").className = "ico big" + (anywhere ? " on" : "");
   $("reach-title").textContent = anywhere ? "Your phone can reach this computer from anywhere"
     : relay === "connecting" ? "Connecting to the relay…" : "Your phone can reach this computer on the same Wi-Fi only";
-  $("reach-text").textContent = anywhere ? "Through the PairDesk relay, on mobile data or any other Wi-Fi."
+  $("reach-text").textContent = anywhere ? "On mobile data or any other Wi-Fi: directly when the networks allow it, otherwise through the PairDesk relay."
     : "Turn on the PairDesk relay below: it works with nothing else to set up.";
 }
 
@@ -1584,6 +1641,14 @@ $("btn-stop-audio").onclick = async () => {
 };
 $("btn-stop-view").onclick = async () => {
   try { render(await post("stop-screen", {})); } catch (e) { showBanner(e.message, true); }
+};
+$("direct-on").onchange = async (e) => {
+  try { render(await post("direct", { enabled: e.target.checked })); }
+  catch (err) { showBanner(err.message, true); refresh(); }
+};
+$("router-port-on").onchange = async (e) => {
+  try { render(await post("router-port", { enabled: e.target.checked })); }
+  catch (err) { showBanner(err.message, true); refresh(); }
 };
 $("keep-awake").onchange = async (e) => {
   try { render(await post("keep-awake", { enabled: e.target.checked })); }

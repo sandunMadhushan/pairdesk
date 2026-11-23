@@ -27,6 +27,8 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+
+use crate::server::{Incoming, Via};
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::pki_types::ServerName;
@@ -480,7 +482,7 @@ async fn read_line_exact<R: AsyncRead + Unpin>(stream: &mut R) -> io::Result<Str
 pub async fn run(
     state: Arc<crate::state::AppState>,
     token: String,
-    incoming: mpsc::Sender<TcpStream>,
+    incoming: mpsc::Sender<Incoming>,
 ) {
     let mut changed = state.relay.changed.subscribe();
     loop {
@@ -512,7 +514,7 @@ async fn keep_registered(
     state: Arc<crate::state::AppState>,
     address: String,
     token: String,
-    incoming: mpsc::Sender<TcpStream>,
+    incoming: mpsc::Sender<Incoming>,
 ) {
     let mut backoff = FIRST_RETRY;
     // Set after TLS failed and a plain connection worked.
@@ -584,7 +586,7 @@ async fn session(
     state: &Arc<crate::state::AppState>,
     address: &str,
     token: &str,
-    incoming: &mpsc::Sender<TcpStream>,
+    incoming: &mpsc::Sender<Incoming>,
     try_tls: bool,
     plain_since: &mut Option<Instant>,
 ) -> Result<Ended, String> {
@@ -638,12 +640,22 @@ async fn session(
             .relay
             .update(address, |e| e.last_ping = Some(Instant::now())),
         Event::Incoming(nonce) => {
-            let (address, token, incoming) =
-                (address.to_string(), token.to_string(), incoming.clone());
+            let (address, token, incoming, state) = (
+                address.to_string(),
+                token.to_string(),
+                incoming.clone(),
+                state.clone(),
+            );
             tokio::spawn(async move {
                 match answer(&address, &token, &nonce, tls).await {
                     Ok(stream) => {
-                        let _ = incoming.send(stream).await;
+                        // The phone may open a direct path first.
+                        if let Some((stream, direct)) =
+                            crate::direct::take(stream, &state, &address).await
+                        {
+                            let via = direct.map_or(Via::Relay, Via::Direct);
+                            let _ = incoming.send(Incoming { stream, via }).await;
+                        }
                     }
                     Err(e) => warn!("relay: couldn't take a phone's connection: {e}"),
                 }

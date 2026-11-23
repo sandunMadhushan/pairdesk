@@ -203,6 +203,7 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
 
   String _route() {
     final a = _conn.address;
+    if (_conn.viaDirect) return 'Direct';
     if (a != null && RelayRoute.looksLike(a)) return 'Relay';
     if (_conn.viaTailscale) return 'Tailscale';
     return 'Wi-Fi';

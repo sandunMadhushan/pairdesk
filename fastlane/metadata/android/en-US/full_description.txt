@@ -21,7 +21,7 @@
 <ol>
 <li>Install PairDesk on your computer from <a href="https://pairdesk.madhushan.me">pairdesk.madhushan.me</a>.</li>
 <li>It shows a pairing code. Open this app and scan it.</li>
-<li>That's it. The phone connects on the same Wi-Fi, or from anywhere with Tailscale.</li>
+<li>That's it. The phone connects on the same Wi-Fi, or from anywhere: directly when the networks allow it, otherwise through the PairDesk relay.</li>
 </ol>
 
 <p>PairDesk is free software (GPL-3.0-or-later).</p>

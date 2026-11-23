@@ -28,9 +28,21 @@ bool isTailscaleAddress(String host) {
   return a == 100 && b != null && b >= 64 && b <= 127;
 }
 
-/// Splits "host" or "host:port". The port is null when there isn't one,
-/// and when what follows the colon isn't a port number.
+/// Splits "host" or "host:port" (IPv6 as "[addr]" or "[addr]:port"; the
+/// host comes back without brackets). The port is null when there isn't
+/// one, and when what follows the colon isn't a port number.
 ({String host, int? port}) splitHostPort(String value) {
+  if (value.startsWith('[')) {
+    final close = value.indexOf(']');
+    if (close > 1) {
+      final host = value.substring(1, close);
+      final rest = value.substring(close + 1);
+      if (rest.isEmpty) return (host: host, port: null);
+      final port = rest.startsWith(':') ? int.tryParse(rest.substring(1)) : null;
+      if (port != null && port >= 1 && port <= 65535) return (host: host, port: port);
+    }
+    return (host: value, port: null);
+  }
   final at = value.lastIndexOf(':');
   if (at <= 0 || at == value.length - 1) return (host: value, port: null);
   final port = int.tryParse(value.substring(at + 1));
@@ -39,13 +51,14 @@ bool isTailscaleAddress(String host) {
 }
 
 /// Addresses the phone accepts **from a computer or a pairing link**:
-/// IPv4 addresses, Tailscale MagicDNS names and relay routes, each with
-/// an optional port. Deliberately narrow — a link can come from someone
+/// IPv4 addresses, global IPv6 addresses (in brackets), Tailscale MagicDNS
+/// names and relay routes, each with an optional port. Deliberately narrow — a link can come from someone
 /// else, and there is no reason for a computer to name anything else.
 bool isUsableHost(String value) {
   if (RelayRoute.looksLike(value)) return RelayRoute.tryParse(value) != null;
   final (host: host, port: _) = splitHostPort(value);
   final ip = InternetAddress.tryParse(host);
+  if (ip != null && ip.type == InternetAddressType.IPv6) return value.startsWith('[') && isGlobalIPv6(ip);
   if (ip != null) return ip.type == InternetAddressType.IPv4 && !ip.isLoopback;
   return host.toLowerCase().endsWith('.ts.net') && _isName(host);
 }
@@ -66,6 +79,14 @@ bool isTypedHost(String value) {
   final lower = host.toLowerCase();
   if (lower == 'localhost' || lower.endsWith('.localhost')) return false;
   return _isName(host);
+}
+
+/// 2000::/3 (the internet), minus the documentation range.
+bool isGlobalIPv6(InternetAddress ip) {
+  final b = ip.rawAddress;
+  return b.length == 16 &&
+      (b[0] & 0xe0) == 0x20 &&
+      !(b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == 0xb8);
 }
 
 bool _isName(String host) => host.length <= 253 && _name.hasMatch(host);

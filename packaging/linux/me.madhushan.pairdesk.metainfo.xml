@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.13.0" date="2026-11-23">
+      <description>
+        <p>Direct connections: away from home, the PairDesk relay introduces the phone to the computer and they open a direct path through their routers when the networks allow it, so the screen no longer passes through the relay. PairDesk also asks the router to open a port (UPnP or NAT-PMP) and offers IPv6 addresses. Both can be turned off under Remote access.</p>
+      </description>
+    </release>
     <release version="0.12.6" date="2026-11-21">
       <description>
         <p>The close button asks before it ends the connection to the computer. Tailscale is no longer shown in the app: connecting from anywhere uses the PairDesk relay.</p>

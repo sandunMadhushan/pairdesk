@@ -244,9 +244,10 @@ const QUESTIONS: { q: string; a: React.ReactNode }[] = [
     q: "Does my data go through a server?",
     a: (
       <>
-        Not when the phone can reach the computer directly, at home or through Tailscale. Otherwise it goes through
-        the PairDesk relay, which only passes the encrypted connection along: it can&apos;t see your screen, what you
-        type, files or sound. There&apos;s no account. See the{" "}
+        Not when the phone can reach the computer directly: at home, or away when the relay has introduced them
+        and the networks allow a direct path. Otherwise it goes through the PairDesk relay, which only passes the
+        encrypted connection along: it can&apos;t see your screen, what you type, files or sound. There&apos;s no
+        account. See the{" "}
         <Link href="/privacy" className="link">
           privacy policy
         </Link>
@@ -256,7 +257,7 @@ const QUESTIONS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Can I use it away from home?",
-    a: "Yes. Open the app once at home so it learns the way to the computer; after that it connects from anywhere, through Tailscale if you use it, or else through the PairDesk relay. The computer must be awake.",
+    a: "Yes. Open the app once at home so it learns the way to the computer; after that it connects from anywhere, directly when the networks allow it, or else through the PairDesk relay. The computer must be awake.",
   },
   {
     q: "Can I help a friend with their computer?",

@@ -1,8 +1,8 @@
 # The PairDesk relay
 
-Normally the phone connects straight to the computer: on the same Wi-Fi, or
-through Tailscale. When neither works (the computer is at a friend's house,
-behind someone else's router), both sides can meet at a **relay** instead.
+Normally the phone connects straight to the computer on the same Wi-Fi.
+When it can't (the phone is on mobile data, the computer is at a friend's
+house, behind someone else's router), both sides meet at a **relay** instead.
 
 The relay is a small program on a server with a public address. It only
 joins two connections together:
@@ -23,6 +23,17 @@ joined" lines with the IP address and the first characters of the id.
 The phone tries direct addresses first and uses the relay only if they
 don't answer within about a second and a half.
 
+### Direct paths (since 0.13)
+
+The relay also answers **STUN** over UDP on the same ports: it tells a phone
+or a computer which address it sees a UDP socket coming from. With that, a
+phone the relay has just joined to a computer tries to open a direct path
+through both routers ("hole punching"). When that works, the relay only
+introduced them and the screen goes straight from the computer to the phone;
+when it doesn't (many mobile carriers and office networks), the relay
+carries the connection as before. A relay without UDP still works, just
+without direct paths. Details: [PROTOCOL.md](PROTOCOL.md#direct-paths-since-013-feature-direct).
+
 ## What's needed
 
 - A Linux server with a public IPv4 address, x64 or arm64. The relay uses
@@ -33,8 +44,9 @@ don't answer within about a second and a half.
   - Or any small VPS (Hetzner, DigitalOcean, Vultr, Linode and so on).
 - A DNS name for it. PairDesk uses `relay.pairdesk.madhushan.me:443` by
   default; anyone can enter their own relay in the computer's settings.
-- Ports **443** and **47900** open for TCP. 443 gets through most office
-  and hotel firewalls; 47900 is the relay's own port.
+- Ports **443** and **47900** open for TCP, and the same two for **UDP**
+  (STUN, for direct paths). 443 gets through most office and hotel
+  firewalls; 47900 is the relay's own port.
 
 ## Set it up (systemd)
 
@@ -52,13 +64,15 @@ user with only the right to use port 443.
 
 Then open the ports:
 
-- **Server firewall.** Ubuntu: `ufw allow 443/tcp && ufw allow 47900/tcp`.
+- **Server firewall.** Ubuntu: `ufw allow 443 && ufw allow 47900` (TCP and UDP).
   Oracle's Ubuntu images also have iptables rules; add
   `iptables -I INPUT 6 -p tcp -m multiport --dports 443,47900 -j ACCEPT`
+  and the same with `-p udp`,
   and save with `netfilter-persistent save`.
 - **Cloud firewall.** Oracle: the subnet's *Security List* → add ingress
-  rules for TCP 443 and 47900 from `0.0.0.0/0`. Other providers have a
-  similar "firewall" page.
+  rules for TCP and UDP 443 and 47900 from `0.0.0.0/0`. Azure: the network
+  security group, an inbound rule for UDP 443 and 47900 next to the TCP one.
+  Other providers have a similar "firewall" page.
 
 Check from your own computer: `nc -vz <server-ip> 443` should say
 "succeeded". `journalctl -u pairdesk-relay -f` shows the relay's log.
@@ -71,7 +85,8 @@ From a copy of this repository:
 
 ```sh
 docker build -f packaging/relay/Dockerfile -t pairdesk-relay .
-docker run -d --name pairdesk-relay --restart=always -p 443:47900 -p 47900:47900 pairdesk-relay
+docker run -d --name pairdesk-relay --restart=always -p 443:47900 -p 47900:47900 \
+  -p 443:47900/udp -p 47900:47900/udp pairdesk-relay
 ```
 
 ## DNS
@@ -141,6 +156,7 @@ stops.
 - At most 512 open connections per IP address; extra ones are refused.
 - A connection that sends nothing for 90 seconds is closed (both sides
   ping every 25 seconds).
+- STUN: at most 40 answers per address every 10 seconds.
 - Running `pairdesk-relay --listen ADDRESS:PORT` (repeatable) picks the
   ports; `RUST_LOG=debug` shows more detail.
 

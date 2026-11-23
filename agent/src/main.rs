@@ -16,6 +16,7 @@ mod awake;
 mod bridge;
 mod clipboard;
 mod config;
+mod direct;
 mod discovery;
 mod files;
 mod identity;
@@ -24,6 +25,7 @@ mod install;
 mod instance;
 mod net;
 mod pairing;
+mod portmap;
 mod power;
 mod prefs;
 mod protocol;
@@ -350,8 +352,18 @@ fn main() {
             Ok(l) => l,
             Err(e) => fatal(&format!("cannot listen: {e}")),
         };
-        // Phones joined to this computer by a relay arrive here.
+        // Phones joined to this computer by a relay (or a direct path it
+        // opened), and phones on IPv6, arrive here.
         let (relayed_tx, relayed) = tokio::sync::mpsc::channel(8);
+        if args.bind == "0.0.0.0" {
+            match listen_v6(args.port) {
+                Ok(v6) => {
+                    runtime.spawn(accept_v6(v6, relayed_tx.clone()));
+                }
+                Err(e) => info!("no IPv6 listener: {e}"),
+            }
+        }
+        runtime.spawn(portmap::run(state.clone()));
         match relay::load_token(&data_dir) {
             Ok(token) => {
                 runtime.spawn(relay::run(state.clone(), token, relayed_tx));
@@ -465,6 +477,36 @@ fn main() {
         let _ = std::fs::remove_file(url_file);
     }
     runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+}
+
+/// The phone port on IPv6 as well (IPv6 only: IPv4 has its own listener).
+fn listen_v6(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let s = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+    s.set_only_v6(true)?;
+    #[cfg(not(windows))]
+    s.set_reuse_address(true)?;
+    s.bind(&std::net::SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, port)).into())?;
+    s.listen(64)?;
+    s.set_nonblocking(true)?;
+    tokio::net::TcpListener::from_std(s.into())
+}
+
+async fn accept_v6(
+    listener: tokio::net::TcpListener,
+    to: tokio::sync::mpsc::Sender<server::Incoming>,
+) {
+    loop {
+        match listener.accept().await {
+            Ok((stream, _)) => {
+                let via = server::Via::Network;
+                if to.send(server::Incoming { stream, via }).await.is_err() {
+                    return;
+                }
+            }
+            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+        }
+    }
 }
 
 /// The port is taken. Replaces an older PairDesk; otherwise shows the

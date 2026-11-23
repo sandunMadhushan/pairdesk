@@ -394,6 +394,28 @@ fn handle(
                 None => status(request, 400, "bad request"),
             }
         }
+        (Method::Post, "/api/direct") | (Method::Post, "/api/router-port") => {
+            #[derive(Deserialize)]
+            struct Body {
+                enabled: bool,
+            }
+            match serde_json::from_str::<Body>(&body).ok() {
+                Some(b) => {
+                    let saved = if rest == "/api/direct" {
+                        state.prefs().set_direct(b.enabled)
+                    } else {
+                        let r = state.prefs().set_router_port(b.enabled);
+                        state.portmap.settings_changed();
+                        r
+                    };
+                    match saved {
+                        Ok(()) => send_state(request, state),
+                        Err(e) => status(request, 500, &format!("could not save: {e}")),
+                    }
+                }
+                None => status(request, 400, "bad request"),
+            }
+        }
         (Method::Post, "/api/update-check") => {
             if let Some(u) = crate::update::global() {
                 // The answer is in the state either way.
@@ -697,6 +719,23 @@ fn send_state(request: Request, state: &AppState) {
             "state": state.relay.status(),
             "details": state.relay.details(),
             "check": state.relay.check_state(),
+        },
+        "direct": {
+            "on": prefs.direct,
+            "last": state.direct.last().map(|(ago, outcome)| {
+                let at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs())
+                    .saturating_sub(ago);
+                match outcome {
+                    crate::direct::Outcome::Direct => json!({"at": at, "direct": true}),
+                    crate::direct::Outcome::Relayed(why) => json!({"at": at, "direct": false, "why": why}),
+                }
+            }),
+        },
+        "router_port": {
+            "on": prefs.router_port,
+            "info": state.portmap.info(),
         },
         "keep_awake": state.awake.is_on(),
         "transfers": state.transfers(),

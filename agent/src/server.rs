@@ -35,6 +35,8 @@ const FEATURES: &[&str] = &[
     "files",
     "video",
     "audio",
+    // Direct paths through the relay's introduction (src/direct).
+    "direct",
 ];
 /// Largest WebSocket message accepted from a phone (a file chunk is 128 KiB,
 /// clipboard text up to 200 KB).
@@ -48,11 +50,28 @@ const MAX_PENDING: usize = 16;
 
 type Ws = WebSocketStream<tokio_rustls::server::TlsStream<TcpStream>>;
 
+/// How a phone's connection reached this computer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Via {
+    /// Straight to the listening port (home network, IPv6, a router port).
+    Network,
+    /// Through a relay.
+    Relay,
+    /// A direct path the relay helped open; the phone's address.
+    Direct(SocketAddr),
+}
+
+/// A connection that arrived some other way than the main listener.
+pub struct Incoming {
+    pub stream: TcpStream,
+    pub via: Via,
+}
+
 pub async fn run(
     listener: TcpListener,
     state: Arc<AppState>,
     input: InputHandle,
-    mut relayed: tokio::sync::mpsc::Receiver<TcpStream>,
+    mut more: tokio::sync::mpsc::Receiver<Incoming>,
 ) -> std::io::Result<()> {
     let tls = state.identity.tls_config().map_err(std::io::Error::other)?;
     let acceptor = TlsAcceptor::from(tls);
@@ -61,18 +80,24 @@ pub async fn run(
     loop {
         // Phones on the network, and phones joined to us by a relay: the
         // same TLS and sign-in either way.
-        let (stream, peer, via_relay) = tokio::select! {
+        let (stream, peer, via) = tokio::select! {
             accepted = listener.accept() => match accepted {
-                Ok((s, peer)) => (s, peer, false),
+                Ok((s, peer)) => (s, peer, Via::Network),
                 Err(e) => {
                     warn!("accept failed: {e}");
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     continue;
                 }
             },
-            Some(s) = relayed.recv() => {
-                let Ok(peer) = s.peer_addr() else { continue };
-                (s, peer, true)
+            Some(inc) = more.recv() => {
+                let peer = match inc.via {
+                    Via::Direct(peer) => peer,
+                    _ => match inc.stream.peer_addr() {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    },
+                };
+                (inc.stream, peer, inc.via)
             }
         };
         let Ok(permit) = pending.clone().try_acquire_owned() else {
@@ -101,7 +126,7 @@ pub async fn run(
 
             match started {
                 Ok(Ok((ws, who))) => {
-                    if let Err(e) = serve(ws, who, peer, via_relay, &state, input).await {
+                    if let Err(e) = serve(ws, who, peer, via, &state, input).await {
                         warn!("{peer}: {e}");
                     }
                 }
@@ -234,7 +259,7 @@ async fn serve(
     ws: Ws,
     who: Authenticated,
     peer: SocketAddr,
-    via_relay: bool,
+    via: Via,
     state: &Arc<AppState>,
     input: InputHandle,
 ) -> Result<(), String> {
@@ -258,7 +283,11 @@ async fn serve(
     info!(
         "{peer}: \"{}\" connected{}{}",
         who.name,
-        if via_relay { " through the relay" } else { "" },
+        match via {
+            Via::Relay => " through the relay",
+            Via::Direct(_) => " directly (the relay introduced it)",
+            Via::Network => "",
+        },
         if state.is_helper(&who.id) {
             " (helping)"
         } else {
@@ -269,10 +298,10 @@ async fn serve(
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<SessionCmd>();
     let session = state.open_session(Session {
         phone_id: who.id.clone(),
-        address: if via_relay {
-            "the relay".into()
-        } else {
-            peer.ip().to_string()
+        address: match via {
+            Via::Relay => "the relay".into(),
+            Via::Direct(p) => format!("{} (direct)", p.ip()),
+            Via::Network => peer.ip().to_string(),
         },
         cmd: cmd_tx,
     });

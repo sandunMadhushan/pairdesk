@@ -5,13 +5,14 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.12.** Now in the
+> **Status: 0.13.** Now in the
 > [Microsoft Store](https://pairdesk.madhushan.me/store/) for Windows.
 > Pair once with a QR code or a link; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
 > and only paired phones get in. Touchpad, keyboard, shortcut buttons, an app
 > launcher, power controls, a live view of the screen, clipboard and files, on your
-> Wi-Fi or from anywhere (the PairDesk relay, encrypted twice, or your own router), two-way sound, and
+> Wi-Fi or from anywhere (directly when the networks allow it, otherwise through the
+> PairDesk relay), two-way sound, and
 > "Get help" links to help someone else for a while. A new look on the phone and on
 > the computer, with a dark mode. Installers for Windows and
 > Linux, automatic updates, smooth H.264 screen view, and on Windows the lock
@@ -38,7 +39,7 @@ no codes or "accept" prompts every time.
 | Clipboard | Copy the computer's clipboard to the phone, send the phone's clipboard to the computer, or paste it straight into the computer's active window |
 | Files | Phone → computer: pick files, or **Share → PairDesk** from any app; saved in `Downloads/PairDesk`. Computer → phone: drop files on PairDesk's page, or right-click → **Send to → PairDesk phone** (Windows), "Send to phone (PairDesk)" (GNOME Files, Dolphin); saved in `Download/PairDesk` |
 | Sound | Hear what the computer plays (videos, music, calls) on the phone; talk through the computer's speakers (hold to talk or hands-free); hear the computer's microphone (off unless allowed on the computer; red tray dot while used) |
-| Anywhere | Away from home, connects through the PairDesk relay (TLS to the relay, and still encrypted end to end; up to 4 relays, with a relay check in the app), or through your own router; picks the best route by itself |
+| Anywhere | Away from home, the PairDesk relay introduces the phone to the computer and they open a direct path through their routers when the networks allow it; otherwise the relay carries the connection (TLS to the relay, and still encrypted end to end; up to 4 relays, with a relay check in the app). Also IPv6, and a port the computer asks the router to open (UPnP / NAT-PMP). Picks the best route by itself |
 | Links | Pair by sending a link from the computer to the phone (chat, email) instead of scanning the QR code |
 | Get help | Someone presses **Get help** on their computer and sends you the link: you see and control their screen for up to 2 hours, without power, files or sound, and they can end it any time |
 
@@ -108,19 +109,27 @@ either side. The relay only passes encrypted data along; see
 
 ### Use it away from home
 
-Usually nothing to do: when the phone can't reach the computer directly, it goes
-through the PairDesk relay (**Remote access** on the computer shows whether the relay
-is connected, and **Check now** tests each relay). The relay is reached over TLS, with
-a plain fallback, and the phone still checks the computer's own certificate inside it.
-If a relay is down the phone tries the next one, and **Check the relay** on the phone
-shows what failed.
+Usually nothing to do. When the phone can't reach the computer directly, the
+PairDesk relay introduces them, and they try to open a **direct path** through both
+routers, so the screen goes straight to your phone. Where the networks don't allow
+that (many mobile carriers and offices), the relay carries the connection. The title
+bar on the phone says **Direct** or **Relay**. **Remote access** on the computer shows
+whether the relay is connected, how the last phone connected, and **Check now** tests
+each relay. The relay is reached over TLS, with a plain fallback, and the phone still
+checks the computer's own certificate inside it. If a relay is down the phone tries
+the next one, and **Check the relay** on the phone shows what failed.
+
+PairDesk also asks your router to forward a port to the computer (UPnP or NAT-PMP,
+**Open a port on the router automatically** on the computer), and offers the
+computer's IPv6 addresses; when either works, the phone connects with no relay at
+all.
 
 The computer must be awake: turn on **Keep this computer awake** on its PairDesk page
 if it tends to sleep.
 
 **Don't want to use the relay?** Your phone and your computer are on two
-different private networks, so something has to join them. The other way is your
-own router: give the computer a fixed address on your home network, forward TCP
+different private networks, so something has to join them. If your router doesn't
+open a port by itself, set one up by hand: give the computer a fixed address on your home network, forward TCP
 port 47800 to it, point a free dynamic DNS name (DuckDNS, No-IP, or your router's
 own) at your home connection, then on the phone use **⋮ → Add an address** and
 type that name — `home.example.org`, or `home.example.org:8443` if the router
@@ -182,6 +191,8 @@ SETUP=PairDesk-Setup-x.y.z-x64.exe tools/e2e-windows-setup.sh
 tools/e2e-audio.sh
 # "Get help" through the relay (build relay/ first: cd relay && cargo build)
 tools/e2e-relay.sh
+# Direct paths: the relay introduces, then UDP carries the session
+tools/e2e-direct.sh
 
 # Relay
 cd relay && cargo test && cargo run -- --listen 127.0.0.1:47900
@@ -224,7 +235,8 @@ releases in [docs/RELEASING.md](docs/RELEASING.md); store submissions in
 | 7 | Installers, automatic updates, website; Microsoft Store and F-Droid packages |
 | 8 | Smoother screen (H.264); Windows sign-in screen and admin prompts; PairDesk window on Windows |
 | 9 | Two-way sound, with echo cancelling |
-| **10** | **Pairing links, "Get help", PairDesk relay (this release)** |
+| 10 | Pairing links, "Get help", PairDesk relay |
+| **11** | **Direct paths through the relay's introduction, IPv6, automatic router port (this release)** |
 
 ## Contributing
 

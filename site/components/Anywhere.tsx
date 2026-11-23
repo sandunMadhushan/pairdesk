@@ -14,7 +14,7 @@ const PINS = [
 ];
 const LABELS = [
   { title: "Your computer", sub: "awake at home" },
-  { title: "Relay", sub: "passes sealed data only" },
+  { title: "Relay", sub: "introduces, or passes sealed data" },
   { title: "Your phone", sub: "on another network" },
 ];
 
@@ -91,14 +91,15 @@ export default function Anywhere() {
               From the next room, or the next country
             </h2>
             <p className="mt-5 text-lg text-slate">
-              At home it connects over Wi-Fi. Away, it goes through Tailscale if you use it, or through the PairDesk
-              relay. Either way the connection is encrypted between your phone and your computer, and nobody in
-              between can read it.
+              At home it connects over Wi-Fi. Away, the PairDesk relay introduces your phone to your computer and
+              they open a direct path when the networks allow it; where they don&apos;t, the relay carries the
+              connection. Either way it&apos;s encrypted between your phone and your computer, and nobody in between
+              can read it.
             </p>
             <dl data-pop className="mt-9 grid grid-cols-3 gap-4 border-t border-line pt-7">
               {[
                 ["Wi-Fi", "at home"],
-                ["Tailscale", "if you have it"],
+                ["Direct", "when networks allow"],
                 ["Relay", "everywhere else"],
               ].map(([k, v]) => (
                 <div key={k} data-pop-item>

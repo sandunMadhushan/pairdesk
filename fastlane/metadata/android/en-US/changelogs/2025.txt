@@ -1,0 +1,3 @@
+• Direct connections: away from home, the screen goes straight to your phone when the networks allow it
+• The title bar says Direct or Relay
+• IPv6 and router ports (UPnP) are tried too

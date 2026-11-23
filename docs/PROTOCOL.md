@@ -415,6 +415,85 @@ a direct path wins when there is one. It connects to the relay, sends
 on 127.0.0.1, checking the certificate fingerprint as usual. The relay
 therefore sees only TLS records, sizes and IP addresses.
 
+**STUN** (since 0.13). The relay also answers STUN binding requests
+(RFC 5389, `XOR-MAPPED-ADDRESS`) over UDP on the same ports, at most 40 per
+address per 10 s. Phones and computers use it to learn the public address of a
+UDP socket for direct paths (below).
+
+## Direct paths (since 0.13, feature `direct`)
+
+When the relay has joined a phone to a computer that lists `direct` in its
+features, the two first try to open a path straight through their routers
+(UDP hole punching), so the screen doesn't pass through the relay.
+
+1. While the relay connection opens, the phone binds a UDP socket and asks the
+   relay (STUN, on the relay's host and port) which address it sees.
+2. After `OK`, before TLS, the phone sends one line on the joined connection:
+
+   ```text
+   PDD1 <phone id> <unix time> <token> <addresses> <signature>
+   ```
+
+   `token`: 8 random bytes, hex. `addresses`: up to eight IPv4 `ip:port`
+   (the STUN answer first, then the phone's own), comma-separated, or `-`.
+   `signature`: Ed25519 over
+   `"pairdesk-direct-v1" 0x00 fingerprint(32) "<time> <token> <addresses>"`,
+   base64url. The computer refuses a phone that isn't paired, a bad signature,
+   or a time more than 120 s away from its clock.
+3. The computer answers `PDD1 OK <addresses>` (its own STUN answer and home
+   addresses, for a fresh UDP socket) or `PDD1 NO <reason>` (`off`,
+   `not-paired`, `bad-signature`, `no-addresses`, `bad-offer`).
+4. Both send `PUNCH` packets every 100 ms to the other's addresses and answer
+   each `PUNCH` with `PUNCH_ACK`. The phone takes the first address that
+   answers within 2 s, closes the relay connection and runs its usual TLS +
+   WebSocket connection over the UDP path, as a reliable stream ("PDU1",
+   below). If nothing answers, it starts TLS on the relay connection instead;
+   the computer serves whichever starts first. After a failed attempt the
+   phone goes straight to the relay for 5 minutes. A computer that doesn't
+   answer the offer at all (an older version) gets a plain relay connection.
+
+Nothing about the session changes: the certificate is pinned and the phone
+signs in as on any other route. A direct path shows each side the other's
+address.
+
+**PDU1**, a reliable byte stream over UDP (`agent/src/direct/conn.rs`,
+`mobile/lib/pairing/direct_conn.dart`). Every packet starts with a kind byte
+and the 8-byte token; numbers are big-endian:
+
+| Kind | Packet | Meaning |
+| --- | --- | --- |
+| 1 | `PUNCH` side u8 | opening the path (side 0 phone, 1 computer) |
+| 2 | `PUNCH_ACK` side u8 | answer to a `PUNCH` |
+| 3 | `DATA` seq u32, 1–1200 bytes | stream data; the phone's first one opens the stream |
+| 4 | `ACK` next u32, window u16, sack u64 | `next`: first sequence number not received; bit *i* of `sack`: `next+1+i` received; `window`: packets that fit |
+| 5 | `FIN` seq u32 | end of one direction (takes a sequence number) |
+| 6 | `PING` | keepalive, answered with an `ACK` |
+| 7 | `RESET` | the stream is abandoned |
+
+The sender paces packets, grows a congestion window (slow start, then
+additive increase), treats a packet as lost when three later ones arrived or
+its retransmission timer (200 ms–4 s) fires, and halves the window on loss.
+Silence for 20 s ends the stream, and something is sent at least every 4 s
+to keep routers' mappings open. The packets need no encryption of their own:
+TLS runs inside, so a forged packet can at most break the session, and the
+phone reconnects.
+
+## From the internet without the relay (since 0.13)
+
+- **Router port.** The agent asks the router to forward a TCP port to its
+  phone port: UPnP IGD (`AddPortMapping`, outside port 47800 or the next
+  free one, lease 1 h, renewed every 20 min), else NAT-PMP to the `.1` of the
+  home network. When the router's public address is itself private (the
+  provider's NAT), nothing is offered. Settings: *Open a port on the router
+  automatically* (on by default).
+- **IPv6.** The agent also listens on IPv6 (`[::]:47800`) and offers its
+  global IPv6 addresses (2000::/3, at most two).
+
+Both appear in `welcome.addrs` and `addrs` after the home addresses and
+before relay routes: `203.0.113.7:47800`, `[2a02:1234::5]`. They are left
+out of pairing links to keep the QR code small. The phone tries them like
+any other address, with the longer timeout.
+
 ## Finding the computer again
 
 The agent announces itself with mDNS / DNS-SD as `_pairdesk._tcp` with TXT

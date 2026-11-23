@@ -26,5 +26,5 @@ systemctl restart pairdesk-relay
 sleep 1
 systemctl --no-pager status pairdesk-relay | head -5
 echo
-echo "Done. Open TCP ports 443 and 47900 in the server's firewall (and the cloud"
+echo "Done. Open ports 443 and 47900, TCP and UDP, in the server's firewall (and the cloud"
 echo "provider's security list), then point your relay's DNS name at this server."

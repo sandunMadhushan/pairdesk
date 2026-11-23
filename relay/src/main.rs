@@ -28,6 +28,11 @@
 //! speaks the protocol above; one that doesn't is served as before. So
 //! firewalls that only let TLS through on 443 pass it, the token isn't sent
 //! in the clear, and older programs keep working.
+//!
+//! The relay also answers STUN binding requests (RFC 5389) on the same
+//! ports over UDP. Phones and computers use the answer (their address as the
+//! internet sees it) to try a direct connection first; the relay is then
+//! only used to introduce them and when the direct path can't be opened.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -37,7 +42,7 @@ use std::time::Duration;
 use log::{info, warn};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject};
@@ -339,13 +344,90 @@ fn load_tls(cert: &str, key: &str) -> Result<TlsAcceptor, String> {
     Ok(TlsAcceptor::from(Arc::new(config)))
 }
 
+/// STUN magic cookie (RFC 5389).
+const STUN_COOKIE: u32 = 0x2112_A442;
+/// STUN requests answered per address per [STUN_WINDOW]; more are ignored,
+/// so the relay can't be used to flood someone else with answers.
+const STUN_PER_IP: u32 = 40;
+const STUN_WINDOW: Duration = Duration::from_secs(10);
+
+/// Answers a STUN binding request with the sender's address
+/// (XOR-MAPPED-ADDRESS); None for anything else.
+fn stun_answer(request: &[u8], from: SocketAddr) -> Option<Vec<u8>> {
+    if request.len() < 20 || request.len() > 548 {
+        return None;
+    }
+    let kind = u16::from_be_bytes([request[0], request[1]]);
+    let length = u16::from_be_bytes([request[2], request[3]]) as usize;
+    let cookie = u32::from_be_bytes([request[4], request[5], request[6], request[7]]);
+    if kind != 0x0001 || cookie != STUN_COOKIE || length + 20 != request.len() {
+        return None;
+    }
+    let txid = &request[8..20];
+    let port = from.port() ^ (STUN_COOKIE >> 16) as u16;
+    let mut value = Vec::with_capacity(20);
+    match from.ip() {
+        IpAddr::V4(ip) => {
+            value.extend_from_slice(&[0, 1]);
+            value.extend_from_slice(&port.to_be_bytes());
+            let x = u32::from(ip) ^ STUN_COOKIE;
+            value.extend_from_slice(&x.to_be_bytes());
+        }
+        IpAddr::V6(ip) => {
+            value.extend_from_slice(&[0, 2]);
+            value.extend_from_slice(&port.to_be_bytes());
+            let mut key = [0u8; 16];
+            key[..4].copy_from_slice(&STUN_COOKIE.to_be_bytes());
+            key[4..].copy_from_slice(txid);
+            for (o, k) in ip.octets().iter().zip(key) {
+                value.push(o ^ k);
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(20 + 4 + value.len());
+    out.extend_from_slice(&0x0101u16.to_be_bytes());
+    out.extend_from_slice(&((4 + value.len()) as u16).to_be_bytes());
+    out.extend_from_slice(&STUN_COOKIE.to_be_bytes());
+    out.extend_from_slice(txid);
+    out.extend_from_slice(&0x0020u16.to_be_bytes());
+    out.extend_from_slice(&(value.len() as u16).to_be_bytes());
+    out.extend_from_slice(&value);
+    Some(out)
+}
+
+/// Serves STUN on one UDP socket.
+async fn serve_stun(socket: UdpSocket) {
+    let mut counts: HashMap<IpAddr, u32> = HashMap::new();
+    let mut window = tokio::time::Instant::now();
+    let mut buf = [0u8; 600];
+    loop {
+        let Ok((n, from)) = socket.recv_from(&mut buf).await else {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            continue;
+        };
+        if window.elapsed() > STUN_WINDOW {
+            counts.clear();
+            window = tokio::time::Instant::now();
+        }
+        let count = counts.entry(from.ip()).or_insert(0);
+        *count += 1;
+        if *count > STUN_PER_IP {
+            continue;
+        }
+        if let Some(answer) = stun_answer(&buf[..n], from) {
+            let _ = socket.send_to(&answer, from).await;
+        }
+    }
+}
+
 fn usage() -> ! {
     eprintln!(
         "PairDesk relay {}\n\nUsage: pairdesk-relay [--listen ADDRESS:PORT]... \
          [--tls-cert FILE --tls-key FILE]\n\n\
          Default: --listen 0.0.0.0:47900. Listen on several, e.g. 443 as well, for\n\
          networks that block other ports. With a certificate and key (PEM) the relay\n\
-         also accepts TLS on the same ports. Log detail: RUST_LOG=info (default) or debug.",
+         also accepts TLS on the same ports. STUN is answered over UDP on the same\n\
+         ports. Log detail: RUST_LOG=info (default) or debug.",
         env!("CARGO_PKG_VERSION")
     );
     std::process::exit(2);
@@ -399,6 +481,13 @@ async fn main() {
             "PairDesk relay {} listening on {addr}",
             env!("CARGO_PKG_VERSION")
         );
+        match UdpSocket::bind(&addr).await {
+            Ok(udp) => {
+                tokio::spawn(serve_stun(udp));
+            }
+            // Direct connections need it, the relay itself doesn't.
+            Err(e) => warn!("no STUN on {addr} (UDP): {e}"),
+        }
         let relay = relay.clone();
         let tls = tls.clone();
         tokio::spawn(async move {
@@ -576,7 +665,11 @@ mod tests {
             line(&mut phone).await
         });
         let mut incoming = String::new();
-        control.read_line(&mut incoming).await.unwrap();
+        // The relay may ping the computer first.
+        while incoming.is_empty() || incoming.trim() == "PING" {
+            incoming.clear();
+            control.read_line(&mut incoming).await.unwrap();
+        }
         assert!(incoming.starts_with("INCOMING "), "{incoming}");
         let nonce = incoming
             .trim()
@@ -596,6 +689,33 @@ mod tests {
         assert_eq!(reply.trim(), "OK");
         assert_eq!(phone.await.unwrap(), "OK");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn stun_tells_the_sender_its_address() {
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = server.local_addr().unwrap();
+        tokio::spawn(serve_stun(server));
+        let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let mut req = vec![0, 1, 0, 0];
+        req.extend_from_slice(&STUN_COOKIE.to_be_bytes());
+        req.extend_from_slice(b"abcdefghijkl");
+        client.send_to(&req, addr).await.unwrap();
+        let mut buf = [0u8; 100];
+        let (n, _) = tokio::time::timeout(Duration::from_secs(2), client.recv_from(&mut buf))
+            .await
+            .unwrap()
+            .unwrap();
+        let r = &buf[..n];
+        assert_eq!(&r[0..2], &[1, 1]);
+        assert_eq!(&r[8..20], b"abcdefghijkl");
+        assert_eq!(&r[20..22], &[0, 0x20]);
+        let port = u16::from_be_bytes([r[26], r[27]]) ^ 0x2112;
+        let ip = u32::from_be_bytes([r[28], r[29], r[30], r[31]]) ^ STUN_COOKIE;
+        assert_eq!(port, client.local_addr().unwrap().port());
+        assert_eq!(std::net::Ipv4Addr::from(ip), std::net::Ipv4Addr::LOCALHOST);
+        // Anything else gets no answer.
+        assert!(stun_answer(b"hello there, not stun", addr).is_none());
     }
 
     #[test]

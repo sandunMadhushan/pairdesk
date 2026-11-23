@@ -2545,7 +2545,7 @@ dependencies = [
 
 [[package]]
 name = "pairdesk-agent"
-version = "0.12.6"
+version = "0.13.0"
 dependencies = [
  "aec3",
  "arboard",
@@ -2575,6 +2575,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket2 0.6.5",
  "subtle",
  "tempfile",
  "tiny_http",

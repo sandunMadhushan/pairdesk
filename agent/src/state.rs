@@ -111,6 +111,10 @@ pub struct AppState {
     pub tailscale: crate::tailscale::Cache,
     /// Reaching this computer through a relay.
     pub relay: crate::relay::Shared,
+    /// Direct paths to phones that came through the relay.
+    pub direct: crate::direct::Shared,
+    /// The router's port forward (UPnP / NAT-PMP) and IPv6.
+    pub portmap: crate::portmap::Shared,
     /// Phones watching the screen, by session.
     viewers: Mutex<HashMap<u64, ScreenViewer>>,
     viewers_changed: watch::Sender<usize>,
@@ -149,6 +153,8 @@ impl AppState {
             apps: Catalogue::default(),
             tailscale: Default::default(),
             relay: Default::default(),
+            direct: Default::default(),
+            portmap: Default::default(),
             viewers: Mutex::new(HashMap::new()),
             viewers_changed: watch::channel(0).0,
             listeners: Mutex::new(HashMap::new()),
@@ -284,7 +290,9 @@ impl AppState {
         let addresses: Vec<String> = self
             .phone_addresses()
             .into_iter()
-            .filter(|a| !a.starts_with("relay:"))
+            // The link stays short: routes from anywhere other than the
+            // relay reach the phone on its first connection.
+            .filter(|a| !a.starts_with("relay:") && !a.starts_with('[') && !a.contains(':'))
             .collect();
         let route = self.relay.route();
         let link = PairingLink {
@@ -306,7 +314,7 @@ impl AppState {
     }
 
     /// Every address a phone may use, best first: home network, then
-    /// Tailscale addresses, then the Tailscale (MagicDNS) name.
+    /// Tailscale addresses and name, the router's port and IPv6, then relays.
     pub fn phone_addresses(&self) -> Vec<String> {
         let mut out: Vec<String> = crate::net::addresses()
             .into_iter()
@@ -321,6 +329,12 @@ impl AppState {
             }
             if let Some(name) = dns_name {
                 out.push(name);
+            }
+        }
+        // From anywhere without the relay: the router's port, IPv6.
+        for a in self.portmap.phone_addresses() {
+            if !out.contains(&a) {
+                out.push(a);
             }
         }
         for route in self.relay.routes() {

@@ -15,7 +15,7 @@ export default function Privacy() {
     <DocPage>
       <h1 className="display">Privacy policy</h1>
       <p className="mt-4 text-[0.95rem] !text-slate">
-        Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 2
+        Applies to the PairDesk app for Android and the PairDesk program for Windows and Linux. Last updated 23
         November 2026.
       </p>
 
@@ -57,18 +57,23 @@ export default function Privacy() {
       <h2>Network connections PairDesk makes</h2>
       <ul>
         <li>
-          <b>Between your devices</b>, on your local network, or through <a href="https://tailscale.com">Tailscale</a>{" "}
-          if you installed it yourself. PairDesk doesn&apos;t send anything to Tailscale; Tailscale&apos;s own privacy
-          policy covers Tailscale.
+          <b>Between your devices</b>: on your local network; over the internet when the computer&apos;s router
+          forwards a port to it (PairDesk asks the router by UPnP or NAT-PMP; you can turn that off) or it has an IPv6
+          address; or over a <b>direct path</b> the relay helps open (below). A direct path shows each device the
+          other&apos;s IP address, as any direct connection does. If you installed{" "}
+          <a href="https://tailscale.com">Tailscale</a> yourself, PairDesk can also use it; PairDesk doesn&apos;t send
+          anything to Tailscale.
         </li>
         <li>
-          <b>The PairDesk relay</b>, when the phone can&apos;t reach the computer directly (another network, no
-          Tailscale). The computer keeps a connection open to the relay (by default{" "}
+          <b>The PairDesk relay</b>, when the phone can&apos;t reach the computer directly (another network). The
+          computer keeps a connection open to the relay (by default{" "}
           <code>relay.pairdesk.madhushan.me</code>), and a phone that can&apos;t reach it directly connects through it.
           The connection is encrypted end to end between your phone and your computer: the relay can&apos;t see the
           screen, what you type, files or sound. It sees the two IP addresses, a random id for the computer and how
-          much data passes, keeps that only in a short service log, and stores nothing else. You can turn the relay
-          off, or use your own, under <i>Remote access</i> on the computer.
+          much data passes, keeps that only in a short service log, and stores nothing else. It also tells each
+          device the address it sees it coming from (STUN), so the two can try a direct path; when that works, the
+          relay only introduced them and the connection doesn&apos;t pass through it. You can turn the relay or
+          direct connections off, or use your own relay, under <i>Remote access</i> on the computer.
         </li>
         <li>
           <b>Update checks.</b> Once a day the computer program (and the Android app downloaded from GitHub) reads a

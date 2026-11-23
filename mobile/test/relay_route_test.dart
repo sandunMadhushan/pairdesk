@@ -7,6 +7,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pairdesk/pairing/direct.dart';
+import 'package:pairdesk/pairing/identity.dart';
 import 'package:pairdesk/pairing/relay_route.dart';
 
 final _id = 'ab' * 16;
@@ -91,6 +93,69 @@ void main() {
     final route = RelayRoute('127.0.0.1', server.port, _id);
     await _roundTrip(await openRelayTunnel(route, timeout: const Duration(seconds: 5)));
     expect(connections, 1);
+    await server.close();
+  });
+
+  /// A relay joined to a computer that answers a direct offer with [answer]
+  /// (or, when null, drops the connection like an older PairDesk would),
+  /// then echoes.
+  Future<(ServerSocket, List<int>)> offerServer(String? answer) async {
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final connections = <int>[0];
+    server.listen((s) {
+      connections[0]++;
+      var stage = 0;
+      s.listen((data) {
+        final text = latin1.decode(data);
+        if (stage == 0 && text.startsWith('PDR1 CONNECT')) {
+          stage = 1;
+          s.add(utf8.encode('OK\n'));
+          return;
+        }
+        if (stage == 1 && text.startsWith('PDD1 ')) {
+          stage = 2;
+          if (answer == null) return s.destroy();
+          s.add(utf8.encode('$answer\n'));
+          return;
+        }
+        s.add(data);
+      }, onError: (Object _) {});
+    });
+    return (server, connections);
+  }
+
+  test('a computer that declines a direct path keeps the relay connection', () async {
+    forgetDirectFailures();
+    final (server, connections) = await offerServer('PDD1 NO off');
+    final me = await PhoneIdentity.fromSeed(List.filled(32, 1));
+    var direct = false;
+    final route = RelayRoute('127.0.0.1', server.port, _id);
+    final port = await openRelayTunnel(
+      route,
+      timeout: const Duration(seconds: 5),
+      direct: DirectOffer(identity: me, fingerprint: List.filled(32, 2)),
+      onDirect: () => direct = true,
+    );
+    await _roundTrip(port);
+    expect(direct, isFalse);
+    expect(connections[0], 1);
+    await server.close();
+  });
+
+  test('an older computer that drops the offer is tried again without one', () async {
+    forgetDirectFailures();
+    final (server, connections) = await offerServer(null);
+    final me = await PhoneIdentity.fromSeed(List.filled(32, 1));
+    final route = RelayRoute('127.0.0.1', server.port, _id);
+    final port = await openRelayTunnel(
+      route,
+      timeout: const Duration(seconds: 5),
+      direct: DirectOffer(identity: me, fingerprint: List.filled(32, 2)),
+    );
+    await _roundTrip(port);
+    expect(connections[0], 2);
+    // And it isn't offered again for a while.
+    expect(directRecentlyFailed(route.toString()), isTrue);
     await server.close();
   });
 

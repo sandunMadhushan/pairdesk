@@ -172,6 +172,10 @@ jobs:
       - run: >-
           AGENT=agent/target/release/pairdesk-agent RELAY=relay/target/release/pairdesk-relay
           tools/e2e-relay.sh
+      # Direct paths: the relay introduces, then UDP carries the session.
+      - run: >-
+          AGENT=agent/target/release/pairdesk-agent RELAY=relay/target/release/pairdesk-relay
+          tools/e2e-direct.sh
       - run: AGENT=agent/target/release/pairdesk-agent tools/e2e-update.sh
 
   e2e-wayland:

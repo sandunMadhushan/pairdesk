@@ -22,6 +22,7 @@ import 'pairing/discovery.dart';
 import 'pairing/identity.dart';
 import 'pairing/laptop.dart';
 import 'pairing/pairing_link.dart';
+import 'pairing/direct.dart';
 import 'pairing/relay_route.dart';
 import 'screen/frame.dart';
 
@@ -137,6 +138,8 @@ Future<IOWebSocketChannel> openPinnedChannel(
   int port,
   List<int> fingerprint, {
   required Duration timeout,
+  DirectOffer? direct,
+  void Function()? onDirect,
 }) async {
   var mismatch = false;
   // No trusted roots at all: every certificate goes through the callback,
@@ -154,7 +157,7 @@ Future<IOWebSocketChannel> openPinnedChannel(
     final route = RelayRoute.tryParse(host);
     if (route == null) throw AgentException(FailureKind.unreachable, 'Bad relay address.');
     try {
-      targetPort = await openRelayTunnel(route, timeout: timeout);
+      targetPort = await openRelayTunnel(route, timeout: timeout, direct: direct, onDirect: onDirect);
       target = '127.0.0.1';
     } on RelayRefused catch (e) {
       client.close(force: true);
@@ -283,6 +286,7 @@ class AgentConnection extends ChangeNotifier {
     this.remoteConnectTimeout = const Duration(seconds: 8),
     this.stagger = const Duration(milliseconds: 250),
     this.relayHeadStart = const Duration(milliseconds: 1500),
+    this.directPaths = true,
     this.replyTimeout = const Duration(seconds: 8),
     this.pingInterval = const Duration(seconds: 3),
     this.deadAfter = const Duration(seconds: 25),
@@ -313,6 +317,9 @@ class AgentConnection extends ChangeNotifier {
 
   /// How long direct routes get before the relay is tried too.
   final Duration relayHeadStart;
+
+  /// Offer computers a direct path when the relay joins us (pairing/direct.dart).
+  final bool directPaths;
   final Duration replyTimeout;
   final Duration pingInterval;
   final Duration deadAfter;
@@ -333,7 +340,7 @@ class AgentConnection extends ChangeNotifier {
   DateTime _lastHeard = DateTime.now();
   Completer<Map<String, dynamic>>? _reply;
   bool _cancelRequested = false;
-  Completer<(String, IOWebSocketChannel)?>? _race;
+  Completer<(String, IOWebSocketChannel, bool)?>? _race;
 
   /// Set when the connection drops during the handshake.
   AgentException? _handshakeLost;
@@ -372,6 +379,10 @@ class AgentConnection extends ChangeNotifier {
 
   /// True when this connection goes through Tailscale.
   bool get viaTailscale => _address != null && isTailscaleHost(_address!);
+
+  /// Connected over a direct path the relay helped open.
+  bool get viaDirect => _viaDirect;
+  bool _viaDirect = false;
 
   List<String> _agentAddrs = const [];
 
@@ -487,6 +498,7 @@ class AgentConnection extends ChangeNotifier {
     _connected = laptop;
     laptop
       ..learnAddresses(working: _address!, fromComputer: _agentAddrs)
+      ..direct = _features.contains('direct')
       ..name = _agentName ?? laptop.name
       ..os = _agentOs ?? laptop.os
       ..lastUsed = DateTime.now().millisecondsSinceEpoch;
@@ -528,12 +540,13 @@ class AgentConnection extends ChangeNotifier {
     final remaining = List.of(hosts);
     while (remaining.isNotEmpty) {
       if (_cancelRequested) _fail(AgentException(FailureKind.cancelled, 'Cancelled.'));
-      final winner = await _raceChannels(remaining, laptop, note);
+      final winner = await _raceChannels(remaining, laptop, me, note);
       if (winner == null) return false;
-      final (host, channel) = winner;
+      final (host, channel, direct) = winner;
       remaining.remove(host);
       try {
         await _handshake(host, channel, laptop, me, first);
+        _viaDirect = direct;
         return true;
       } on AgentException catch (e) {
         await disconnect(notify: false);
@@ -547,13 +560,14 @@ class AgentConnection extends ChangeNotifier {
 
   /// Opens pinned connections to [hosts], [stagger] apart; returns the
   /// first that succeeds and closes any that finish later.
-  Future<(String, IOWebSocketChannel)?> _raceChannels(
+  Future<(String, IOWebSocketChannel, bool)?> _raceChannels(
     List<String> hosts,
     Laptop laptop,
+    PhoneIdentity me,
     void Function(AgentException) note,
   ) {
     if (hosts.isEmpty) return Future.value(null);
-    final done = Completer<(String, IOWebSocketChannel)?>();
+    final done = Completer<(String, IOWebSocketChannel, bool)?>();
     _race = done;
     var pending = hosts.length;
     void finished() {
@@ -572,16 +586,22 @@ class AgentConnection extends ChangeNotifier {
           // An address may carry its own port (a router forwarding a
           // different one); otherwise the computer's own port is used.
           final where = relay ? (host: host, port: null) : splitHostPort(host);
+          var direct = false;
           final ch = await openPinnedChannel(
             where.host,
             where.port ?? laptop.port,
             laptop.fingerprint,
             timeout: relay || !_isLocal(where.host) ? remoteConnectTimeout : connectTimeout,
+            // Computers that know how get offered a direct path first.
+            direct: relay && laptop.direct && directPaths
+                ? DirectOffer(identity: me, fingerprint: laptop.fingerprint)
+                : null,
+            onDirect: () => direct = true,
           );
           if (done.isCompleted || _cancelRequested) {
             unawaited(ch.sink.close().catchError((_) {}));
           } else {
-            done.complete((host, ch));
+            done.complete((host, ch, direct));
           }
         } on AgentException catch (e) {
           note(e);

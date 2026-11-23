@@ -23,6 +23,7 @@ class Laptop {
     int? pairedAt,
     this.lastUsed,
     this.helping = false,
+    this.direct = false,
   }) : pairedAt = pairedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   /// SHA-256 of the computer's certificate. Identifies the computer.
@@ -39,6 +40,10 @@ class Laptop {
   /// Paired through a "Get help" link: temporary access to someone
   /// else's computer.
   final bool helping;
+
+  /// The computer can open direct paths (it said so when we last connected),
+  /// so a direct path is offered when the relay joins us.
+  bool direct;
 
   /// Matches the `id` the computer announces on the network.
   String get shortId => hex(fingerprint.sublist(0, 8));
@@ -85,6 +90,7 @@ class Laptop {
     'pairedAt': pairedAt,
     'lastUsed': lastUsed,
     if (helping) 'helping': true,
+    if (direct) 'direct': true,
   };
 
   static Laptop? fromJson(Object? json) {
@@ -104,6 +110,7 @@ class Laptop {
       pairedAt: json['pairedAt'] as int?,
       lastUsed: json['lastUsed'] as int?,
       helping: json['helping'] == true,
+      direct: json['direct'] == true,
     );
   }
 }

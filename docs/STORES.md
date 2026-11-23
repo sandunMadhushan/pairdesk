@@ -92,8 +92,9 @@ Store description:
 > keyboard, the screen in your hand, shortcut buttons, apps, power actions,
 > and files and clipboard both ways. Pair once by scanning a code; your
 > phone then connects whenever you open the app, on the same Wi-Fi or from
-> anywhere with Tailscale. No account, no server: the phone talks to the PC
-> directly over an encrypted connection, and only paired phones can
+> anywhere: directly when the networks allow it, otherwise through the
+> PairDesk relay, which can't read what passes. No account: the connection is
+> encrypted between the phone and the PC, and only paired phones can
 > connect. Free and open source (GPL-3.0). Get the phone app at
 > pairdesk.madhushan.me.
 

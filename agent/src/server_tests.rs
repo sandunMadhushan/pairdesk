@@ -396,7 +396,8 @@ async fn welcome_lists_features_and_permissions() {
             "clipboard",
             "files",
             "video",
-            "audio"
+            "audio",
+            "direct"
         ])
     );
     // The microphone is off until the owner allows it.
