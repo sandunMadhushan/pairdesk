@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.15.1" date="2026-11-23">
+      <description>
+        <p>The pointer and keyboard now work on the Windows Security PIN box and on administrator windows.</p>
+      </description>
+    </release>
     <release version="0.15.0" date="2026-11-23">
       <description>
         <p>Typing a Windows PIN on the sign-in screen from the phone, and Wake-on-LAN to wake a sleeping computer.</p>

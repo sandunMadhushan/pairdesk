@@ -233,6 +233,11 @@ jobs:
       - run: >
           PATH=$PATH:/usr/lib/wine HELPER=1 WINE=1
           AGENT=agent/target/x86_64-pc-windows-gnu/debug/pairdesk-agent.exe tools/e2e.sh
+      # An administrator window in front (Windows Security PIN box): input
+      # goes through the helper too.
+      - run: >
+          PATH=$PATH:/usr/lib/wine HELPER=elevated WINE=1
+          AGENT=agent/target/x86_64-pc-windows-gnu/debug/pairdesk-agent.exe tools/e2e.sh
       # Sound on the Windows build (WASAPI through Wine's PulseAudio driver).
       - run: >
           PATH=$PATH:/usr/lib/wine WINE=1

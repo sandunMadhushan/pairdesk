@@ -1,0 +1,194 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Windows blocks input from a normal program to a window of a program with
+//! more rights (User Interface Privilege Isolation): an app run as
+//! administrator, Task Manager, or the "Windows Security" box that asks for
+//! the PIN before Edge shows passwords. While such a window is in front,
+//! every pointer move and key from PairDesk is dropped without an error, so
+//! the pointer seems stuck. PairDesk then sends input through the SYSTEM
+//! helper instead, which those windows accept.
+
+use std::cell::Cell;
+use std::time::{Duration, Instant};
+
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+use windows_sys::Win32::Security::{
+    GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TOKEN_MANDATORY_LABEL,
+    TOKEN_QUERY, TokenIntegrityLevel, TokenUIAccess,
+};
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+/// What we know about a process's rights.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Rights {
+    integrity: u32,
+    ui_access: bool,
+}
+
+fn token_rights(token: HANDLE) -> Option<Rights> {
+    let mut buf = [0u8; 128];
+    let mut len = 0u32;
+    // SAFETY: the buffer is large enough for a TOKEN_MANDATORY_LABEL and its SID.
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenIntegrityLevel,
+            buf.as_mut_ptr().cast(),
+            buf.len() as u32,
+            &mut len,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: filled in by GetTokenInformation above.
+    let integrity = unsafe {
+        let label = &*(buf.as_ptr() as *const TOKEN_MANDATORY_LABEL);
+        let sid = label.Label.Sid;
+        let count = *GetSidSubAuthorityCount(sid);
+        if count == 0 {
+            return None;
+        }
+        *GetSidSubAuthority(sid, u32::from(count) - 1)
+    };
+    let mut ui: u32 = 0;
+    // SAFETY: TokenUIAccess is a DWORD.
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenUIAccess,
+            (&mut ui as *mut u32).cast(),
+            4,
+            &mut len,
+        )
+    };
+    Some(Rights {
+        integrity,
+        ui_access: ok != 0 && ui != 0,
+    })
+}
+
+fn process_rights(pid: u32) -> Option<Rights> {
+    // SAFETY: plain Win32 calls; handles closed below.
+    unsafe {
+        let process = if pid == 0 {
+            GetCurrentProcess()
+        } else {
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+        };
+        if process.is_null() {
+            return None;
+        }
+        let mut token: HANDLE = std::ptr::null_mut();
+        let opened = OpenProcessToken(process, TOKEN_QUERY, &mut token) != 0;
+        if pid != 0 {
+            CloseHandle(process);
+        }
+        if !opened {
+            return None;
+        }
+        let r = token_rights(token);
+        CloseHandle(token);
+        r
+    }
+}
+
+/// True when the window in front belongs to a program Windows won't let us
+/// send input to.
+fn check() -> bool {
+    // SAFETY: plain Win32 calls.
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_null() {
+        return false;
+    }
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    if pid == 0 || pid == std::process::id() {
+        return false;
+    }
+    let Some(me) = process_rights(0) else {
+        return false;
+    };
+    match process_rights(pid) {
+        Some(them) => blocked(me, them),
+        // A program we may not even look at (SYSTEM, protected): it runs with
+        // more rights than us.
+        None => true,
+    }
+}
+
+fn blocked(me: Rights, them: Rights) -> bool {
+    them.integrity > me.integrity || (them.ui_access && !me.ui_access)
+}
+
+thread_local! {
+    static LAST: Cell<Option<(Instant, bool)>> = const { Cell::new(None) };
+}
+
+/// Like [`check`], remembered for a moment: pointer moves arrive many times
+/// a second.
+pub fn needs_helper() -> bool {
+    if std::env::var_os("PAIRDESK_TEST_ELEVATED_WINDOW").is_some() {
+        return true;
+    }
+    LAST.with(|last| {
+        if let Some((at, v)) = last.get()
+            && at.elapsed() < Duration::from_millis(250)
+        {
+            return v;
+        }
+        let v = check();
+        last.set(Some((Instant::now(), v)));
+        v
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MEDIUM: u32 = 0x2000;
+    const HIGH: u32 = 0x3000;
+
+    #[test]
+    fn higher_rights_or_ui_access_block_input() {
+        let me = Rights {
+            integrity: MEDIUM,
+            ui_access: false,
+        };
+        assert!(!blocked(
+            me,
+            Rights {
+                integrity: MEDIUM,
+                ui_access: false
+            }
+        ));
+        assert!(blocked(
+            me,
+            Rights {
+                integrity: HIGH,
+                ui_access: false
+            }
+        ));
+        assert!(blocked(
+            me,
+            Rights {
+                integrity: MEDIUM,
+                ui_access: true
+            }
+        ));
+        let admin = Rights {
+            integrity: HIGH,
+            ui_access: false,
+        };
+        assert!(!blocked(
+            admin,
+            Rights {
+                integrity: MEDIUM,
+                ui_access: false
+            }
+        ));
+    }
+}

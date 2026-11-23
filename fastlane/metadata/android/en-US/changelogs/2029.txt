@@ -1,0 +1,1 @@
+• Fix: pointer and typing now work on the Windows Security PIN box and administrator windows
