@@ -147,11 +147,16 @@ fn apply_routed(enigo: &mut Enigo, cmd: &InputCmd) -> Result<(), String> {
         winsys::desktop::follow_input_desktop()?;
         return apply(enigo, cmd).map_err(|e| e.to_string());
     }
-    if winsys::desktop::user_can_reach_input_desktop() {
+    let secure = !winsys::desktop::user_can_reach_input_desktop();
+    // A window with more rights in front (an app run as administrator, Task
+    // Manager, the Windows Security PIN box) silently drops our input.
+    if !secure && !winsys::foreground::needs_helper() {
         return apply(enigo, cmd).map_err(|e| e.to_string());
     }
     match winsys::bridge() {
         Some(helper) => helper.input(cmd),
+        // No helper: try anyway (it works for some of these windows).
+        None if !secure => apply(enigo, cmd).map_err(|e| e.to_string()),
         None => Err(
             "the lock screen or an administrator prompt is showing; turn on \
                      \"Sign-in screen and admin prompts\" in PairDesk's settings to use it"

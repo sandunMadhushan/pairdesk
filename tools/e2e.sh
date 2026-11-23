@@ -70,7 +70,13 @@ if [ -n "${WINE:-}" ]; then
     done
     ls "$WINEPREFIX/drive_c/ProgramData/PairDesk/bridge/"session-*.json >/dev/null 2>&1 ||
       { echo "the helper didn't start"; cat "$WINEPREFIX/drive_c/ProgramData/PairDesk/"*.log; exit 1; }
-    export PAIRDESK_TEST_SECURE_DESKTOP=1
+    # HELPER=elevated: a window with more rights is in front (e.g. the
+    # Windows Security PIN box) instead of the secure desktop.
+    if [ "$HELPER" = elevated ]; then
+      export PAIRDESK_TEST_ELEVATED_WINDOW=1
+    else
+      export PAIRDESK_TEST_SECURE_DESKTOP=1
+    fi
   fi
   PAIRDESK_DOWNLOADS="Z:${DATA//\//\\}\\downloads" PAIRDESK_HOME="Z:${DATA//\//\\}" "$WINEBIN" "$AGENT" --background --port "$PORT" >"$DATA/out.txt" 2>&1 & APID=$!
   WAIT=600
