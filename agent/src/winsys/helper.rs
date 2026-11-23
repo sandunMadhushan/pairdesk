@@ -20,7 +20,8 @@ use crate::screen::capture::Frame;
 ///
 /// Only there: on the normal desktop PairDesk works by itself, and helping
 /// there would let any program running as the user send SYSTEM input to
-/// administrator windows. (`allow-normal-desktop` in the admin-only
+/// administrator windows. The one exception is Windows' own credential
+/// prompt (PIN or password box). (`allow-normal-desktop` in the admin-only
 /// ProgramData folder lifts this, for tests under Wine, which has no secure
 /// desktop.)
 struct SecureDesktop {
@@ -31,7 +32,14 @@ impl SecureDesktop {
     fn check(&self) -> Result<(), String> {
         desktop::follow_input_desktop()?;
         let name = desktop::input_desktop_name().unwrap_or_default();
-        if name.eq_ignore_ascii_case("Default") && !self.allow_normal {
+        // The one exception on the normal desktop: Windows' own credential
+        // prompt (the PIN box of "Windows Security"). It runs with more
+        // rights than PairDesk, so Windows drops PairDesk's own input. Only
+        // that prompt, not administrator windows in general.
+        if name.eq_ignore_ascii_case("Default")
+            && !self.allow_normal
+            && !super::foreground::credential_prompt_in_front()
+        {
             return Err("the normal desktop is handled by PairDesk itself".into());
         }
         Ok(())

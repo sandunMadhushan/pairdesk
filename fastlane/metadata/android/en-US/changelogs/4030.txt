@@ -1,0 +1,1 @@
+• Fix: the Windows Security PIN box now accepts typing from the phone

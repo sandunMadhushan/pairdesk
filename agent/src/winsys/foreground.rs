@@ -17,6 +17,7 @@ use windows_sys::Win32::Security::{
 };
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    QueryFullProcessImageNameW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
@@ -95,9 +96,51 @@ fn process_rights(pid: u32) -> Option<Rights> {
     }
 }
 
+/// Programs that show Windows' own credential prompts (the PIN or password
+/// box of "Windows Security", the sign-in UI). The helper may type into
+/// these even on the normal desktop; see `helper.rs`.
+const CREDENTIAL_UI: &[&str] = &["credentialuibroker.exe", "logonui.exe", "consent.exe"];
+
+/// File name (lower case) of the program that owns the window in front.
+pub fn foreground_exe() -> Option<String> {
+    // SAFETY: plain Win32 calls; the handle is closed below.
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 {
+            return None;
+        }
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 520];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(process, 0, buf.as_mut_ptr(), &mut len);
+        CloseHandle(process);
+        if ok == 0 {
+            return None;
+        }
+        let path = String::from_utf16_lossy(&buf[..len as usize]);
+        path.rsplit(['\\', '/']).next().map(str::to_ascii_lowercase)
+    }
+}
+
+/// True when the window in front is a Windows credential prompt.
+pub fn credential_prompt_in_front() -> bool {
+    foreground_exe().is_some_and(|n| CREDENTIAL_UI.contains(&n.as_str()))
+}
+
 /// True when the window in front belongs to a program Windows won't let us
 /// send input to.
 fn check() -> bool {
+    if credential_prompt_in_front() {
+        return true;
+    }
     // SAFETY: plain Win32 calls.
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.is_null() {
@@ -140,6 +183,13 @@ pub fn needs_helper() -> bool {
             return v;
         }
         let v = check();
+        if last.get().map(|(_, before)| before) != Some(v) {
+            log::info!(
+                "input {} the helper (window in front: {})",
+                if v { "goes through" } else { "no longer needs" },
+                foreground_exe().unwrap_or_else(|| "unknown".into())
+            );
+        }
         last.set(Some((Instant::now(), v)));
         v
     })
@@ -151,6 +201,12 @@ mod tests {
 
     const MEDIUM: u32 = 0x2000;
     const HIGH: u32 = 0x3000;
+
+    #[test]
+    fn credential_prompt_programs_are_listed_in_lower_case() {
+        assert!(CREDENTIAL_UI.contains(&"credentialuibroker.exe"));
+        assert!(CREDENTIAL_UI.iter().all(|n| *n == n.to_ascii_lowercase()));
+    }
 
     #[test]
     fn higher_rights_or_ui_access_block_input() {
