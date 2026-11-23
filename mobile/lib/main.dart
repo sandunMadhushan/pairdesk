@@ -29,14 +29,28 @@ class PairDeskLoader extends StatefulWidget {
   State<PairDeskLoader> createState() => _PairDeskLoaderState();
 }
 
-class _PairDeskLoaderState extends State<PairDeskLoader> {
+class _PairDeskLoaderState extends State<PairDeskLoader> with WidgetsBindingObserver {
   AppModel? _model;
   UpdateChecker? _updates;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// The app can stay open in the background for days: check again (at most
+  /// once every 20 hours) whenever it comes back to the front.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _updates?.checkIfDue();
   }
 
   Future<void> _load() async {

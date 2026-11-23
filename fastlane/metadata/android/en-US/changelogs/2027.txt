@@ -1,0 +1,3 @@
+• Update from right inside Settings when you check for updates
+• Support PairDesk row in Settings (GitHub downloads)
+• The app checks for updates again whenever you open it

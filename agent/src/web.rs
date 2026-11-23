@@ -106,6 +106,24 @@ fn respond_cached<R: Read>(
     let _ = request.respond(response);
 }
 
+/// The page that sends a phone to the right store (the APK for now).
+const PHONE_APP_URL: &str = "https://pairdesk.madhushan.me/app/";
+
+/// The QR code for [`PHONE_APP_URL`], drawn once.
+fn phone_app_qr() -> &'static str {
+    static SVG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SVG.get_or_init(|| {
+        qrcode::QrCode::with_error_correction_level(PHONE_APP_URL, qrcode::EcLevel::M)
+            .map(|code| {
+                code.render::<qrcode::render::svg::Color>()
+                    .min_dimensions(160, 160)
+                    .quiet_zone(true)
+                    .build()
+            })
+            .unwrap_or_default()
+    })
+}
+
 fn status(request: Request, code: u16, msg: &str) {
     respond(
         request,
@@ -698,6 +716,10 @@ fn send_state(request: Request, state: &AppState) {
         "port": state.port,
         "addresses": addresses,
         "autostart": crate::autostart::is_enabled(),
+        "phone_app": { "url": PHONE_APP_URL, "svg": phone_app_qr() },
+        // Microsoft Store apps take donations only through the Store's own
+        // payment system, so the Store build shows no sponsor links.
+        "sponsor": crate::install::current() != crate::install::Kind::Store,
         "pairing": pairing,
         "phones": phones,
         "permissions": {
@@ -944,5 +966,16 @@ mod tests {
         assert_eq!(query(url, "x"), None);
         assert_eq!(percent_decode("100%"), "100%");
         assert_eq!(percent_decode("%zz"), "%zz");
+    }
+
+    #[test]
+    fn the_phone_app_code_is_a_drawn_qr_for_the_app_page() {
+        assert!(PHONE_APP_URL.starts_with("https://pairdesk.madhushan.me/"));
+        let svg = phone_app_qr();
+        assert!(
+            svg.starts_with("<?xml") || svg.contains("<svg"),
+            "{svg:.40}"
+        );
+        assert_eq!(svg, phone_app_qr(), "drawn once");
     }
 }

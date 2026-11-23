@@ -214,6 +214,23 @@ slug `agent`). The release workflow then signs `pairdesk-agent.exe` and
 need a second signing request after it's built; ask SignPath how they
 prefer to handle installers.
 
+## Sponsor links in the apps
+
+The *Support PairDesk* card (GitHub Sponsors, Patreon, Buy Me a Coffee) is
+shown only in the GitHub downloads. Reasons:
+
+- **Microsoft Store:** policy 10.8.2 asks for voluntary donations to go
+  through the Store's payment request API or a secure third-party purchase
+  API, so the Store package hides the card (`install::Kind::Store`).
+- **Google Play and App Store (later):** both disallow links to outside
+  donations inside the app. The phone shows the card only in builds made with
+  `--dart-define=PAIRDESK_UPDATES=github` (`mobile/lib/sponsor.dart`), so
+  store builds never include it. Keep it that way.
+- **F-Droid:** builds leave the define off, so no card; the F-Droid metadata
+  can carry the donation links instead.
+
+The repository's *Sponsor* button comes from `.github/FUNDING.yml`.
+
 ## 6. Google Play (later)
 
 The plan leaves this for later: US$25 once, plus a closed test with 12

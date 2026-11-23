@@ -5,7 +5,7 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.13.** Now in the
+> **Status: 0.14.** Now in the
 > [Microsoft Store](https://pairdesk.madhushan.me/store/) for Windows.
 > Pair once with a QR code or a link; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted
@@ -241,6 +241,14 @@ releases in [docs/RELEASING.md](docs/RELEASING.md); store submissions in
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Support PairDesk
+
+PairDesk is free, has no ads and no account. If it is useful to you, you can
+sponsor it on [GitHub Sponsors](https://github.com/sponsors/sandunMadhushan),
+[Patreon](https://www.patreon.com/sandunMadhushan) or
+[Buy Me a Coffee](https://buymeacoffee.com/sandunhmadhushan). The same links
+are in the apps' Settings (GitHub downloads only, see docs/STORES.md).
 
 ## Licence
 

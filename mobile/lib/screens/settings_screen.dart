@@ -6,7 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../screen/video.dart';
 
 import '../settings/app_lock.dart';
+import '../sponsor.dart';
+import '../ui/update_card.dart';
 import '../update_check.dart';
+import '../update_install.dart';
+
+import 'package:url_launcher/url_launcher.dart';
+
 import 'remote_help_screen.dart';
 import '../settings/app_settings.dart';
 import '../ui/theme.dart';
@@ -17,6 +23,7 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.settings,
     this.updates,
+    this.installer,
     this.authenticate = deviceAuthenticate,
     this.canAuthenticate = deviceCanAuthenticate,
     this.embedded = false,
@@ -26,6 +33,9 @@ class SettingsScreen extends StatelessWidget {
 
   /// New releases on GitHub. Null on F-Droid builds, which F-Droid updates.
   final UpdateChecker? updates;
+
+  /// Downloads and installs what [updates] finds, from here.
+  final UpdateInstaller? installer;
   final Authenticator authenticate;
   final Future<bool> Function() canAuthenticate;
 
@@ -177,7 +187,10 @@ class SettingsScreen extends StatelessWidget {
               PdCard(
                 child: Column(
                   children: [
-                    if (updates != null) ...[_CheckForUpdates(updates: updates!), const PdDivider()],
+                    if (updates != null) ...[
+                      _CheckForUpdates(updates: updates!, installer: installer),
+                      const PdDivider(),
+                    ],
                     FutureBuilder<PackageInfo>(
                       future: PackageInfo.fromPlatform(),
                       builder: (_, snap) => PdRow(
@@ -188,6 +201,7 @@ class SettingsScreen extends StatelessWidget {
                             'github.com/sandunMadhushan/pairdesk',
                       ),
                     ),
+                    if (showSponsor) ...[const PdDivider(), const _SupportRow()],
                   ],
                 ),
               ),
@@ -200,11 +214,13 @@ class SettingsScreen extends StatelessWidget {
 }
 
 /// "Check for updates" in About: asks GitHub now, rather than waiting for
-/// the once-a-day check. What it finds shows on the Home screen.
+/// the once-a-day check. When it finds one, the same "Update" card as on the
+/// Home screen appears right here.
 class _CheckForUpdates extends StatefulWidget {
-  const _CheckForUpdates({required this.updates});
+  const _CheckForUpdates({required this.updates, this.installer});
 
   final UpdateChecker updates;
+  final UpdateInstaller? installer;
 
   @override
   State<_CheckForUpdates> createState() => _CheckForUpdatesState();
@@ -222,9 +238,7 @@ class _CheckForUpdatesState extends State<_CheckForUpdates> {
     String answer;
     try {
       final found = await widget.updates.checkNow();
-      answer = found == null
-          ? 'This is the newest version.'
-          : 'PairDesk ${found.version} is available \u2014 see the Home screen.';
+      answer = found == null ? 'This is the newest version.' : 'PairDesk ${found.version} is available.';
     } catch (_) {
       answer = 'Couldn\'t reach GitHub. Check the phone\'s connection.';
     }
@@ -236,12 +250,73 @@ class _CheckForUpdatesState extends State<_CheckForUpdates> {
   }
 
   @override
+  Widget build(BuildContext context) {
+    final installer = widget.installer;
+    return ListenableBuilder(
+      listenable: Listenable.merge([widget.updates, ?installer]),
+      builder: (context, _) {
+        final update = widget.updates.available;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PdRow(
+              icon: Icons.system_update_alt_rounded,
+              title: 'Check for updates',
+              subtitle: update != null
+                  ? 'PairDesk ${update.version} is available.'
+                  : _answer ?? 'PairDesk also checks by itself once a day',
+              trailing: _busy ? PdSpinner(color: PdColors.of(context).ink) : null,
+              onTap: _busy ? null : _check,
+            ),
+            if (update != null && installer != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: UpdateCard(update: update, installer: installer, onDismiss: widget.updates.dismiss),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// "Support PairDesk": a sheet with the places to sponsor it.
+class _SupportRow extends StatelessWidget {
+  const _SupportRow();
+
+  @override
   Widget build(BuildContext context) => PdRow(
-    icon: Icons.system_update_alt_rounded,
-    title: 'Check for updates',
-    subtitle: _answer ?? 'PairDesk also checks by itself once a day',
-    trailing: _busy ? PdSpinner(color: PdColors.of(context).ink) : null,
-    onTap: _busy ? null : _check,
+    icon: Icons.favorite_rounded,
+    title: 'Support PairDesk',
+    subtitle: 'Free and open source. Sponsor its development',
+    onTap: () => showPdSheet<void>(context, (_) => const _SupportSheet(), scrollable: false),
+  );
+}
+
+class _SupportSheet extends StatelessWidget {
+  const _SupportSheet();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const PdTitle(
+          'Support PairDesk',
+          subtitle: 'PairDesk is free and has no ads. Sponsors keep it that way.',
+        ),
+        const SizedBox(height: 12),
+        for (final link in sponsorLinks)
+          PdRow(
+            icon: Icons.favorite_border_rounded,
+            title: link.name,
+            subtitle: link.note,
+            onTap: () => launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication),
+          ),
+      ],
+    ),
   );
 }
 

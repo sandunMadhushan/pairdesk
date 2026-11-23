@@ -50,6 +50,16 @@ export default function Footer() {
                 Report a problem
               </a>
             </li>
+            <li>
+              <a href="/app/" className="hover:text-white hover:underline">
+                Get the phone app
+              </a>
+            </li>
+            <li>
+              <a href="https://github.com/sponsors/sandunMadhushan" className="hover:text-white hover:underline">
+                Support PairDesk
+              </a>
+            </li>
           </ul>
         </nav>
         <nav aria-label="Policies">
