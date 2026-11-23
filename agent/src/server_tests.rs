@@ -397,6 +397,7 @@ async fn welcome_lists_features_and_permissions() {
             "files",
             "video",
             "audio",
+            "wake",
             "direct"
         ])
     );

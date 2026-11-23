@@ -25,6 +25,7 @@ import 'pairing/pairing_link.dart';
 import 'pairing/direct.dart';
 import 'pairing/relay_route.dart';
 import 'screen/frame.dart';
+import 'wake.dart';
 
 export 'audio/audio_packet.dart' show AudioInfo, AudioPacket;
 
@@ -385,6 +386,7 @@ class AgentConnection extends ChangeNotifier {
   bool _viaDirect = false;
 
   List<String> _agentAddrs = const [];
+  List<String> _agentMacs = const [];
 
   /// The computer this connection belongs to, so an `addrs` message can
   /// update its saved addresses while connected.
@@ -499,6 +501,7 @@ class AgentConnection extends ChangeNotifier {
     laptop
       ..learnAddresses(working: _address!, fromComputer: _agentAddrs)
       ..direct = _features.contains('direct')
+      ..macs = _agentMacs.isNotEmpty ? _agentMacs : laptop.macs
       ..name = _agentName ?? laptop.name
       ..os = _agentOs ?? laptop.os
       ..lastUsed = DateTime.now().millisecondsSinceEpoch;
@@ -652,6 +655,11 @@ class AgentConnection extends ChangeNotifier {
       if (welcome['addrs'] is List)
         for (final a in welcome['addrs'] as List)
           if (a is String && isUsableHost(a)) a,
+    ];
+    _agentMacs = [
+      if (welcome['macs'] is List)
+        for (final m in welcome['macs'] as List)
+          if (m is String && isMacAddress(m)) m,
     ];
     _address = host;
   }
@@ -940,6 +948,13 @@ class AgentConnection extends ChangeNotifier {
   Future<void> power(PowerAction action) async {
     _requireFeature('power');
     await _request({'t': 'power', 'a': action.wire});
+  }
+
+  /// Asks this computer to send Wake-on-LAN packets for a sleeping one on
+  /// its network.
+  Future<void> wake(List<String> macs) async {
+    _requireFeature('wake');
+    await _request({'t': 'wake', 'macs': macs});
   }
 
   /// Installed apps and the owner's shortcuts.

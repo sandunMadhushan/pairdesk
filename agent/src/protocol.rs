@@ -181,6 +181,13 @@ pub enum ClientMsg {
         id: Option<u64>,
         a: PowerAction,
     },
+    /// Sends Wake-on-LAN packets on this computer's network for a sleeping
+    /// computer with these MAC addresses ("aa:bb:cc:dd:ee:ff").
+    Wake {
+        #[serde(default)]
+        id: Option<u64>,
+        macs: Vec<String>,
+    },
     /// Asks for the apps and shortcuts that can be launched.
     Apps {
         #[serde(default)]
@@ -309,6 +316,10 @@ pub enum ServerMsg {
         /// Addresses the phone can use to reach this computer: home
         /// network first, then Tailscale addresses and name.
         addrs: Vec<String>,
+        /// Network (MAC) addresses that could wake this computer from sleep.
+        /// Empty when unknown (older agents never send it).
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        macs: Vec<String>,
     },
     /// Answer to a request that carried an `id`.
     Ack {
@@ -640,6 +651,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_wake() {
+        assert_eq!(
+            ClientMsg::parse(r#"{"t":"wake","id":5,"macs":["aa:bb:cc:dd:ee:ff"]}"#).unwrap(),
+            ClientMsg::Wake {
+                id: Some(5),
+                macs: vec!["aa:bb:cc:dd:ee:ff".into()]
+            }
+        );
+    }
+
+    #[test]
     fn serializes_server_messages() {
         let json = serde_json::to_string(&ServerMsg::Welcome {
             name: "laptop".into(),
@@ -659,11 +681,12 @@ mod tests {
                 mic: false,
             },
             addrs: vec!["192.168.1.5".into(), "100.101.102.103".into()],
+            macs: vec!["aa:bb:cc:dd:ee:ff".into()],
         })
         .unwrap();
         assert_eq!(
             json,
-            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true,"clipboard":true,"files":false,"audio":true,"mic":false},"addrs":["192.168.1.5","100.101.102.103"]}"#
+            r#"{"t":"welcome","name":"laptop","os":"windows","v":2,"version":"9.9.9","paired":false,"features":["power"],"allow":{"power":true,"session":false,"apps":true,"screen":true,"clipboard":true,"files":false,"audio":true,"mic":false},"addrs":["192.168.1.5","100.101.102.103"],"macs":["aa:bb:cc:dd:ee:ff"]}"#
         );
         let json = serde_json::to_string(&ServerMsg::Ack {
             id: Some(4),
