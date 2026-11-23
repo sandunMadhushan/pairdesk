@@ -363,6 +363,8 @@
   .pair { display: flex; gap: 26px; align-items: flex-start; }
   .qr { background: #fff; border-radius: 22px; padding: 10px; line-height: 0; flex: none; box-shadow: 0 0 0 1px var(--line); }
   .qr svg { width: 236px; height: 236px; }
+  .qr.small { border-radius: 14px; padding: 6px; }
+  .qr.small svg { width: 112px; height: 112px; }
   .countdown { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--sub); margin: 0 0 16px; }
   .done { display: grid; justify-items: center; text-align: center; gap: 6px; padding: 40px 26px 30px; }
   .done .ico { width: 76px; height: 76px; border-radius: 50%; margin-bottom: 12px; animation: pop .4s var(--spring); }
@@ -444,6 +446,7 @@
     <symbol id="i-wall" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9 4.5v5M15 9.5v5M9 14.5v5"/></symbol>
     <symbol id="i-coffee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9h12v5.5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z"/><path d="M16.5 10.5h1.5a2.5 2.5 0 0 1 0 5h-1.8M8 3.5v2M12 3.5v2"/></symbol>
     <symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-2 1-4 3-4s3 1 3 3-2 3-6 1z"/><path d="M9.5 13.5 13 17c4.5-2 7-6 7-12-6 0-10 2.5-12 7z"/><circle cx="15" cy="9" r="1.5"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
@@ -508,6 +511,7 @@
             <p id="status">Connecting to PairDesk…</p>
             <div class="row">
               <button class="primary big" id="btn-home-pair"><svg class="lead"><use href="#i-plus"/></svg>Pair a phone</button>
+              <button class="soft big" id="btn-home-app"><svg class="lead"><use href="#i-phone"/></svg>Get the phone app</button>
               <button class="primary big" id="btn-home-files" hidden><svg class="lead"><use href="#i-upload"/></svg>Send files</button>
               <button class="soft big" id="btn-home-phones" data-go="phones" hidden>Phones</button>
             </div>
@@ -740,12 +744,27 @@
           <span class="toggle"><input type="checkbox" id="up-auto"><span></span></span></label>
       </div>
       <div class="card">
+        <div class="card-head">
+          <span class="ico"><svg><use href="#i-phone"/></svg></span>
+          <div class="grow"><h2>Get the phone app</h2><div class="hint">Scan this with your phone's camera to install PairDesk, or <a id="app-link" target="_blank" rel="noopener">open the page</a>.</div></div>
+          <div class="qr small" id="app-qr" aria-label="Phone app download code"></div>
+        </div>
+      </div>
+      <div class="card">
         <div class="card-head"><span class="ico"><svg><use href="#i-info"/></svg></span><h2 class="grow">About this computer</h2></div>
         <dl class="about selectable">
           <dt>Version</dt><dd id="version"></dd>
           <dt>Addresses</dt><dd id="addresses"></dd>
           <dt>Fingerprint</dt><dd><code id="fp"></code></dd>
         </dl>
+      </div>
+      <div class="card" id="sponsor" hidden>
+        <div class="card-head"><span class="ico"><svg><use href="#i-heart"/></svg></span><div class="grow"><h2>Support PairDesk</h2><div class="hint">Free and open source, with no ads. Sponsors keep it that way.</div></div></div>
+        <div class="row">
+          <a href="https://github.com/sponsors/sandunMadhushan" target="_blank" rel="noopener">GitHub Sponsors</a>
+          <a href="https://www.patreon.com/sandunMadhushan" target="_blank" rel="noopener">Patreon</a>
+          <a href="https://buymeacoffee.com/sandunhmadhushan" target="_blank" rel="noopener">Buy Me a Coffee</a>
+        </div>
       </div>
       <div class="card">
         <div class="setting">
@@ -767,7 +786,7 @@
         <h2 id="pair-title">Pair a phone</h2>
         <div class="countdown"><span class="dot ok"></span><span id="pair-where"></span></div>
         <ol class="steps" style="margin-bottom:18px">
-          <li><span>Open <b>PairDesk</b> on your phone.</span></li>
+          <li><span>Open <b>PairDesk</b> on your phone. <span class="hint">No app yet? <a id="pair-get-app" target="_blank" rel="noopener">Get the phone app</a>.</span></span></li>
           <li><span>Tap <b>+</b>, then <b>Scan pairing code</b>, and point the camera at this code.</span></li>
         </ol>
         <div class="field">Or send this link to your phone and open it there
@@ -942,6 +961,13 @@ function render(s) {
     : "Show a pairing code here and scan it with the PairDesk app on your phone.";
   $("hero-mark").classList.toggle("on", connected.length > 0);
   $("btn-home-pair").hidden = s.phones.length > 0;
+  $("btn-home-app").hidden = s.phones.length > 0;
+  $("sponsor").hidden = !s.sponsor;
+  for (const id of ["app-link", "pair-get-app"]) $(id).href = s.phone_app.url;
+  if ($("app-qr").dataset.url !== s.phone_app.url) {
+    $("app-qr").innerHTML = s.phone_app.svg; // generated by this agent, not user input
+    $("app-qr").dataset.url = s.phone_app.url;
+  }
   $("btn-home-files").hidden = connected.length === 0;
   $("btn-home-phones").hidden = s.phones.length === 0;
   $("side-status").textContent = connected.length
@@ -1174,6 +1200,7 @@ const startPairing = async () => {
 };
 $("btn-pair").onclick = startPairing;
 $("btn-home-pair").onclick = startPairing;
+$("btn-home-app").onclick = () => window.open($("app-link").href, "_blank", "noopener");
 $("btn-new").onclick = startPairing;
 const cancelPairing = async () => {
   cancelling = true;

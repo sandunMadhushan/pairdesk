@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.14.0" date="2026-11-23">
+      <description>
+        <p>Get the phone app from the computer app (a QR code and a link), a Support PairDesk card, and "Update now" right inside the phone's Settings when you check for updates.</p>
+      </description>
+    </release>
     <release version="0.13.1" date="2026-11-23">
       <description>
         <p>The Windows program no longer needs the Visual C++ runtime. Nothing changes on Linux.</p>
