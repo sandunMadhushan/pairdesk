@@ -1,0 +1,2 @@
+• Wake a sleeping computer with Wake-on-LAN
+• Type a Windows PIN on the sign-in screen from the phone

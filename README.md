@@ -5,7 +5,7 @@ no codes or "accept" prompts every time.
 
 **Website:** <https://pairdesk.madhushan.me> · **Licence:** GPL-3.0-or-later
 
-> **Status: 0.14.** Now in the
+> **Status: 0.15.** Now in the
 > [Microsoft Store](https://pairdesk.madhushan.me/store/) for Windows.
 > Pair once with a QR code or a link; after that the phone
 > connects whenever the computer is on, with no prompts. Connections are encrypted

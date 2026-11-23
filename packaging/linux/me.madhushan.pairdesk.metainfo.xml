@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.15.0" date="2026-11-23">
+      <description>
+        <p>Typing a Windows PIN on the sign-in screen from the phone, and Wake-on-LAN to wake a sleeping computer.</p>
+      </description>
+    </release>
     <release version="0.14.0" date="2026-11-23">
       <description>
         <p>Get the phone app from the computer app (a QR code and a link), a Support PairDesk card, and "Update now" right inside the phone's Settings when you check for updates.</p>
