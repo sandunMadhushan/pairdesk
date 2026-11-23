@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.15.3" date="2026-11-24">
+      <description>
+        <p>After an update, the Windows sign-in screen helper is now updated too.</p>
+      </description>
+    </release>
     <release version="0.15.2" date="2026-11-23">
       <description>
         <p>The Windows Security PIN box now accepts the phone's pointer and typing.</p>

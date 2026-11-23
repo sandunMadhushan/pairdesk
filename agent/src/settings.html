@@ -1423,7 +1423,9 @@ function renderSecure(sd) {
   // The Store version has a switch (its helper comes with the app); the
   // setup version installs and removes the helper.
   const on = sd.store ? sd.enabled : sd.state === "running" || sd.state === "starting";
-  $("btn-sd-on").hidden = on || !!sd.working;
+  const stale = on && !sd.store && !!sd.outdated;
+  $("btn-sd-on").hidden = (on && !stale) || !!sd.working;
+  $("btn-sd-on").textContent = stale ? "Update the helper" : "Turn on";
   $("btn-sd-off").hidden = !on || !!sd.working;
   if (sd.working) {
     text.textContent = "Waiting for you to answer Windows' administrator prompt…";
@@ -1440,6 +1442,7 @@ function renderSecure(sd) {
   } else {
     text.textContent = "Off";
   }
+  if (stale && !sd.working) text.textContent = "The helper is older than this PairDesk, so the sign-in screen may not work. Update it (Windows asks for administrator permission).";
   if (sd.error) text.textContent += " " + sd.error;
   $("sd-dot").className = "dot" + (on && sd.helper ? " ok" : on || sd.working ? " warn" : "");
   $("sd-ico").className = "ico big" + (on && sd.helper ? " on" : "");

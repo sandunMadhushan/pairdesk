@@ -138,6 +138,55 @@ pub fn helper_available() -> bool {
         .is_some()
 }
 
+/// The helper runs from its own copy in Program Files, which an update of
+/// PairDesk doesn't touch. True when the running helper is an older release
+/// than this PairDesk (or too old to say which).
+pub fn version_is_outdated(helper: &str, ours: &str) -> bool {
+    helper.trim().is_empty() || crate::instance::is_older(helper, ours)
+}
+
+/// The helper of this session is running but older than this PairDesk.
+#[cfg(windows)]
+pub fn helper_outdated() -> bool {
+    session::current_session()
+        .and_then(|s| read_endpoint(&endpoint_file(&service::program_data(), s)))
+        .is_some_and(|ep| version_is_outdated(&ep.version, env!("CARGO_PKG_VERSION")))
+}
+
+/// After an update: installs the helper again so it runs this release. Asks
+/// Windows for administrator rights (the owner sees the usual prompt), once
+/// per release: if the owner says no, the settings page still offers it.
+#[cfg(windows)]
+pub fn update_helper_if_old(data_dir: PathBuf) {
+    // The Store package carries its own service, replaced with the app.
+    if crate::install::current() == crate::install::Kind::Store {
+        return;
+    }
+    std::thread::spawn(move || {
+        // The helper may still be starting with Windows.
+        for _ in 0..30 {
+            if helper_available() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        if !helper_outdated() {
+            return;
+        }
+        let ours = env!("CARGO_PKG_VERSION");
+        let marker = data_dir.join("helper-update-tried");
+        if std::fs::read_to_string(&marker).is_ok_and(|v| v.trim() == ours) {
+            log::info!(
+                "the helper is older than {ours}; turn it off and on in settings to update it"
+            );
+            return;
+        }
+        let _ = std::fs::write(&marker, ours);
+        log::info!("the helper is older than {ours}; updating it");
+        set_enabled(true);
+    });
+}
+
 /// What the settings page shows, and the last on/off attempt's error.
 static WORKING: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 static LAST_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
@@ -161,6 +210,7 @@ pub fn settings_state(store_switch: bool) -> serde_json::Value {
         serde_json::json!({
             "state": service::state().label(),
             "helper": helper_available(),
+            "outdated": helper_outdated(),
             "working": WORKING.lock().unwrap().clone(),
             "error": LAST_ERROR.lock().unwrap().clone(),
         })
@@ -255,6 +305,14 @@ mod tests {
     }
 
     #[test]
+    fn an_older_or_unnamed_helper_is_outdated() {
+        assert!(version_is_outdated("", "0.15.3"));
+        assert!(version_is_outdated("0.15.2", "0.15.3"));
+        assert!(!version_is_outdated("0.15.3", "0.15.3"));
+        assert!(!version_is_outdated("0.16.0", "0.15.3"));
+    }
+
+    #[test]
     fn the_store_switch_is_read_from_the_mirrored_settings() {
         assert!(secure_desktop_enabled(
             r#"{"secure_desktop": true, "keep_awake": false}"#
@@ -306,6 +364,7 @@ mod tests {
         let ep = crate::bridge::Endpoint {
             port: 5000,
             token: "t".into(),
+            version: "0.15.3".into(),
         };
         std::fs::write(&path, serde_json::to_vec(&ep).unwrap()).unwrap();
         assert_eq!(read_endpoint(&path), Some(ep));

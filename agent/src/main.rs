@@ -240,6 +240,9 @@ fn main() {
         }));
         if winsys::helper_available() {
             info!("the PairDesk helper is on: sign-in screen and admin prompts work");
+            if args.mode == Mode::Normal {
+                winsys::update_helper_if_old(data_dir.clone());
+            }
         }
     }
     if args.updated {

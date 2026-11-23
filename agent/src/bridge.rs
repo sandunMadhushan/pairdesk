@@ -197,6 +197,10 @@ fn handle(mut stream: TcpStream, token: &str, backend: &dyn Backend) -> io::Resu
 pub struct Endpoint {
     pub port: u16,
     pub token: String,
+    /// The PairDesk release the helper runs ("" for helpers older than 0.15.3,
+    /// which didn't say).
+    #[serde(default)]
+    pub version: String,
 }
 
 /// PairDesk's side: one connection, reopened when it breaks.
@@ -348,6 +352,7 @@ mod tests {
             Endpoint {
                 port,
                 token: token.into(),
+                version: String::new(),
             },
             fake,
         )

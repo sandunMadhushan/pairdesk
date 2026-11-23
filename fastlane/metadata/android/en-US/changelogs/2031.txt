@@ -1,0 +1,1 @@
+• Fix: the Windows sign-in screen helper now updates together with PairDesk

@@ -92,6 +92,7 @@ pub fn run(base: PathBuf) -> ! {
     let endpoint = Endpoint {
         port: listener.local_addr().map(|a| a.port()).unwrap_or(0),
         token: bridge::new_token(),
+        version: env!("CARGO_PKG_VERSION").into(),
     };
     {
         let token = endpoint.token.clone();
