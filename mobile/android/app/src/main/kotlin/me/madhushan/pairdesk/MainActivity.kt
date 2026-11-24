@@ -12,6 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.view.KeyEvent
+import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
@@ -31,6 +33,8 @@ import java.util.concurrent.Executors
 //  - openFile: opens a received file in the app that handles it
 class MainActivity : FlutterFragmentActivity() {
     private var channel: MethodChannel? = null
+    private var present: MethodChannel? = null
+    private var presenting = false
     private var updates: UpdateChannel? = null
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -72,6 +76,17 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val up = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
+        if (presenting && (up || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                present?.invokeMethod("volume", if (up) "up" else "down")
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onDestroy() {
         audio?.release()
         updates?.dispose()
@@ -98,6 +113,23 @@ class MainActivity : FlutterFragmentActivity() {
         VideoChannel(flutterEngine)
         audio = AudioChannel(flutterEngine, this)
         updates = UpdateChannel(flutterEngine, this)
+        // Presenter mode: keeps the screen on and takes the volume keys.
+        present = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pairdesk/present").apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setActive" -> {
+                        presenting = call.arguments as? Boolean ?: false
+                        if (presenting) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pairdesk/files").apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {

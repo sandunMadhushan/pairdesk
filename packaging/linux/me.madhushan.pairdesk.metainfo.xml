@@ -55,6 +55,11 @@
     <keyword>android</keyword>
   </keywords>
   <releases>
+    <release version="0.16.0" date="2026-11-24">
+      <description>
+        <p>Presenter mode in the phone app: big Next and Back buttons, a talk timer, blank screen and a laser pointer.</p>
+      </description>
+    </release>
     <release version="0.15.3" date="2026-11-24">
       <description>
         <p>After an update, the Windows sign-in screen helper is now updated too.</p>

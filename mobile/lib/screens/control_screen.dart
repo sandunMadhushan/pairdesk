@@ -18,6 +18,7 @@ import '../touchpad.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'exchange_sheet.dart';
+import 'present_screen.dart';
 import 'tabs/files_tab.dart';
 import 'tabs/power_tab.dart';
 import 'tabs/screen_tab.dart';
@@ -191,6 +192,8 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
     }
   }
 
+  void _openPresent() => PresentScreen.open(context, _conn);
+
   void _openPower() => showPdSheet<void>(context, (_) => PowerSheet(connection: _conn));
 
   void _select(int i) {
@@ -223,7 +226,8 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
             tooltip: 'Disconnect',
             onPressed: () => Navigator.of(context).maybePop(),
           ),
-          const SizedBox(width: 10),
+          // Keeps the name centred over the two buttons on the right.
+          const SizedBox(width: 56),
           Expanded(
             child: Column(
               children: [
@@ -250,6 +254,8 @@ class _ControlScreenState extends State<ControlScreen> with WidgetsBindingObserv
               ],
             ),
           ),
+          const SizedBox(width: 10),
+          RoundButton(icon: Icons.slideshow_rounded, tooltip: 'Present', onPressed: _openPresent),
           const SizedBox(width: 10),
           RoundButton(icon: Icons.power_settings_new_rounded, tooltip: 'Power', onPressed: _openPower),
         ],
